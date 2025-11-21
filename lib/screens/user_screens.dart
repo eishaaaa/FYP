@@ -1,9 +1,22 @@
 // lib/screens/user_screens.dart
+// Clean, optimized & index-safe user-side asset browsing + filtering + searching
+// Images/doc stored as Base64 (Firestore only). Uses shared_screens.dart for shared screens.
+
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'shared_screens.dart';
+import 'shared_screens.dart'; // exports: db, auth, AssetDetailScreen, QRScannerScreen, MyAssetsScreen, ProfileScreen, TransactionsScreen
 
-final db = FirebaseFirestore.instance;
+Uint8List? _decode(String? b64) {
+  if (b64 == null || b64.isEmpty) return null;
+  try {
+    return base64Decode(b64);
+  } catch (e) {
+    return null;
+  }
+}
+
 
 class UserHomeScreen extends StatefulWidget {
   const UserHomeScreen({super.key});
@@ -13,40 +26,45 @@ class UserHomeScreen extends StatefulWidget {
 }
 
 class _UserHomeScreenState extends State<UserHomeScreen> {
-  int _bottomIndex = 0;
-  String _tab = "land";
-  String _query = "";
+  int _index = 0;
+  String _category = 'land';
+  String _search = '';
   Map<String, dynamic> _filters = {};
 
   void _openFilters() async {
-    final result = await showModalBottomSheet<Map<String, dynamic>>(
+    final out = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => DraggableScrollableSheet(
         expand: false,
-        initialChildSize: 0.75,
         maxChildSize: 0.95,
-        builder: (_, controller) =>
-            FilterSheet(tab: _tab, controller: controller),
+        initialChildSize: 0.75,
+        builder: (_, controller) => FilterSheet(
+          category: _category,
+          controller: controller,
+          existing: _filters,
+        ),
       ),
     );
-
-    if (result != null) setState(() => _filters = result);
+    if (out != null) setState(() => _filters = out);
   }
 
-  void _onNavTap(int index) {
-    if (index == 1) {
-      Navigator.push(
-          context, MaterialPageRoute(builder: (_) => const QRScannerScreen()));
+  void _nav(int i) {
+    if (i == 1) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const QRScannerScreen()));
       return;
     }
-    setState(() => _bottomIndex = index);
+    setState(() => _index = i);
   }
 
-  Widget _buildBody() {
-    if (_bottomIndex == 2) return const MyAssetsScreen();
-    if (_bottomIndex == 3) return const ProfileScreen();
+  Widget _body() {
+    switch (_index) {
+      case 2:
+        return const MyAssetsScreen();
+      case 3:
+        return const ProfileScreen();
+    }
 
     return SafeArea(
       child: Column(
@@ -55,20 +73,18 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             padding: const EdgeInsets.all(12),
             child: TextField(
               decoration: InputDecoration(
-                hintText: "Search title, city, price",
+                hintText: "Search assets...",
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: IconButton(
-                    icon: const Icon(Icons.filter_list),
-                    onPressed: _openFilters),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  icon: const Icon(Icons.filter_list),
+                  onPressed: _openFilters,
                 ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              onChanged: (v) => setState(() => _query = v.trim()),
+              onChanged: (v) => setState(() => _search = v.trim().toLowerCase()),
             ),
           ),
 
-          // Tabs
           SizedBox(
             height: 48,
             child: Row(
@@ -76,26 +92,30 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               children: [
                 ChoiceChip(
                   label: const Text("Land"),
-                  selected: _tab == "land",
-                  onSelected: (_) => setState(() => _tab = "land"),
+                  selected: _category == "land",
+                  onSelected: (_) => setState(() => _category = "land"),
                 ),
                 const SizedBox(width: 8),
                 ChoiceChip(
                   label: const Text("Electronics"),
-                  selected: _tab == "electronics",
-                  onSelected: (_) => setState(() => _tab = "electronics"),
+                  selected: _category == "electronics",
+                  onSelected: (_) => setState(() => _category = "electronics"),
                 ),
                 const Spacer(),
-                IconButton(icon: const Icon(Icons.tune), onPressed: _openFilters)
+                IconButton(
+                  icon: const Icon(Icons.tune),
+                  onPressed: _openFilters,
+                )
               ],
             ),
           ),
 
-          const SizedBox(height: 8),
-
           Expanded(
-            child:
-            AssetListView(tab: _tab, query: _query, filters: _filters),
+            child: AssetListView(
+              category: _category,
+              search: _search,
+              filters: _filters,
+            ),
           ),
         ],
       ),
@@ -106,117 +126,117 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Digital Goods Marketplace")),
-      body: _buildBody(),
+      body: _body(),
+      floatingActionButton: FloatingActionButton(
+        child: const Icon(Icons.swap_horiz),
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const TransactionsScreen()),
+        ),
+      ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _bottomIndex,
+        currentIndex: _index,
+        onTap: _nav,
         type: BottomNavigationBarType.fixed,
-        onTap: _onNavTap,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.qr_code_scanner), label: "Scan"),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.inventory), label: "My Assets"),
+          BottomNavigationBarItem(icon: Icon(Icons.qr_code_scanner), label: "Scan"),
+          BottomNavigationBarItem(icon: Icon(Icons.inventory), label: "My Assets"),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) => const TransactionsScreen())),
-        child: const Icon(Icons.swap_horiz),
       ),
     );
   }
 }
 
-// ============================================================================
-// ASSET LIST
-// ============================================================================
+// ---------------------------------------------------------------------------
+// ASSETS LIST
+// ---------------------------------------------------------------------------
 
 class AssetListView extends StatelessWidget {
-  final String tab;
-  final String query;
+  final String category;
+  final String search;
   final Map<String, dynamic> filters;
 
   const AssetListView({
     super.key,
-    required this.tab,
-    required this.query,
+    required this.category,
+    required this.search,
     required this.filters,
   });
 
-  // Firestore SAFE query
-  Query _buildQuery() {
-    return db
-        .collection("assets")
-        .where("category", isEqualTo: tab)
-        .orderBy("__name__", descending: false);   // SAFE — no index needed
+  Query _q() {
+    Query q = db.collection("assets")
+        .where("category", isEqualTo: category)
+        .orderBy("createdAt", descending: true);
+
+    if (filters["minPrice"] != null) {
+      q = q.where("price", isGreaterThanOrEqualTo: filters["minPrice"]);
+    }
+    if (filters["maxPrice"] != null) {
+      q = q.where("price", isLessThanOrEqualTo: filters["maxPrice"]);
+    }
+
+    return q;
   }
 
-  bool _matchesText(Map<String, dynamic> data) {
-    if (query.isEmpty) return true;
+  bool _match(Map<String, dynamic> d) {
+    final s = search.trim();
+    if (s.isEmpty) return true;
 
-    final q = query.toLowerCase();
-    return (data["title"] ?? "").toString().toLowerCase().contains(q) ||
-        (data["city"] ?? "").toString().toLowerCase().contains(q) ||
-        (data["price"] ?? "").toString().contains(q) ||
-        ((data["searchKeywords"] ?? []) as List)
-            .join(" ")
-            .toLowerCase()
-            .contains(q);
+    final title = (d['title'] ?? "").toString().toLowerCase();
+    final city = (d['city'] ?? "").toString().toLowerCase();
+    final price = (d['price'] ?? "").toString();
+    final keywords = (d['searchKeywords'] as List?)?.join(" ").toLowerCase() ?? "";
+
+    return title.contains(s) ||
+        city.contains(s) ||
+        price.contains(s) ||
+        keywords.contains(s);
   }
 
-  bool _matchesFilters(Map<String, dynamic> d) {
-    if (filters.containsKey("city") &&
-        d["city"]?.toLowerCase() != filters["city"].toLowerCase()) {
+  bool _filter(Map<String, dynamic> d) {
+    if (filters["city"] != null &&
+        !d["city"].toString().toLowerCase().contains(filters["city"].toString().toLowerCase())) {
       return false;
     }
-    if (filters.containsKey("brand") &&
-        d["brand"]?.toLowerCase() != filters["brand"].toLowerCase()) {
+    if (filters["brand"] != null &&
+        (d["brand"] ?? "").toString().toLowerCase() != filters["brand"].toString().toLowerCase()) {
       return false;
     }
-    if (filters.containsKey("condition") &&
-        d["condition"]?.toLowerCase() !=
-            filters["condition"].toLowerCase()) {
+    if (filters["condition"] != null &&
+        (d["condition"] ?? "").toString().toLowerCase() != filters["condition"].toString().toLowerCase()) {
       return false;
     }
-
-    // Price range (local filter)
-    final price = (d["price"] ?? 0).toDouble();
-    final min = (filters["minPrice"] ?? 0).toDouble();
-    final max = (filters["maxPrice"] ?? 999999999).toDouble();
-    return price >= min && price <= max;
+    return true;
   }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: _buildQuery().snapshots(),
-      builder: (_, snap) {
-        if (!snap.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+      stream: _q().snapshots(),
+      builder: (context, snap) {
+        if (snap.hasError) return Center(child: Text("Error: ${snap.error}"));
+        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
 
         final docs = snap.data!.docs;
 
-        // Apply text search + filters locally
-        final finalList = docs.where((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          return _matchesText(data) && _matchesFilters(data);
+        final filtered = docs.where((e) {
+          final d = e.data() as Map<String, dynamic>;
+          return _match(d) && _filter(d);
         }).toList();
 
-        if (finalList.isEmpty) {
-          return const Center(child: Text("No listings found"));
+        if (filtered.isEmpty) {
+          return const Center(child: Text("No assets found"));
         }
 
         return ListView.builder(
           padding: const EdgeInsets.all(12),
-          itemCount: finalList.length,
+          itemCount: filtered.length,
           itemBuilder: (_, i) {
-            final data = finalList[i].data() as Map<String, dynamic>;
-            return AssetCard(id: finalList[i].id, data: data);
+            final doc = filtered[i];
+            final data = doc.data() as Map<String, dynamic>;
+            return AssetCard(id: doc.id, data: data);
           },
         );
       },
@@ -224,9 +244,9 @@ class AssetListView extends StatelessWidget {
   }
 }
 
-// ============================================================================
+// ---------------------------------------------------------------------------
 // ASSET CARD
-// ============================================================================
+// ---------------------------------------------------------------------------
 
 class AssetCard extends StatelessWidget {
   final String id;
@@ -237,154 +257,166 @@ class AssetCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final img = (data["images"] is List && data["images"].isNotEmpty)
-        ? data["images"][0]
+        ? _decode(data["images"][0])
         : null;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
+      elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: ListTile(
         onTap: () => Navigator.push(
           context,
-          MaterialPageRoute(
-              builder: (_) => AssetDetailScreen(assetId: id)),
+          MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: id)),
         ),
-        child: Row(
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: img != null
+              ? Image.memory(img, width: 70, height: 70, fit: BoxFit.cover)
+              : Container(
+            width: 70,
+            height: 70,
+            color: Colors.grey[200],
+            child: const Icon(Icons.image, size: 32),
+          ),
+        ),
+        title: Text(data["title"] ?? "Untitled"),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 110,
-              height: 80,
-              margin: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: img != null
-                  ? Image.network(img, fit: BoxFit.cover)
-                  : const Icon(Icons.image),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(data["title"] ?? "Untitled",
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 4),
-                    Text(data["city"] ?? "",
-                        style: const TextStyle(color: Colors.black54)),
-                    const SizedBox(height: 6),
-                    Text("₨ ${data["price"]}",
-                        style: const TextStyle(
-                            fontSize: 16,
-                            color: Colors.green,
-                            fontWeight: FontWeight.bold)),
-                  ],
-                ),
+            Text(data["city"] ?? ""),
+            const SizedBox(height: 4),
+            Text(
+              "₨ ${data["price"]}",
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.green,
               ),
             ),
           ],
         ),
+        trailing: data["verified"] == true
+            ? const Icon(Icons.verified, color: Colors.green)
+            : null,
       ),
     );
   }
 }
 
-// ============================================================================
+// ---------------------------------------------------------------------------
 // FILTER SHEET
-// ============================================================================
+// ---------------------------------------------------------------------------
 
 class FilterSheet extends StatefulWidget {
-  final String tab;
+  final String category;
   final ScrollController controller;
+  final Map<String, dynamic> existing;
 
-  const FilterSheet({super.key, required this.tab, required this.controller});
+  const FilterSheet({
+    super.key,
+    required this.category,
+    required this.controller,
+    required this.existing,
+  });
 
   @override
   State<FilterSheet> createState() => _FilterSheetState();
 }
 
 class _FilterSheetState extends State<FilterSheet> {
-  final _city = TextEditingController();
-  final _brand = TextEditingController();
-  final _condition = TextEditingController();
+  late TextEditingController _city;
+  late TextEditingController _brand;
+  late TextEditingController _condition;
 
-  double _minPrice = 0;
-  double _maxPrice = 100000000;
+  double minP = 0;
+  double maxP = 100000000;
+
+  @override
+  void initState() {
+    super.initState();
+    _city = TextEditingController(text: widget.existing["city"]?.toString() ?? "");
+    _brand = TextEditingController(text: widget.existing["brand"]?.toString() ?? "");
+    _condition = TextEditingController(text: widget.existing["condition"]?.toString() ?? "");
+    minP = (widget.existing["minPrice"] ?? 0).toDouble();
+    maxP = (widget.existing["maxPrice"] ?? 100000000).toDouble();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final isLand = widget.tab == "land";
+    final isLand = widget.category == "land";
 
-    return SingleChildScrollView(
-      controller: widget.controller,
-      padding:
-      EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Padding(
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: SingleChildScrollView(
+        controller: widget.controller,
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             Row(
               children: [
-                const Text("Filters",
-                    style:
-                    TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const Text("Filters", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const Spacer(),
-                IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context)),
+                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
               ],
             ),
-
             TextField(
-                controller: _city,
-                decoration: const InputDecoration(labelText: "City")),
+              controller: _city,
+              decoration: const InputDecoration(labelText: "City"),
+            ),
 
             if (!isLand) ...[
               const SizedBox(height: 12),
               TextField(
-                  controller: _brand,
-                  decoration: const InputDecoration(labelText: "Brand")),
+                controller: _brand,
+                decoration: const InputDecoration(labelText: "Brand"),
+              ),
               const SizedBox(height: 12),
               TextField(
-                  controller: _condition,
-                  decoration: const InputDecoration(
-                      labelText: "Condition (New/Used)")),
+                controller: _condition,
+                decoration: const InputDecoration(labelText: "Condition (new/used)"),
+              ),
             ],
 
             const SizedBox(height: 20),
             const Text("Price Range"),
             RangeSlider(
-              values: RangeValues(_minPrice, _maxPrice),
+              values: RangeValues(minP, maxP),
               min: 0,
               max: 100000000,
-              onChanged: (v) {
-                setState(() {
-                  _minPrice = v.start;
-                  _maxPrice = v.end;
-                });
-              },
+              onChanged: (v) => setState(() {
+                minP = v.start;
+                maxP = v.end;
+              }),
             ),
 
-            ElevatedButton(
-              child: const Text("Apply"),
-              onPressed: () {
-                final out = <String, dynamic>{};
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  child: const Text("Cancel"),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  child: const Text("Apply"),
+                  onPressed: () {
+                    final out = <String, dynamic>{
+                      "minPrice": minP,
+                      "maxPrice": maxP,
+                    };
 
-                if (_city.text.isNotEmpty) out["city"] = _city.text.trim();
-                if (!isLand && _brand.text.isNotEmpty)
-                  out["brand"] = _brand.text.trim();
-                if (!isLand && _condition.text.isNotEmpty)
-                  out["condition"] = _condition.text.trim();
+                    if (_city.text.trim().isNotEmpty) out["city"] = _city.text.trim();
+                    if (!isLand && _brand.text.trim().isNotEmpty) out["brand"] = _brand.text.trim();
+                    if (!isLand && _condition.text.trim().isNotEmpty) out["condition"] = _condition.text.trim();
 
-                out["minPrice"] = _minPrice;
-                out["maxPrice"] = _maxPrice;
-
-                Navigator.pop(context, out);
-              },
+                    Navigator.pop(context, out);
+                  },
+                )
+              ],
             )
           ],
         ),
