@@ -1,9 +1,3 @@
-// lib/screens/supplier_screens.dart
-// Supplier-specific screens (uses shared_screens.dart for shared workflow)
-//
-// Option A: Land fields separate / Electronics separate.
-// Expects shared_screens.dart to export `db` and `auth` and shared screens:
-// AssetDetailScreen, QRScannerScreen, MyAssetsScreen, ProfileScreen, TransactionsScreen, etc.
 
 import 'dart:convert';
 import 'dart:typed_data';
