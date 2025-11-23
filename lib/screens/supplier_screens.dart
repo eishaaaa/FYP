@@ -1,19 +1,26 @@
-
+// lib/screens/supplier_screens.dart
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:uuid/uuid.dart';
 
-import 'shared_screens.dart'; // MUST export db, auth and shared screens
+import 'shared_screens.dart'; // must contain ProfileScreen, AssetDetailScreen, QRScannerScreen, MyAssetsScreen, etc.
 
-final _uuid = Uuid();
+final db = FirebaseFirestore.instance;
+final auth = FirebaseAuth.instance;
 
-/// Utility: Safe base64 decode (null on error)
-Uint8List? _tryBase64Decode(String? s) {
+/// Safe capitalize extension
+extension _Cap on String {
+  String capitalize() => isEmpty ? this : '${this[0].toUpperCase()}${substring(1)}';
+}
+
+/// Safe base64 decode returning null on error
+Uint8List? _safeBase64Decode(String? s) {
   if (s == null || s.isEmpty) return null;
   try {
     return base64Decode(s);
@@ -22,23 +29,8 @@ Uint8List? _tryBase64Decode(String? s) {
   }
 }
 
-/// Utility: Display image widget from either http-url or base64 string
-Widget imageFromString(String? s, {BoxFit fit = BoxFit.cover, double? width, double? height}) {
-  if (s == null || s.isEmpty) {
-    return Container(color: Colors.grey[200], child: const Icon(Icons.image));
-  }
-  if (s.startsWith('http') || s.startsWith('https')) {
-    return Image.network(s, fit: fit, width: width, height: height, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image));
-  }
-  final bytes = _tryBase64Decode(s);
-  if (bytes != null) {
-    return Image.memory(bytes, fit: fit, width: width, height: height);
-  }
-  return Container(color: Colors.grey[200], child: const Icon(Icons.image));
-}
-
 /// ---------------------------------------------------------------------------
-/// SupplierHomeScreen - bottom navigation for supplier (Home / Scan / MyAssets / Profile)
+/// SupplierRootScreen - bottom navigation for supplier (Home / Scan / MyAssets / Profile)
 /// ---------------------------------------------------------------------------
 class SupplierHomeScreen extends StatefulWidget {
   final String type; // 'land' or 'electronics'
@@ -69,7 +61,7 @@ class _SupplierHomeScreenState extends State<SupplierHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.type[0].toUpperCase()}${widget.type.substring(1)} Supplier'),
+        title: Text('${widget.type.capitalize()} Supplier'),
       ),
       body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: BottomNavigationBar(
@@ -100,15 +92,18 @@ class SupplierHome extends StatelessWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('${type[0].toUpperCase()}${type.substring(1)} Supplier Home'),
+          title: Text('${type.capitalize()} Supplier Home'),
           bottom: const TabBar(tabs: [Tab(text: 'Dashboard'), Tab(text: 'Assets')]),
         ),
         body: TabBarView(children: [
-          SupplierDashboard(uid: auth.currentUser?.uid ?? '', type: type),
+          SupplierDashboard(uid: auth.currentUser!.uid, type: type),
           AssetManagementScreen(type: type),
         ]),
         floatingActionButton: FloatingActionButton(
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddAssetScreen(type: type))),
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => AddAssetScreen(type: type)),
+          ),
           child: const Icon(Icons.add),
         ),
       ),
@@ -117,7 +112,7 @@ class SupplierHome extends StatelessWidget {
 }
 
 /// ---------------------------------------------------------------------------
-/// SupplierDashboard - uses streams and safe numeric handling
+/// Supplier Dashboard - uses streams and safe numeric handling
 /// ---------------------------------------------------------------------------
 class SupplierDashboard extends StatelessWidget {
   final String uid;
@@ -147,8 +142,6 @@ class SupplierDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (uid.isEmpty) return const Center(child: Text('Please log in'));
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -199,7 +192,7 @@ class SupplierDashboard extends StatelessWidget {
 }
 
 /// ---------------------------------------------------------------------------
-/// AssetManagementScreen - list of supplier's assets (edit/delete/view)
+/// Asset Management Screen - list of supplier's assets (edit/delete/view)
 /// ---------------------------------------------------------------------------
 class AssetManagementScreen extends StatelessWidget {
   final String type;
@@ -226,30 +219,22 @@ class AssetManagementScreen extends StatelessWidget {
     );
   }
 
-  Widget _imageWidget(String? img) {
-    // Accept https urls or base64 strings
-    if (img == null || img.isEmpty) return const Icon(Icons.image, size: 48, color: Colors.grey);
-    if (img.startsWith('http')) {
-      return Image.network(img, width: 60, height: 60, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image));
-    }
-    final bytes = _tryBase64Decode(img);
-    if (bytes != null) return Image.memory(bytes, width: 60, height: 60, fit: BoxFit.cover);
-    return const Icon(Icons.image, size: 48, color: Colors.grey);
+  Widget _imageWidget(String? base64img) {
+    final bytes = _safeBase64Decode(base64img);
+    if (bytes == null) return const Icon(Icons.image, size: 48, color: Colors.grey);
+    return Image.memory(bytes, width: 60, height: 60, fit: BoxFit.cover);
   }
 
   @override
   Widget build(BuildContext context) {
-    final uid = auth.currentUser?.uid;
-    if (uid == null) return const Center(child: Text('Please log in'));
-
-    // Keep query simple: filter by ownerId + category
-    final stream = db.collection('assets').where('ownerId', isEqualTo: uid).where('category', isEqualTo: type).orderBy('createdAt', descending: true).snapshots();
-
     return StreamBuilder<QuerySnapshot>(
-      stream: stream,
+      stream: db
+          .collection('assets')
+          .where('ownerId', isEqualTo: auth.currentUser!.uid)
+          .where('category', isEqualTo: type)
+          .snapshots(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-        if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
         final docs = snap.data?.docs ?? [];
         if (docs.isEmpty) return const Center(child: Text('No assets yet. Tap + to add.'));
 
@@ -259,13 +244,14 @@ class AssetManagementScreen extends StatelessWidget {
           itemBuilder: (context, i) {
             final doc = docs[i];
             final data = doc.data() as Map<String, dynamic>? ?? {};
-            final img = (data['images'] is List && (data['images'] as List).isNotEmpty) ? (data['images'][0] as String?) : null;
+            final img = (data['images'] as List?)?.isNotEmpty == true ? data['images'][0] as String? : null;
+
             return Card(
               margin: const EdgeInsets.symmetric(vertical: 6),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               child: ListTile(
                 leading: ClipRRect(borderRadius: BorderRadius.circular(8), child: _imageWidget(img)),
-                title: Text(data['title'] ?? data['name'] ?? 'No title', style: const TextStyle(fontWeight: FontWeight.w600)),
+                title: Text(data['title'] ?? 'No title', style: const TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: Text('PKR ${data['price'] ?? 0}'),
                 trailing: PopupMenuButton<String>(
                   onSelected: (v) {
@@ -294,11 +280,9 @@ class AssetManagementScreen extends StatelessWidget {
 
 /// ---------------------------------------------------------------------------
 /// Shared Asset Form (used by Add and Edit)
-/// - Stores images as base64 strings by default (Option A)
-/// - Accepts file attachments (pdf) as base64
 /// ---------------------------------------------------------------------------
 class AssetForm extends StatefulWidget {
-  final String type; // 'land' or 'electronics'
+  final String type;
   final Map<String, dynamic>? initialData;
   final bool isEdit;
   final Future<void> Function(Map<String, dynamic> data) onSubmit;
@@ -317,8 +301,7 @@ class AssetForm extends StatefulWidget {
 
 class _AssetFormState extends State<AssetForm> {
   final _formKey = GlobalKey<FormState>();
-  final List<Uint8List> _pickedImages = [];
-  String? _existingImagePreview; // optional preview for editing if existing images present
+  final List<Uint8List> _images = [];
   String? _docBase64;
   String _condition = 'new';
 
@@ -336,15 +319,7 @@ class _AssetFormState extends State<AssetForm> {
   void initState() {
     super.initState();
     _condition = widget.initialData?['condition']?.toString() ?? 'new';
-    // If initialData has images, keep a single preview (first) for UX
-    if ((widget.initialData?['images'] as List?)?.isNotEmpty == true) {
-      final first = (widget.initialData!['images'] as List)[0] as String?;
-      if (first != null) _existingImagePreview = first;
-    }
-    // If initialData has document, keep note
-    if (widget.initialData?['document'] != null) {
-      _docBase64 = widget.initialData?['document']?.toString();
-    }
+    // Note: existing images stored in doc are not loaded into _images; editing images is simplified.
   }
 
   @override
@@ -366,8 +341,8 @@ class _AssetFormState extends State<AssetForm> {
     final picked = await picker.pickMultiImage(imageQuality: 80);
     if (picked.isEmpty) return;
     for (final p in picked) {
-      final bytes = await p.readAsBytes();
-      _pickedImages.add(bytes);
+      final b = await p.readAsBytes();
+      _images.add(b);
     }
     setState(() {});
   }
@@ -381,25 +356,13 @@ class _AssetFormState extends State<AssetForm> {
   }
 
   Map<String, dynamic> _collect() {
-    final imagesList = <String>[];
-    // If user picked new images, use them as base64
-    if (_pickedImages.isNotEmpty) {
-      imagesList.addAll(_pickedImages.map((b) => base64Encode(b)));
-    } else {
-      // otherwise preserve existing images from initialData (if any)
-      final existing = widget.initialData?['images'] as List?;
-      if (existing != null && existing.isNotEmpty) {
-        imagesList.addAll(existing.map((e) => e.toString()));
-      }
-    }
-
-    final out = <String, dynamic>{
+    final Map<String, dynamic> out = {
       'title': _titleCtrl.text.trim(),
       'description': _descCtrl.text.trim(),
       'price': double.tryParse(_priceCtrl.text) ?? 0.0,
-      'images': imagesList,
+      'images': _images.map(base64Encode).toList(),
       'document': _docBase64,
-      'searchKeywords': (_titleCtrl.text.trim().toLowerCase()).split(RegExp(r'\s+')),
+      'searchKeywords': _titleCtrl.text.trim().toLowerCase().split(RegExp(r'\s+')),
     };
 
     if (widget.type == 'land') {
@@ -412,14 +375,11 @@ class _AssetFormState extends State<AssetForm> {
       out['warranty'] = _warrantyCtrl.text.trim();
       out['condition'] = _condition;
     }
-
     return out;
   }
 
   @override
   Widget build(BuildContext context) {
-    final isLand = widget.type == 'land';
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Form(
@@ -432,8 +392,8 @@ class _AssetFormState extends State<AssetForm> {
           TextFormField(controller: _priceCtrl, decoration: const InputDecoration(labelText: 'Price (PKR)'), keyboardType: TextInputType.number, validator: (v) => (v ?? '').isEmpty ? 'Required' : null),
           const SizedBox(height: 12),
 
-          if (isLand) ...[
-            TextFormField(controller: _plotCtrl, decoration: const InputDecoration(labelText: 'Plot Area (e.g., 10 marla)')),
+          if (widget.type == 'land') ...[
+            TextFormField(controller: _plotCtrl, decoration: const InputDecoration(labelText: 'Plot Area (marla/kanal)')),
             const SizedBox(height: 8),
             TextFormField(controller: _cityCtrl, decoration: const InputDecoration(labelText: 'City / Address')),
             const SizedBox(height: 12),
@@ -458,57 +418,11 @@ class _AssetFormState extends State<AssetForm> {
             const SizedBox(height: 12),
           ],
 
-          Row(
-            children: [
-              ElevatedButton.icon(onPressed: _pickImages, icon: const Icon(Icons.image), label: const Text('Pick Images')),
-              const SizedBox(width: 12),
-              TextButton(onPressed: () {
-                // Allow user to enter an image URL manually
-                showDialog(context: context, builder: (ctx){
-                  final ctrl = TextEditingController();
-                  return AlertDialog(
-                    title: const Text('Add image URL'),
-                    content: TextField(controller: ctrl, decoration: const InputDecoration(hintText: 'https://...')),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-                      ElevatedButton(onPressed: () {
-                        final url = ctrl.text.trim();
-                        if (url.isNotEmpty) {
-                          // convert to a base64-like string? we store url as-is
-                          // if user added URL, we put it into _existingImagePreview for UX and will include in images list through initialData preserving
-                          setState(() {
-                            _existingImagePreview = url;
-                            // We'll save it by adding one element to pickedImages as null; instead, store it on widget.initialData if not editing: we keep a temporary list in doc by using _docBase64? simpler:
-                            // Instead we'll add to list by creating a "virtual" base64 list — but we can't mutate widget.initialData here.
-                            // To keep logic simple, we append a url to _pickedImages as bytes? That's awkward.
-                            // We'll store url in _existingImagePreview and later on collect() we will include existing images from initialData and preview.
-                          });
-                        }
-                        Navigator.pop(ctx);
-                      }, child: const Text('Add')),
-                    ],
-                  );
-                });
-              }, child: const Text('Add image URL')),
-            ],
-          ),
+          ElevatedButton.icon(onPressed: _pickImages, icon: const Icon(Icons.image), label: const Text('Pick Images')),
+          if (_images.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${_images.length} image(s) selected', style: const TextStyle(color: Colors.green))),
           const SizedBox(height: 8),
 
-          // preview row
-          SizedBox(
-            height: 80,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                if (_existingImagePreview != null)
-                  Container(margin: const EdgeInsets.only(right: 8), width: 80, height: 80, child: imageFromString(_existingImagePreview)),
-                ..._pickedImages.map((b) => Container(margin: const EdgeInsets.only(right: 8), width: 80, height: 80, child: Image.memory(b, fit: BoxFit.cover))),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 12),
-          ElevatedButton.icon(onPressed: _pickDoc, icon: const Icon(Icons.attach_file), label: const Text('Attach PDF (optional)')),
+          ElevatedButton.icon(onPressed: _pickDoc, icon: const Icon(Icons.attach_file), label: const Text('Attach PDF')),
           if (_docBase64 != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text('PDF attached', style: const TextStyle(color: Colors.green))),
           const SizedBox(height: 20),
 
@@ -516,15 +430,6 @@ class _AssetFormState extends State<AssetForm> {
             onPressed: () async {
               if (!_formKey.currentState!.validate()) return;
               final payload = _collect();
-
-              // If user used image URL via _existingImagePreview (and it isn't already in images), add it:
-              if (_existingImagePreview != null && payload['images'] is List) {
-                final list = payload['images'] as List;
-                if (!list.contains(_existingImagePreview)) {
-                  list.insert(0, _existingImagePreview);
-                }
-              }
-
               await widget.onSubmit(payload);
             },
             child: Text(widget.isEdit ? 'Save Changes' : 'Submit Asset'),
@@ -553,32 +458,22 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
 
   Future<void> _handleSubmit(Map<String, dynamic> data) async {
     setState(() => _loading = true);
-    final id = _uuid.v4();
-    final user = auth.currentUser!;
-    final payload = <String, dynamic>{
+    final id = const Uuid().v4();
+    final payload = {
       'assetId': id,
-      'ownerId': user.uid,
-      'ownerEmail': user.email ?? '',
+      'ownerId': auth.currentUser!.uid,
       'category': widget.type,
       'createdAt': FieldValue.serverTimestamp(),
       'verified': false,
       'views': 0,
       'verifications': 0,
-      // Add title fallback: if 'title' missing add from 'searchKeywords' or ''
-      'title': data['title'] ?? '',
       ...data,
     };
 
-    try {
-      await db.collection('assets').doc(id).set(payload);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Asset added')));
-      Navigator.pop(context);
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to add asset: $e')));
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    await db.collection('assets').doc(id).set(payload);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Asset added')));
+    Navigator.pop(context);
   }
 
   @override
@@ -623,14 +518,10 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
   Future<void> _handleSave(Map<String, dynamic> data) async {
     // remove empty / unchanged keys to avoid overwriting
     data.removeWhere((k, v) => v == null || (v is String && v.isEmpty) || (v is List && v.isEmpty));
-    try {
-      await db.collection('assets').doc(widget.assetId).update(data);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Asset updated')));
-      Navigator.pop(context);
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Update failed: $e')));
-    }
+    await db.collection('assets').doc(widget.assetId).update(data);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Asset updated')));
+    Navigator.pop(context);
   }
 
   @override

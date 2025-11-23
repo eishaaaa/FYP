@@ -6,7 +6,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui';
-
+import 'package:video_player/video_player.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,10 +15,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:introduction_screen/introduction_screen.dart';
-
 import 'user_screens.dart';
 import 'supplier_screens.dart';
-
 final FirebaseAuth auth = FirebaseAuth.instance;
 final FirebaseFirestore db = FirebaseFirestore.instance;
 
@@ -69,56 +67,131 @@ class OnboardingScreen extends StatelessWidget {
 /// -----------------------------
 /// Splash: route to login or app home based on Firestore role
 /// -----------------------------
+
+
+// -----------------------------
+// Animated Splash using logo.mp4
+// -----------------------------
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
+
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+
+  late VideoPlayerController _controller;
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 900), _check);
+
+    // Fade animation for app name
+    _fadeController = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    );
+
+    _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(_fadeController);
+
+    _controller = VideoPlayerController.asset("assets/logo.mp4")
+      ..initialize().then((_) {
+        setState(() {});
+        _controller.play();
+        _fadeController.forward();  // start fade animation
+      });
+
+    // when video finishes → navigate
+    _controller.addListener(() {
+      if (_controller.value.position == _controller.value.duration) {
+        _goNext();
+      }
+    });
   }
 
-  Future<void> _check() async {
+  Future<void> _goNext() async {
     final user = auth.currentUser;
+
+    if (!mounted) return;
+
     if (user == null) {
-      if (!mounted) return;
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
       return;
     }
-    final snapshot = await db.collection('users').doc(user.uid).get();
-    final role = snapshot.data()?['role'] as String? ?? 'user';
-    if (!mounted) return;
-    if (role == 'user') {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserHomeScreen()));
+
+    final snap = await db.collection("users").doc(user.uid).get();
+    final role = snap.data()?['role'] ?? 'user';
+
+    if (role == "user") {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const UserHomeScreen()),
+      );
     } else {
-      final type = role.contains('land') ? 'land' : 'electronics';
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)));
+      final type = role.contains("land") ? "land" : "electronics";
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)),
+      );
     }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _fadeController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: theme.colorScheme.primary,
+      backgroundColor: const Color(0xFFA0D2EB), // required background color
       body: Center(
         child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.eco, size: 84, color: Colors.white),
-            SizedBox(height: 16),
-            Text('Digital Goods',
-                style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Center Logo Video
+            _controller.value.isInitialized
+                ? SizedBox(
+              width: 200,
+              height: 200,
+              child: AspectRatio(
+                aspectRatio: _controller.value.aspectRatio,
+                child: VideoPlayer(_controller),
+              ),
+            )
+                : const CircularProgressIndicator(color: Colors.white),
+
+            const SizedBox(height: 20),
+
+            // APP NAME FADE-IN
+            FadeTransition(
+              opacity: _fadeAnimation,
+              child: const Text(
+                "Digital Goods",
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 }
+
 
 /// -----------------------------
 /// Helper: create Firestore user doc (for Google or new users)

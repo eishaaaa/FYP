@@ -1,14 +1,13 @@
 // lib/screens/shared_screens.dart
+// B1-FULL
 // Shared screens used by both user and supplier.
 // Role is read from Firestore user doc: users/{uid}.role
-//
-// Option A chosen: profile photos stored in users/{uid} as base64 string in Firestore
-// field: profilePhotoBase64
+// Robust image handling (URL or base64), constrained leading widgets,
+// Request-to-buy deduplication, and simple chat per-transaction.
 
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
-import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -28,6 +27,7 @@ import 'auth_screens.dart';
 
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
+final _uuid = Uuid();
 
 /// Helper: fetch current role from Firestore user document.
 /// Returns 'user' if anything goes wrong or no doc exists.
@@ -44,35 +44,94 @@ Future<String> fetchCurrentRole() async {
   }
 }
 
+/// Utility: try decode base64, return null on error
+Uint8List? _tryBase64Decode(String? s) {
+  if (s == null || s.isEmpty) return null;
+  try {
+    // If string contains a data: prefix, remove it
+    final cleaned = s.startsWith('data:') ? s.split(',').last : s;
+    return base64Decode(cleaned);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Utility widget: build an image from either a network URL or a base64 string.
+/// It returns a Widget with constrained size and proper errorBuilder.
+Widget buildAssetImage(String? s, {BoxFit fit = BoxFit.cover, double width = 80, double height = 80}) {
+  if (s == null || s.isEmpty) {
+    return Container(width: width, height: height, color: Colors.grey[200], child: const Icon(Icons.image, size: 36));
+  }
+
+  // If it looks like a URL
+  if (s.startsWith('http://') || s.startsWith('https://')) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.network(
+        s,
+        width: width,
+        height: height,
+        fit: fit,
+        errorBuilder: (_, __, ___) => Container(width: width, height: height, color: Colors.grey[200], child: const Icon(Icons.broken_image)),
+      ),
+    );
+  }
+
+  // Try base64
+  final bytes = _tryBase64Decode(s);
+  if (bytes != null) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.memory(bytes, width: width, height: height, fit: fit, errorBuilder: (_, __, ___) => Container(width: width, height: height, color: Colors.grey[200], child: const Icon(Icons.broken_image))),
+    );
+  }
+
+  // fallback: show placeholder
+  return Container(width: width, height: height, color: Colors.grey[200], child: const Icon(Icons.image));
+}
+
 /// -------------------- ASSET DETAIL (ROLE-AWARE) --------------------
-class AssetDetailScreen extends StatelessWidget {
+class AssetDetailScreen extends StatefulWidget {
   final String assetId;
   const AssetDetailScreen({super.key, required this.assetId});
 
-  Future<Map<String, dynamic>> _loadAssetAndRole() async {
-    final assetSnap = await db.collection('assets').doc(assetId).get();
+  @override
+  State<AssetDetailScreen> createState() => _AssetDetailScreenState();
+}
+
+class _AssetDetailScreenState extends State<AssetDetailScreen> {
+  late Future<Map<String, dynamic?>> _loadFuture;
+
+  Future<Map<String, dynamic?>> _load() async {
+    final assetSnap = await db.collection('assets').doc(widget.assetId).get();
     final role = await fetchCurrentRole();
     return {'assetSnap': assetSnap, 'role': role};
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFuture = _load();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Asset Detail')),
-      body: FutureBuilder<Map<String, dynamic>>(
-        future: _loadAssetAndRole(),
+      body: FutureBuilder<Map<String, dynamic?>>(
+        future: _loadFuture,
         builder: (context, snapshot) {
           if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
           final assetSnap = snapshot.data!['assetSnap'] as DocumentSnapshot<Map<String, dynamic>>;
-          final role = snapshot.data!['role'] as String;
+          final role = (snapshot.data!['role'] as String?) ?? 'user';
 
           if (!assetSnap.exists) return const Center(child: Text('Asset not found'));
           final data = assetSnap.data() ?? <String, dynamic>{};
 
           // Increment view count (non-blocking)
-          db.collection('assets').doc(assetId).update({'views': FieldValue.increment(1)}).catchError((_) {});
+          db.collection('assets').doc(widget.assetId).update({'views': FieldValue.increment(1)}).catchError((_) {});
 
           final images = (data['images'] as List?)?.cast<String>() ?? [];
 
@@ -83,12 +142,12 @@ class AssetDetailScreen extends StatelessWidget {
               if (images.isNotEmpty)
                 CarouselSlider(
                   options: CarouselOptions(height: 220, autoPlay: true),
-                  items: images
-                      .map((img) => SizedBox(
-                    width: double.infinity,
-                    child: Image.network(img, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image)),
-                  ))
-                      .toList(),
+                  items: images.map((img) {
+                    return SizedBox(
+                      width: double.infinity,
+                      child: buildAssetImage(img, width: double.infinity, height: 220, fit: BoxFit.cover),
+                    );
+                  }).toList(),
                 )
               else
                 Container(height: 220, color: Colors.grey[200], child: const Center(child: Icon(Icons.image, size: 80))),
@@ -99,14 +158,21 @@ class AssetDetailScreen extends StatelessWidget {
               const SizedBox(height: 12),
               Text(data['description'] ?? ''),
               const SizedBox(height: 12),
-              ListTile(title: const Text('Owner'), subtitle: Text(data['ownerEmail'] ?? data['ownerUid'] ?? 'Unknown')),
+
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Owner'),
+                subtitle: Text(data['ownerEmail'] ?? data['ownerId'] ?? 'Unknown'),
+                leading: const SizedBox(width: 56, height: 56, child: Icon(Icons.person)),
+              ),
+
               if (data['category'] == 'land') ...[
-                ListTile(title: const Text('Plot Area'), subtitle: Text('${data['plotArea'] ?? '—'}')),
-                ListTile(title: const Text('City'), subtitle: Text(data['city'] ?? '—')),
+                ListTile(contentPadding: EdgeInsets.zero, title: const Text('Plot Area'), subtitle: Text('${data['plotArea'] ?? '—'}')),
+                ListTile(contentPadding: EdgeInsets.zero, title: const Text('City'), subtitle: Text(data['city'] ?? '—')),
               ],
               if (data['category'] == 'electronics') ...[
-                ListTile(title: const Text('Brand'), subtitle: Text(data['brand'] ?? '—')),
-                ListTile(title: const Text('Condition'), subtitle: Text(data['condition'] ?? '—')),
+                ListTile(contentPadding: EdgeInsets.zero, title: const Text('Brand'), subtitle: Text(data['brand'] ?? '—')),
+                ListTile(contentPadding: EdgeInsets.zero, title: const Text('Condition'), subtitle: Text(data['condition'] ?? '—')),
               ],
               const SizedBox(height: 12),
 
@@ -118,6 +184,7 @@ class AssetDetailScreen extends StatelessWidget {
                   final title = (d is Map && d['name'] != null) ? d['name'] : 'Document';
                   final url = (d is Map && d['url'] != null) ? d['url'] : d;
                   return ListTile(
+                    contentPadding: EdgeInsets.zero,
                     title: Text(title.toString()),
                     trailing: IconButton(icon: const Icon(Icons.open_in_new), onPressed: () => _openDocument(context, url.toString())),
                   );
@@ -126,26 +193,29 @@ class AssetDetailScreen extends StatelessWidget {
               ],
 
               // QR
-              Center(child: QrImageView(data: 'asset://$assetId', size: 140)),
+              Center(child: QrImageView(data: 'asset://${widget.assetId}', size: 140)),
               const SizedBox(height: 12),
 
               // Actions: role-aware (suppliers should not see Request/Favorite)
               if (!role.toLowerCase().contains('supplier')) ...[
                 Row(children: [
                   Expanded(
-                      child: ElevatedButton.icon(
-                          onPressed: () => _requestToBuy(context, assetId, data['ownerUid']),
-                          icon: const Icon(Icons.shopping_cart),
-                          label: const Text('Request to Buy'))),
+                    child: ElevatedButton.icon(
+                      onPressed: () => _requestToBuy(context, widget.assetId, data['ownerId'] ?? data['ownerUid']),
+                      icon: const Icon(Icons.shopping_cart),
+                      label: const Text('Request to Buy'),
+                    ),
+                  ),
                   const SizedBox(width: 8),
-                  OutlinedButton.icon(onPressed: () => _toggleFavorite(context, assetId), icon: const Icon(Icons.favorite_border), label: const Text('Favorite')),
+                  OutlinedButton.icon(
+                      onPressed: () => _toggleFavorite(context, widget.assetId), icon: const Icon(Icons.favorite_border), label: const Text('Favorite')),
                 ]),
               ] else ...[
                 // Supplier view
                 Row(children: [
-                  Expanded(child: ElevatedButton.icon(onPressed: () => _verifyAsset(context, assetId), icon: const Icon(Icons.verified), label: const Text('Verify Asset'))),
+                  Expanded(child: ElevatedButton.icon(onPressed: () => _verifyAsset(context, widget.assetId), icon: const Icon(Icons.verified), label: const Text('Verify Asset'))),
                   const SizedBox(width: 8),
-                  OutlinedButton.icon(onPressed: () => _transferOwnership(context, assetId), icon: const Icon(Icons.swap_horiz), label: const Text('Transfer')),
+                  OutlinedButton.icon(onPressed: () => _transferOwnership(context, widget.assetId), icon: const Icon(Icons.swap_horiz), label: const Text('Transfer')),
                 ]),
               ],
 
@@ -168,13 +238,28 @@ class AssetDetailScreen extends StatelessWidget {
     }
   }
 
-  void _requestToBuy(BuildContext ctx, String assetId, String? sellerId) async {
+  Future<void> _requestToBuy(BuildContext ctx, String assetId, String? sellerId) async {
     final user = auth.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please login to request')));
       return;
     }
-    final txId = const Uuid().v4();
+
+    // Ensure only one active transaction per buyer per asset (not rejected)
+    final existing = await db
+        .collection('transactions')
+        .where('assetId', isEqualTo: assetId)
+        .where('buyerUid', isEqualTo: user.uid)
+        .where('status', whereIn: ['pending', 'approved', 'completed'])
+        .limit(1)
+        .get();
+
+    if (existing.docs.isNotEmpty) {
+      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('You already have a request for this asset')));
+      return;
+    }
+
+    final txId = _uuid.v4();
     await db.collection('transactions').doc(txId).set({
       'transactionId': txId,
       'assetId': assetId,
@@ -183,6 +268,13 @@ class AssetDetailScreen extends StatelessWidget {
       'status': 'pending',
       'createdAt': FieldValue.serverTimestamp(),
     });
+
+    // create an empty chat doc for this transaction (will be used later)
+    await db.collection('chats').doc(txId).set({
+      'transactionId': txId,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
     if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Request Sent')));
   }
 
@@ -213,7 +305,7 @@ class AssetDetailScreen extends StatelessWidget {
   }
 }
 
-// -------------------- QR SCANNER (shared) --------------------
+/// -------------------- QR SCANNER (shared) --------------------
 class QRScannerScreen extends StatefulWidget {
   const QRScannerScreen({super.key});
   @override
@@ -241,7 +333,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         return;
       }
 
-      // If supplier, increment verifications; if user just open
+      // If supplier, increment verifications
       final role = await fetchCurrentRole();
       if (role.toLowerCase().contains('supplier')) {
         await db.collection('assets').doc(id).update({'verifications': FieldValue.increment(1)});
@@ -271,7 +363,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   }
 }
 
-// -------------------- MY ASSETS (role-aware) --------------------
+/// -------------------- MY ASSETS (role-aware) --------------------
 class MyAssetsScreen extends StatelessWidget {
   const MyAssetsScreen({super.key});
 
@@ -287,7 +379,7 @@ class MyAssetsScreen extends StatelessWidget {
         if (snap.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: CircularProgressIndicator()));
         final role = snap.data ?? 'user';
         if (role.toLowerCase().contains('supplier')) {
-          final q = db.collection('assets').where('ownerUid', isEqualTo: user.uid).orderBy('createdAt', descending: true);
+          final q = db.collection('assets').where('ownerId', isEqualTo: user.uid).orderBy('createdAt', descending: true);
           return Scaffold(
             appBar: AppBar(title: const Text('My Published Assets')),
             body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -298,26 +390,32 @@ class MyAssetsScreen extends StatelessWidget {
                 final docs = snap2.data!.docs;
                 if (docs.isEmpty) return const Center(child: Text('No published assets'));
                 return ListView.builder(
+                  padding: const EdgeInsets.all(12),
                   itemCount: docs.length,
                   itemBuilder: (context, i) {
                     final d = docs[i].data();
                     final id = docs[i].id;
-                    final thumb = (d['images'] is List && (d['images'] as List).isNotEmpty) ? (d['images'] as List)[0] : null;
-                    return ListTile(
-                      leading: thumb != null ? Image.network(thumb, width: 56, fit: BoxFit.cover) : const Icon(Icons.image),
-                      title: Text(d['name'] ?? 'Untitled'),
-                      subtitle: Text(d['type'] ?? ''),
-                      trailing: TextButton(
-                          onPressed: () async {
-                            final pdf = pw.Document();
-                            pdf.addPage(pw.Page(build: (ctx) => pw.Center(child: pw.Text('Ownership Certificate\n${d['name']}\nOwner: ${user.email}'))));
-                            final dir = await getTemporaryDirectory();
-                            final file = File('${dir.path}/cert_${id}.pdf');
-                            await file.writeAsBytes(await pdf.save());
-                            await Share.shareXFiles([XFile(file.path)], text: 'Certificate for ${d['name']}');
-                          },
-                          child: const Text('Cert')),
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: id))),
+                    final thumb = (d['images'] is List && (d['images'] as List).isNotEmpty) ? (d['images'] as List)[0] as String? : null;
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.all(12),
+                        leading: SizedBox(width: 72, height: 72, child: buildAssetImage(thumb, width: 72, height: 72)),
+                        title: Text(d['title'] ?? d['name'] ?? 'Untitled', style: const TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: Text(d['category'] ?? ''),
+                        trailing: TextButton(
+                            onPressed: () async {
+                              final pdf = pw.Document();
+                              pdf.addPage(pw.Page(build: (ctx) => pw.Center(child: pw.Text('Ownership Certificate\n${d['title'] ?? d['name']}\nOwner: ${user.email}'))));
+                              final dir = await getTemporaryDirectory();
+                              final file = File('${dir.path}/cert_${id}.pdf');
+                              await file.writeAsBytes(await pdf.save());
+                              await Share.shareXFiles([XFile(file.path)], text: 'Certificate for ${d['title'] ?? d['name']}');
+                            },
+                            child: const Text('Cert')),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: id))),
+                      ),
                     );
                   },
                 );
@@ -345,10 +443,11 @@ class MyAssetsScreen extends StatelessWidget {
                       builder: (context, assetSnap) {
                         if (!assetSnap.hasData) return const ListTile(title: Text('Loading...'));
                         final asset = assetSnap.data!.data() ?? <String, dynamic>{};
-                        final img = (asset['images'] is List && (asset['images'] as List).isNotEmpty) ? (asset['images'] as List)[0] : null;
+                        final img = (asset['images'] is List && (asset['images'] as List).isNotEmpty) ? (asset['images'] as List)[0] as String? : null;
                         return ListTile(
-                          leading: img != null ? Image.network(img, width: 56, fit: BoxFit.cover) : const Icon(Icons.image),
-                          title: Text(asset['name'] ?? asset['title'] ?? 'Asset'),
+                          contentPadding: const EdgeInsets.all(12),
+                          leading: SizedBox(width: 72, height: 72, child: buildAssetImage(img, width: 72, height: 72)),
+                          title: Text(asset['title'] ?? asset['name'] ?? 'Asset'),
                           subtitle: Text('PKR ${asset['price'] ?? 'N/A'}'),
                           trailing: IconButton(icon: const Icon(Icons.picture_as_pdf), onPressed: () async {
                             final pdf = pw.Document();
@@ -373,7 +472,7 @@ class MyAssetsScreen extends StatelessWidget {
   }
 }
 
-// -------------------- TRANSACTIONS (ROLE-AWARE) --------------------
+/// -------------------- TRANSACTIONS (ROLE-AWARE + CHAT) --------------------
 class TransactionsScreen extends StatelessWidget {
   const TransactionsScreen({super.key});
 
@@ -412,18 +511,27 @@ class TransactionsScreen extends StatelessWidget {
                   final id = docs[i].id;
                   final ts = t['createdAt'] as Timestamp?;
                   final time = ts != null ? "${ts.toDate().year}-${ts.toDate().month}-${ts.toDate().day}" : "";
+                  final status = (t['status'] ?? '').toString();
+
+                  // Determine allowed actions: suppliers can approve/reject pending; when status is approved/completed allow chat
+                  final allowChat = !(status == 'pending' || status == 'rejected');
 
                   return Card(
                     margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     child: ListTile(
+                      contentPadding: const EdgeInsets.all(12),
                       title: Text("Asset: ${t['assetId']}"),
-                      subtitle: Text("Status: ${t['status']}\nDate: $time"),
-                      trailing: role.toLowerCase().contains('supplier') && t['status'] == 'pending'
-                          ? Row(mainAxisSize: MainAxisSize.min, children: [
-                        IconButton(icon: const Icon(Icons.check, color: Colors.green), onPressed: () => _updateStatus(id, 'approved')),
-                        IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => _updateStatus(id, 'rejected')),
-                      ])
-                          : null,
+                      subtitle: Text("Status: $status\nDate: $time"),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (role.toLowerCase().contains('supplier') && status == 'pending') ...[
+                            IconButton(icon: const Icon(Icons.check, color: Colors.green), onPressed: () => _updateStatus(id, 'approved')),
+                            IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => _updateStatus(id, 'rejected')),
+                          ],
+                          if (allowChat) IconButton(icon: const Icon(Icons.chat_bubble_outline), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(transactionId: id)))),
+                        ],
+                      ),
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: t['assetId']))),
                     ),
                   );
@@ -441,7 +549,99 @@ class TransactionsScreen extends StatelessWidget {
   }
 }
 
-// -------------------- RELATED ITEMS --------------------
+/// -------------------- SIMPLE CHAT (per-transaction) --------------------
+class ChatScreen extends StatefulWidget {
+  final String transactionId;
+  const ChatScreen({super.key, required this.transactionId});
+
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  final TextEditingController _msgCtrl = TextEditingController();
+  final ScrollController _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _msgCtrl.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final txt = _msgCtrl.text.trim();
+    final user = auth.currentUser;
+    if (txt.isEmpty || user == null) return;
+    final doc = db.collection('chats').doc(widget.transactionId).collection('messages').doc();
+    await doc.set({
+      'text': txt,
+      'senderUid': user.uid,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    _msgCtrl.clear();
+    // scroll to bottom after small delay so stream can update
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final chatRef = db.collection('chats').doc(widget.transactionId).collection('messages').orderBy('createdAt', descending: false);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Chat')),
+      body: Column(children: [
+        Expanded(
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: chatRef.snapshots(),
+            builder: (context, snap) {
+              if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+              if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+              final docs = snap.data!.docs;
+              if (docs.isEmpty) return const Center(child: Text('No messages yet'));
+              return ListView.builder(
+                controller: _scroll,
+                padding: const EdgeInsets.all(12),
+                itemCount: docs.length,
+                itemBuilder: (context, i) {
+                  final m = docs[i].data();
+                  final text = m['text'] ?? '';
+                  final sender = m['senderUid'] ?? '';
+                  final mine = sender == auth.currentUser?.uid;
+                  return Align(
+                    alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: mine ? Colors.green[200] : Colors.grey[200],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(text),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(children: [
+              Expanded(child: TextField(controller: _msgCtrl, decoration: const InputDecoration(hintText: 'Type a message', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)))),
+              const SizedBox(width: 8),
+              ElevatedButton(onPressed: _send, child: const Icon(Icons.send)),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// -------------------- RELATED ITEMS --------------------
 class RelatedItemsList extends StatelessWidget {
   final String? type;
   final String? city;
@@ -453,7 +653,7 @@ class RelatedItemsList extends StatelessWidget {
       fromFirestore: (snap, _) => snap.data() ?? <String, dynamic>{},
       toFirestore: (m, _) => m,
     );
-    if (type != null) q = q.where('type', isEqualTo: type);
+    if (type != null) q = q.where('category', isEqualTo: type);
     if (city != null) q = q.where('city', isEqualTo: city);
     q = q.limit(6);
     return SizedBox(
@@ -468,16 +668,16 @@ class RelatedItemsList extends StatelessWidget {
             itemCount: docs.length,
             itemBuilder: (context, i) {
               final d = docs[i].data();
-              final img = (d['images'] is List && (d['images'] as List).isNotEmpty) ? (d['images'] as List)[0] : null;
+              final img = (d['images'] is List && (d['images'] as List).isNotEmpty) ? (d['images'] as List)[0] as String? : null;
               return GestureDetector(
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: docs[i].id))),
                 child: Container(
                   width: 160,
                   margin: const EdgeInsets.only(right: 8),
                   child: Column(children: [
-                    Expanded(child: img != null ? Image.network(img, fit: BoxFit.cover, width: double.infinity) : Container(color: Colors.grey[200], child: const Icon(Icons.image))),
+                    Expanded(child: img != null ? buildAssetImage(img, width: double.infinity, height: double.infinity, fit: BoxFit.cover) : Container(color: Colors.grey[200], child: const Icon(Icons.image))),
                     const SizedBox(height: 6),
-                    Text(d['name'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis)
+                    Text(d['title'] ?? d['name'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis)
                   ]),
                 ),
               );
@@ -489,7 +689,7 @@ class RelatedItemsList extends StatelessWidget {
   }
 }
 
-// -------------------- PDF VIEWER --------------------
+/// -------------------- PDF VIEWER --------------------
 class PDFViewerScreen extends StatelessWidget {
   final File file;
   const PDFViewerScreen({super.key, required this.file});
@@ -499,7 +699,7 @@ class PDFViewerScreen extends StatelessWidget {
   }
 }
 
-// -------------------- FAVORITES (shared) --------------------
+/// -------------------- FAVORITES (shared) --------------------
 class FavoritesScreen extends StatelessWidget {
   const FavoritesScreen({super.key});
 
@@ -528,10 +728,11 @@ class FavoritesScreen extends StatelessWidget {
                 builder: (context, assetSnap) {
                   if (!assetSnap.hasData) return const ListTile(title: Text('Loading...'));
                   final asset = assetSnap.data!.data() ?? <String, dynamic>{};
-                  final img = (asset['images'] is List && (asset['images'] as List).isNotEmpty) ? (asset['images'] as List)[0] : null;
+                  final img = (asset['images'] is List && (asset['images'] as List).isNotEmpty) ? (asset['images'] as List)[0] as String? : null;
                   return ListTile(
-                    leading: img != null ? Image.network(img, width: 56, fit: BoxFit.cover) : const Icon(Icons.image),
-                    title: Text(asset['name'] ?? asset['title'] ?? 'Asset'),
+                    contentPadding: const EdgeInsets.all(12),
+                    leading: SizedBox(width: 72, height: 72, child: buildAssetImage(img, width: 72, height: 72)),
+                    title: Text(asset['title'] ?? asset['name'] ?? 'Asset'),
                     subtitle: Text('PKR ${asset['price'] ?? 'N/A'}'),
                     trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () {
                       db.collection('users').doc(user.uid).collection('favorites').doc(assetId).delete();
@@ -549,7 +750,7 @@ class FavoritesScreen extends StatelessWidget {
   }
 }
 
-// -------------------- NOTIFICATIONS (shared) --------------------
+/// -------------------- NOTIFICATIONS (shared) --------------------
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
 
@@ -575,6 +776,7 @@ class NotificationsScreen extends StatelessWidget {
               final n = docs[i].data();
               final ts = (n['createdAt'] as Timestamp?)?.toDate();
               return ListTile(
+                contentPadding: const EdgeInsets.all(12),
                 title: Text(n['title'] ?? 'Notification'),
                 subtitle: Text(n['body'] ?? ''),
                 trailing: ts != null ? Text("${ts.year}-${ts.month}-${ts.day}") : null,
@@ -590,7 +792,7 @@ class NotificationsScreen extends StatelessWidget {
   }
 }
 
-// -------------------- SETTINGS (shared) --------------------
+/// -------------------- SETTINGS (shared) --------------------
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -625,7 +827,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await db.collection('users').doc(user.uid).update({'darkMode': v});
     setState(() => _darkMode = v);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preference saved')));
-    // Note: Applying theme app-wide should be handled in main.dart by reading user doc and switching theme.
   }
 
   Future<void> _deleteAccount() async {
@@ -683,7 +884,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
-// -------------------- HELP & TERMS --------------------
+/// -------------------- HELP & TERMS --------------------
 class HelpScreen extends StatelessWidget {
   const HelpScreen({super.key});
 
@@ -710,7 +911,7 @@ class TermsScreen extends StatelessWidget {
   }
 }
 
-// -------------------- PROFILE (role-aware, extended with photo & reset password) --------------------
+/// -------------------- PROFILE (role-aware, extended with photo & reset password) --------------------
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 

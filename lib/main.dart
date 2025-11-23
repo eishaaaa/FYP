@@ -55,19 +55,21 @@ class _DigitalGoodsAppState extends State<DigitalGoodsApp> {
       brightness: _darkMode ? Brightness.dark : Brightness.light,
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: Colors.green,
+        seedColor: const Color(0xFF0D47A1),
         brightness: _darkMode ? Brightness.dark : Brightness.light,
       ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: Colors.green.shade700,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Color(0xFF0D47A1),
         foregroundColor: Colors.white,
         centerTitle: true,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green,
+          backgroundColor: const Color(0xFF0D47A1),
           foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           minimumSize: const Size(double.infinity, 48),
         ),
       ),
@@ -84,6 +86,7 @@ class _DigitalGoodsAppState extends State<DigitalGoodsApp> {
 
 class AppEntry extends StatefulWidget {
   const AppEntry({super.key});
+
   @override
   State<AppEntry> createState() => _AppEntryState();
 }
@@ -108,7 +111,8 @@ class _AppEntryState extends State<AppEntry> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-          body: Center(child: CircularProgressIndicator()));
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
 
     return _seenOnboarding ? const SplashScreen() : const OnboardingScreen();
