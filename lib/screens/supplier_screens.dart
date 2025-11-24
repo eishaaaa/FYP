@@ -30,7 +30,7 @@ Uint8List? _safeBase64Decode(String? s) {
 }
 
 /// ---------------------------------------------------------------------------
-/// SupplierRootScreen - bottom navigation for supplier (Home / Scan / MyAssets / Profile)
+/// SupplierRootScreen - bottom navigation for supplier
 /// ---------------------------------------------------------------------------
 class SupplierHomeScreen extends StatefulWidget {
   final String type; // 'land' or 'electronics'
@@ -60,9 +60,7 @@ class _SupplierHomeScreenState extends State<SupplierHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('${widget.type.capitalize()} Supplier'),
-      ),
+      appBar: AppBar(title: Text('${widget.type.capitalize()} Supplier')),
       body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
@@ -92,13 +90,21 @@ class SupplierHome extends StatelessWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('${type.capitalize()} Supplier Home'),
-          bottom: const TabBar(tabs: [Tab(text: 'Dashboard'), Tab(text: 'Assets')]),
+          title: const TabBar(
+            labelColor: Colors.white,            // <-- ACTIVE TEXT WHITE
+            unselectedLabelColor: Colors.white70, // <-- INACTIVE TEXT LIGHT WHITE
+            tabs: [
+              Tab(text: 'Dashboard'),
+              Tab(text: 'Assets'),
+            ],
+          ),
         ),
-        body: TabBarView(children: [
-          SupplierDashboard(uid: auth.currentUser!.uid, type: type),
-          AssetManagementScreen(type: type),
-        ]),
+        body: TabBarView(
+          children: [
+            SupplierDashboard(uid: auth.currentUser!.uid, type: type),
+            AssetManagementScreen(type: type),
+          ],
+        ),
         floatingActionButton: FloatingActionButton(
           onPressed: () => Navigator.push(
             context,
@@ -157,7 +163,7 @@ class SupplierDashboard extends StatelessWidget {
           },
         ),
 
-        // Total views + verifications (safe folds)
+        // Total views + verifications
         StreamBuilder<QuerySnapshot>(
           stream: db.collection('assets').where('ownerId', isEqualTo: uid).snapshots(),
           builder: (context, snap) {
@@ -179,13 +185,6 @@ class SupplierDashboard extends StatelessWidget {
         ),
 
         const SizedBox(height: 20),
-
-        ElevatedButton.icon(
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddAssetScreen(type: type))),
-          icon: const Icon(Icons.add),
-          label: const Text('Add New Asset'),
-          style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-        ),
       ]),
     );
   }
@@ -244,7 +243,7 @@ class AssetManagementScreen extends StatelessWidget {
           itemBuilder: (context, i) {
             final doc = docs[i];
             final data = doc.data() as Map<String, dynamic>? ?? {};
-            final img = (data['images'] as List?)?.isNotEmpty == true ? data['images'][0] as String? : null;
+            final img = (data['images'] as List?)?.isNotEmpty == true ? data['images']![0] as String? : null;
 
             return Card(
               margin: const EdgeInsets.symmetric(vertical: 6),
@@ -279,7 +278,7 @@ class AssetManagementScreen extends StatelessWidget {
 }
 
 /// ---------------------------------------------------------------------------
-/// Shared Asset Form (used by Add and Edit)
+/// Shared Asset Form (Add/Edit)
 /// ---------------------------------------------------------------------------
 class AssetForm extends StatefulWidget {
   final String type;
@@ -319,7 +318,6 @@ class _AssetFormState extends State<AssetForm> {
   void initState() {
     super.initState();
     _condition = widget.initialData?['condition']?.toString() ?? 'new';
-    // Note: existing images stored in doc are not loaded into _images; editing images is simplified.
   }
 
   @override
@@ -345,6 +343,14 @@ class _AssetFormState extends State<AssetForm> {
       _images.add(b);
     }
     setState(() {});
+  }
+  Future<void> _takePhoto() async {
+    final picker = ImagePicker();
+    final XFile? photo = await picker.pickImage(source: ImageSource.camera, imageQuality: 80,);
+    if (photo != null) {
+      final bytes = await photo.readAsBytes();
+      setState(() => _images.add(bytes));
+    }
   }
 
   Future<void> _pickDoc() async {
@@ -420,6 +426,20 @@ class _AssetFormState extends State<AssetForm> {
 
           ElevatedButton.icon(onPressed: _pickImages, icon: const Icon(Icons.image), label: const Text('Pick Images')),
           if (_images.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${_images.length} image(s) selected', style: const TextStyle(color: Colors.green))),
+          const SizedBox(height: 8),
+          ElevatedButton.icon(
+            onPressed: _takePhoto,
+            icon: const Icon(Icons.camera_alt),
+            label: const Text('Take Photo'),
+          ),
+          if (_images.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                '${_images.length} image(s) captured',
+                style: const TextStyle(color: Colors.green),
+              ),
+            ),
           const SizedBox(height: 8),
 
           ElevatedButton.icon(onPressed: _pickDoc, icon: const Icon(Icons.attach_file), label: const Text('Attach PDF')),
@@ -516,7 +536,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
   }
 
   Future<void> _handleSave(Map<String, dynamic> data) async {
-    // remove empty / unchanged keys to avoid overwriting
+    // remove empty / unchanged keys
     data.removeWhere((k, v) => v == null || (v is String && v.isEmpty) || (v is List && v.isEmpty));
     await db.collection('assets').doc(widget.assetId).update(data);
     if (!mounted) return;

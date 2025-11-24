@@ -1,12 +1,11 @@
 // lib/screens/auth_screens.dart
-// Unified auth screens: Onboarding, Splash, Login, Register, Forgot Password
-// Clean Material3-friendly UI. Google sign-in for Login and Register (only for user role).
-// Password eye toggles work correctly. Register is scrollable and supplier form fields appear when Supplier is selected.
+// Unified auth screens: Onboarding, Splash (Code Animation), Login, Register, Forgot Password
+// Clean Material3-friendly UI. Google sign-in included.
+// Video Player REMOVED. Replaced with Flutter Custom Animation.
 
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui';
-import 'package:video_player/video_player.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -17,6 +16,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:introduction_screen/introduction_screen.dart';
 import 'user_screens.dart';
 import 'supplier_screens.dart';
+// import 'package:video_player/video_player.dart';
+
+
 final FirebaseAuth auth = FirebaseAuth.instance;
 final FirebaseFirestore db = FirebaseFirestore.instance;
 
@@ -36,22 +38,22 @@ class OnboardingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IntroductionScreen(
-      globalBackgroundColor: Theme.of(context).colorScheme.background,
+      globalBackgroundColor: Theme.of(context).colorScheme.surface,
       pages: [
         PageViewModel(
           title: "Secure Ownership",
           body: "Digital verification for land & electronic assets.",
-          image: const Icon(Icons.security, size: 140, color: Colors.green),
+          image: const Icon(Icons.security, size: 140, color: Color(0xFF0D47A1)),
         ),
         PageViewModel(
           title: "QR Verification",
           body: "Instant verification using QR codes.",
-          image: const Icon(Icons.qr_code_scanner, size: 140, color: Colors.green),
+          image: const Icon(Icons.qr_code_scanner, size: 140, color: Color(0xFF0D47A1)),
         ),
         PageViewModel(
           title: "Future Tokenization",
           body: "Invest in tokenized assets in Phase 2.",
-          image: const Icon(Icons.token, size: 140, color: Colors.green),
+          image: const Icon(Icons.token, size: 140, color: Color(0xFF0D47A1)),
         ),
       ],
       done: const Text("Get Started", style: TextStyle(fontWeight: FontWeight.bold)),
@@ -59,19 +61,15 @@ class OnboardingScreen extends StatelessWidget {
       next: const Icon(Icons.arrow_forward),
       showSkipButton: true,
       skip: const Text("Skip"),
-      dotsDecorator: const DotsDecorator(activeColor: Colors.green),
+      dotsDecorator: const DotsDecorator(activeColor: Color(0xFF0D47A1)),
     );
   }
 }
 
 /// -----------------------------
-/// Splash: route to login or app home based on Firestore role
+/// Splash: Animated Code (No Video File)
 /// -----------------------------
 
-
-// -----------------------------
-// Animated Splash using logo.mp4
-// -----------------------------
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -81,39 +79,62 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
 
-  late VideoPlayerController _controller;
-  late AnimationController _fadeController;
-  late Animation<double> _fadeAnimation;
+  // Animations
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+  late Animation<Offset> _slideAnimation;
 
   @override
   void initState() {
     super.initState();
 
-    // Fade animation for app name
-    _fadeController = AnimationController(
-      duration: const Duration(seconds: 2),
+    // Animation Controller
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 2500),
       vsync: this,
     );
 
-    _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(_fadeController);
+    // Bounce scale animation for logo
+    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.5, curve: Curves.elasticOut),
+      ),
+    );
 
-    _controller = VideoPlayerController.asset("assets/logo.mp4")
-      ..initialize().then((_) {
-        setState(() {});
-        _controller.play();
-        _fadeController.forward();  // start fade animation
-      });
+    // Fade-in for text
+    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.4, 0.8, curve: Curves.easeIn),
+      ),
+    );
 
-    // when video finishes → navigate
-    _controller.addListener(() {
-      if (_controller.value.position == _controller.value.duration) {
+    // Slide-up text animation
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.4),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.4, 0.8, curve: Curves.easeOut),
+      ),
+    );
+
+    _controller.forward();
+
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
         _goNext();
       }
     });
   }
 
   Future<void> _goNext() async {
+    await Future.delayed(const Duration(milliseconds: 500));
+
     final user = auth.currentUser;
 
     if (!mounted) return;
@@ -126,72 +147,129 @@ class _SplashScreenState extends State<SplashScreen>
       return;
     }
 
-    final snap = await db.collection("users").doc(user.uid).get();
-    final role = snap.data()?['role'] ?? 'user';
+    try {
+      final snap = await db.collection("users").doc(user.uid).get();
 
-    if (role == "user") {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const UserHomeScreen()),
-      );
-    } else {
-      final type = role.contains("land") ? "land" : "electronics";
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)),
-      );
+      if (!snap.exists) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+        return;
+      }
+
+      final role = snap.data()?["role"] ?? "user";
+
+      if (!mounted) return;
+
+      if (role == "user") {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const UserHomeScreen()),
+        );
+      } else {
+        final type = role.contains("land") ? "land" : "electronics";
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SupplierHomeScreen(type: type),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      }
     }
   }
 
   @override
   void dispose() {
     _controller.dispose();
-    _fadeController.dispose();
     super.dispose();
   }
 
+  // -------------------- UI --------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFA0D2EB), // required background color
+      backgroundColor: const Color(0xFF0D47A1),
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Center Logo Video
-            _controller.value.isInitialized
-                ? SizedBox(
-              width: 200,
-              height: 200,
-              child: AspectRatio(
-                aspectRatio: _controller.value.aspectRatio,
-                child: VideoPlayer(_controller),
-              ),
-            )
-                : const CircularProgressIndicator(color: Colors.white),
-
-            const SizedBox(height: 20),
-
-            // APP NAME FADE-IN
-            FadeTransition(
-              opacity: _fadeAnimation,
-              child: const Text(
-                "Digital Goods",
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                  letterSpacing: 1.2,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // -------------------- LOGO --------------------
+                Transform.scale(
+                  scale: _scaleAnimation.value,
+                  child: Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.15),
+                          blurRadius: 20,
+                          spreadRadius: 3,
+                          offset: const Offset(0, 5),
+                        )
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: Image.asset(
+                        "assets/logo.png",  // ← Your PNG logo here
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ],
+
+                const SizedBox(height: 30),
+
+                // -------------------- TEXT --------------------
+                FadeTransition(
+                  opacity: _opacityAnimation,
+                  child: SlideTransition(
+                    position: _slideAnimation,
+                    child: Column(
+                      children: const [
+                        Text(
+                          "Digital Goods",
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            letterSpacing: 1.4,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          "Verify. Secure. Own.",
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.white,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 }
-
 
 /// -----------------------------
 /// Helper: create Firestore user doc (for Google or new users)
@@ -240,6 +318,7 @@ Future<User?> signInWithGoogle(BuildContext ctx) async {
 /// -----------------------------
 /// Login Screen
 /// -----------------------------
+// Replace your LoginScreen with this version (works with the globals in auth_screens.dart)
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -260,24 +339,38 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
+    if (_email.text.trim().isEmpty || _pass.text.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Provide email & password')));
+      }
+      return;
+    }
+
     setState(() => _loading = true);
     try {
-      final cred = await auth.signInWithEmailAndPassword(email: _email.text.trim(), password: _pass.text.trim());
+      final cred = await auth.signInWithEmailAndPassword(
+        email: _email.text.trim(),
+        password: _pass.text.trim(),
+      );
+
       final user = cred.user;
       if (user == null) throw Exception('Login returned null user');
 
-      final doc = await db.collection('users').doc(user.uid).get();
-      final role = doc.data()?['role'] as String? ?? 'user';
+      final snap = await db.collection('users').doc(user.uid).get();
+      final role = (snap.data()?['role'] as String?) ?? 'user';
 
       if (!mounted) return;
+
       if (role == 'user') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserHomeScreen()));
       } else {
-        final type = role.contains('land') ? 'land' : 'electronics';
+        final type = (role.contains('land')) ? 'land' : 'electronics';
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Login failed: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Login failed: $e')));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -319,11 +412,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Use the global _inputDecoration helper (defined later in this file).
     final card = _glassCard(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('Welcome back', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          Text('Welcome back', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           TextField(
             controller: _email,
@@ -344,23 +438,32 @@ class _LoginScreenState extends State<LoginScreen> {
             obscureText: _obscure,
           ),
           const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _loading ? null : _login,
+              style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              child: _loading
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Login'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())),
+            child: const Text('Forgot Password?'),
+          ),
+          const SizedBox(height: 8),
           Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _login,
-                  style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                  child: _loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Login'),
-                ),
+              const Text("Don’t have an account? "),
+              GestureDetector(
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
+                child: const Text("Register", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())), child: const Text('Register')),
-            const SizedBox(width: 8),
-            TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())), child: const Text('Forgot?')),
-          ]),
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: _loading ? null : _googleLogin,
@@ -385,9 +488,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.eco, size: 78, color: Colors.green),
                 const SizedBox(height: 12),
-                Text('Digital Goods', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 20),
                 card,
               ],
@@ -688,7 +789,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 }
 
 /// -----------------------------
-/// Input decoration helper (accepts optional prefix widget and optional suffix widget)
+/// Input decoration helper
 /// -----------------------------
 InputDecoration _inputDecoration(String label, {Widget? prefix, Widget? suffix}) {
   return InputDecoration(

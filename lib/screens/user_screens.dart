@@ -1,22 +1,21 @@
-// lib/screens/user_screens.dart
-// Clean, optimized & index-safe user-side asset browsing + filtering + searching
-// Images/doc stored as Base64 (Firestore only). Uses shared_screens.dart for shared screens.
+// user_screens.dart
+// Professional Marketplace UI (2 items per row grid)
+// Fully fixed filters + search + Firestore-safe queries
 
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'shared_screens.dart'; // exports: db, auth, AssetDetailScreen, QRScannerScreen, MyAssetsScreen, ProfileScreen, TransactionsScreen
+import 'shared_screens.dart'; // provides db, auth, AssetDetailScreen, QRScannerScreen, MyAssetsScreen, ProfileScreen
 
-Uint8List? _decode(String? b64) {
+Uint8List? _decodeImage(String? b64) {
   if (b64 == null || b64.isEmpty) return null;
   try {
     return base64Decode(b64);
-  } catch (e) {
+  } catch (_) {
     return null;
   }
 }
-
 
 class UserHomeScreen extends StatefulWidget {
   const UserHomeScreen({super.key});
@@ -27,12 +26,12 @@ class UserHomeScreen extends StatefulWidget {
 
 class _UserHomeScreenState extends State<UserHomeScreen> {
   int _index = 0;
-  String _category = 'land';
-  String _search = '';
+  String _category = "land";
+  String _search = "";
   Map<String, dynamic> _filters = {};
 
   void _openFilters() async {
-    final out = await showModalBottomSheet<Map<String, dynamic>>(
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -47,7 +46,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         ),
       ),
     );
-    if (out != null) setState(() => _filters = out);
+    if (result != null) setState(() => _filters = result);
   }
 
   void _nav(int i) {
@@ -58,14 +57,37 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     setState(() => _index = i);
   }
 
-  Widget _body() {
-    switch (_index) {
-      case 2:
-        return const MyAssetsScreen();
-      case 3:
-        return const ProfileScreen();
-    }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Digital Goods Marketplace")),
+      floatingActionButton: FloatingActionButton(
+        child: const Icon(Icons.swap_horiz),
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const TransactionsScreen()),
+        ),
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _index,
+        onTap: _nav,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
+          BottomNavigationBarItem(icon: Icon(Icons.qr_code_scanner), label: "Scan"),
+          BottomNavigationBarItem(icon: Icon(Icons.inventory), label: "My Assets"),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
+        ],
+      ),
+      body: _index == 2
+          ? const MyAssetsScreen()
+          : _index == 3
+          ? const ProfileScreen()
+          : _mainBody(),
+    );
+  }
 
+  Widget _mainBody() {
     return SafeArea(
       child: Column(
         children: [
@@ -84,7 +106,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               onChanged: (v) => setState(() => _search = v.trim().toLowerCase()),
             ),
           ),
-
           SizedBox(
             height: 48,
             child: Row(
@@ -109,7 +130,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               ],
             ),
           ),
-
           Expanded(
             child: AssetListView(
               category: _category,
@@ -121,36 +141,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       ),
     );
   }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Digital Goods Marketplace")),
-      body: _body(),
-      floatingActionButton: FloatingActionButton(
-        child: const Icon(Icons.swap_horiz),
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const TransactionsScreen()),
-        ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _index,
-        onTap: _nav,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
-          BottomNavigationBarItem(icon: Icon(Icons.qr_code_scanner), label: "Scan"),
-          BottomNavigationBarItem(icon: Icon(Icons.inventory), label: "My Assets"),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
-        ],
-      ),
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
-// ASSETS LIST
+// ASSET LIST VIEW (GRID)
 // ---------------------------------------------------------------------------
 
 class AssetListView extends StatelessWidget {
@@ -165,8 +159,9 @@ class AssetListView extends StatelessWidget {
     required this.filters,
   });
 
-  Query _q() {
-    Query q = db.collection("assets")
+  Query _query() {
+    Query q = db
+        .collection("assets")
         .where("category", isEqualTo: category)
         .orderBy("createdAt", descending: true);
 
@@ -180,32 +175,33 @@ class AssetListView extends StatelessWidget {
     return q;
   }
 
-  bool _match(Map<String, dynamic> d) {
-    final s = search.trim();
-    if (s.isEmpty) return true;
+  bool _matchesSearch(Map<String, dynamic> d) {
+    if (search.isEmpty) return true;
+    final title = (d["title"] ?? "").toString().toLowerCase();
+    final city = (d["city"] ?? "").toString().toLowerCase();
+    final price = (d["price"] ?? "").toString();
+    final keywords = (d["searchKeywords"] as List?)
+        ?.map((e) => e.toString().toLowerCase())
+        .join(" ") ??
+        "";
 
-    final title = (d['title'] ?? "").toString().toLowerCase();
-    final city = (d['city'] ?? "").toString().toLowerCase();
-    final price = (d['price'] ?? "").toString();
-    final keywords = (d['searchKeywords'] as List?)?.join(" ").toLowerCase() ?? "";
-
-    return title.contains(s) ||
-        city.contains(s) ||
-        price.contains(s) ||
-        keywords.contains(s);
+    return title.contains(search) ||
+        city.contains(search) ||
+        price.contains(search) ||
+        keywords.contains(search);
   }
 
-  bool _filter(Map<String, dynamic> d) {
+  bool _matchesFilters(Map<String, dynamic> d) {
     if (filters["city"] != null &&
-        !d["city"].toString().toLowerCase().contains(filters["city"].toString().toLowerCase())) {
+        !d["city"].toString().toLowerCase().contains(filters["city"].toLowerCase())) {
       return false;
     }
     if (filters["brand"] != null &&
-        (d["brand"] ?? "").toString().toLowerCase() != filters["brand"].toString().toLowerCase()) {
+        d["brand"]?.toString().toLowerCase() != filters["brand"].toLowerCase()) {
       return false;
     }
     if (filters["condition"] != null &&
-        (d["condition"] ?? "").toString().toLowerCase() != filters["condition"].toString().toLowerCase()) {
+        d["condition"]?.toString().toLowerCase() != filters["condition"].toLowerCase()) {
       return false;
     }
     return true;
@@ -214,7 +210,7 @@ class AssetListView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: _q().snapshots(),
+      stream: _query().snapshots(),
       builder: (context, snap) {
         if (snap.hasError) return Center(child: Text("Error: ${snap.error}"));
         if (!snap.hasData) return const Center(child: CircularProgressIndicator());
@@ -222,21 +218,25 @@ class AssetListView extends StatelessWidget {
         final docs = snap.data!.docs;
 
         final filtered = docs.where((e) {
-          final d = e.data() as Map<String, dynamic>;
-          return _match(d) && _filter(d);
+          final data = e.data() as Map<String, dynamic>;
+          return _matchesFilters(data) && _matchesSearch(data);
         }).toList();
 
-        if (filtered.isEmpty) {
-          return const Center(child: Text("No assets found"));
-        }
+        if (filtered.isEmpty) return const Center(child: Text("No assets found"));
 
-        return ListView.builder(
+        return GridView.builder(
           padding: const EdgeInsets.all(12),
           itemCount: filtered.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2, // 2 boxes per row
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 0.70,
+          ),
           itemBuilder: (_, i) {
             final doc = filtered[i];
             final data = doc.data() as Map<String, dynamic>;
-            return AssetCard(id: doc.id, data: data);
+            return AssetGridCard(id: doc.id, data: data);
           },
         );
       },
@@ -245,66 +245,90 @@ class AssetListView extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// ASSET CARD
+// GRID ASSET CARD (PROFESSIONAL UI)
 // ---------------------------------------------------------------------------
 
-class AssetCard extends StatelessWidget {
+class AssetGridCard extends StatelessWidget {
   final String id;
   final Map<String, dynamic> data;
 
-  const AssetCard({super.key, required this.id, required this.data});
+  const AssetGridCard({super.key, required this.id, required this.data});
 
   @override
   Widget build(BuildContext context) {
     final img = (data["images"] is List && data["images"].isNotEmpty)
-        ? _decode(data["images"][0])
+        ? _decodeImage(data["images"][0])
         : null;
 
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      child: ListTile(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: id)),
+    return GestureDetector(
+      onTap: () =>
+          Navigator.push(context, MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: id))),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: const [
+            BoxShadow(
+              blurRadius: 4,
+              color: Colors.black12,
+              offset: Offset(0, 2),
+            )
+          ],
         ),
-        leading: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: img != null
-              ? Image.memory(img, width: 70, height: 70, fit: BoxFit.cover)
-              : Container(
-            width: 70,
-            height: 70,
-            color: Colors.grey[200],
-            child: const Icon(Icons.image, size: 32),
-          ),
-        ),
-        title: Text(data["title"] ?? "Untitled"),
-        subtitle: Column(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(data["city"] ?? ""),
-            const SizedBox(height: 4),
-            Text(
-              "₨ ${data["price"]}",
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.green,
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              child: img != null
+                  ? Image.memory(img, height: 130, width: double.infinity, fit: BoxFit.cover)
+                  : Container(
+                height: 130,
+                width: double.infinity,
+                color: Colors.grey[200],
+                child: const Icon(Icons.image, size: 40),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    data["title"] ?? "Untitled",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    data["city"] ?? "",
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    "₨ ${data["price"]}",
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                  if (data["verified"] == true)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4),
+                      child: Icon(Icons.verified, color: Colors.green, size: 18),
+                    ),
+                ],
               ),
             ),
           ],
         ),
-        trailing: data["verified"] == true
-            ? const Icon(Icons.verified, color: Colors.green)
-            : null,
       ),
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// FILTER SHEET
+// FILTER SHEET (LAND + ELECTRONICS)
 // ---------------------------------------------------------------------------
 
 class FilterSheet extends StatefulWidget {
@@ -334,9 +358,9 @@ class _FilterSheetState extends State<FilterSheet> {
   @override
   void initState() {
     super.initState();
-    _city = TextEditingController(text: widget.existing["city"]?.toString() ?? "");
-    _brand = TextEditingController(text: widget.existing["brand"]?.toString() ?? "");
-    _condition = TextEditingController(text: widget.existing["condition"]?.toString() ?? "");
+    _city = TextEditingController(text: widget.existing["city"] ?? "");
+    _brand = TextEditingController(text: widget.existing["brand"] ?? "");
+    _condition = TextEditingController(text: widget.existing["condition"] ?? "");
     minP = (widget.existing["minPrice"] ?? 0).toDouble();
     maxP = (widget.existing["maxPrice"] ?? 100000000).toDouble();
   }
@@ -362,17 +386,11 @@ class _FilterSheetState extends State<FilterSheet> {
                 IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
               ],
             ),
-            TextField(
-              controller: _city,
-              decoration: const InputDecoration(labelText: "City"),
-            ),
+            TextField(controller: _city, decoration: const InputDecoration(labelText: "City")),
 
             if (!isLand) ...[
               const SizedBox(height: 12),
-              TextField(
-                controller: _brand,
-                decoration: const InputDecoration(labelText: "Brand"),
-              ),
+              TextField(controller: _brand, decoration: const InputDecoration(labelText: "Brand")),
               const SizedBox(height: 12),
               TextField(
                 controller: _condition,
@@ -396,10 +414,7 @@ class _FilterSheetState extends State<FilterSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton(
-                  child: const Text("Cancel"),
-                  onPressed: () => Navigator.pop(context),
-                ),
+                TextButton(child: const Text("Cancel"), onPressed: () => Navigator.pop(context)),
                 const SizedBox(width: 8),
                 ElevatedButton(
                   child: const Text("Apply"),
@@ -411,7 +426,8 @@ class _FilterSheetState extends State<FilterSheet> {
 
                     if (_city.text.trim().isNotEmpty) out["city"] = _city.text.trim();
                     if (!isLand && _brand.text.trim().isNotEmpty) out["brand"] = _brand.text.trim();
-                    if (!isLand && _condition.text.trim().isNotEmpty) out["condition"] = _condition.text.trim();
+                    if (!isLand &&
+                        _condition.text.trim().isNotEmpty) out["condition"] = _condition.text.trim();
 
                     Navigator.pop(context, out);
                   },
