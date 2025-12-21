@@ -1,12 +1,13 @@
-// user_screens.dart
-// Professional Marketplace UI (2 items per row grid)
-// Fully fixed filters + search + Firestore-safe queries
+// lib/screens/user_screens.dart
+// Bug 11 Fix: Real-time search filtering
+// Professional 2-column grid marketplace UI
 
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'shared_screens.dart'; // provides db, auth, AssetDetailScreen, QRScannerScreen, MyAssetsScreen, ProfileScreen
+import 'shared_screens.dart';
+import 'chatbot_screen.dart';
 
 Uint8List? _decodeImage(String? b64) {
   if (b64 == null || b64.isEmpty) return null;
@@ -27,7 +28,7 @@ class UserHomeScreen extends StatefulWidget {
 class _UserHomeScreenState extends State<UserHomeScreen> {
   int _index = 0;
   String _category = "land";
-  String _search = "";
+  String _search = ""; // Bug 11: Real-time search state
   Map<String, dynamic> _filters = {};
 
   void _openFilters() async {
@@ -61,12 +62,29 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Digital Goods Marketplace")),
-      floatingActionButton: FloatingActionButton(
-        child: const Icon(Icons.swap_horiz),
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const TransactionsScreen()),
-        ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Chatbot FAB (Bug 7)
+          FloatingActionButton(
+            heroTag: 'chatbot',
+            mini: true,
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ChatbotScreen()),
+            ),
+            child: const Icon(Icons.chat_bubble_outline),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            heroTag: 'transactions',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const TransactionsScreen()),
+            ),
+            child: const Icon(Icons.swap_horiz),
+          ),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
@@ -103,6 +121,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                 ),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
+              // Bug 11 Fix: Real-time filtering
               onChanged: (v) => setState(() => _search = v.trim().toLowerCase()),
             ),
           ),
@@ -143,10 +162,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// ASSET LIST VIEW (GRID)
-// ---------------------------------------------------------------------------
-
+/// Asset List View (2-column grid)
 class AssetListView extends StatelessWidget {
   final String category;
   final String search;
@@ -175,11 +191,13 @@ class AssetListView extends StatelessWidget {
     return q;
   }
 
+  // Bug 11 Fix: Real-time search matching
   bool _matchesSearch(Map<String, dynamic> d) {
     if (search.isEmpty) return true;
     final title = (d["title"] ?? "").toString().toLowerCase();
     final city = (d["city"] ?? "").toString().toLowerCase();
     final price = (d["price"] ?? "").toString();
+    final brand = (d["brand"] ?? "").toString().toLowerCase();
     final keywords = (d["searchKeywords"] as List?)
         ?.map((e) => e.toString().toLowerCase())
         .join(" ") ??
@@ -187,6 +205,7 @@ class AssetListView extends StatelessWidget {
 
     return title.contains(search) ||
         city.contains(search) ||
+        brand.contains(search) ||
         price.contains(search) ||
         keywords.contains(search);
   }
@@ -217,18 +236,33 @@ class AssetListView extends StatelessWidget {
 
         final docs = snap.data!.docs;
 
+        // Bug 11: Apply real-time filtering
         final filtered = docs.where((e) {
           final data = e.data() as Map<String, dynamic>;
           return _matchesFilters(data) && _matchesSearch(data);
         }).toList();
 
-        if (filtered.isEmpty) return const Center(child: Text("No assets found"));
+        if (filtered.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.search_off, size: 64, color: Colors.grey),
+                const SizedBox(height: 16),
+                Text(
+                  search.isEmpty ? "No assets found" : "No results for '$search'",
+                  style: const TextStyle(fontSize: 16, color: Colors.grey),
+                ),
+              ],
+            ),
+          );
+        }
 
         return GridView.builder(
           padding: const EdgeInsets.all(12),
           itemCount: filtered.length,
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2, // 2 boxes per row
+            crossAxisCount: 2,
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
             childAspectRatio: 0.70,
@@ -244,10 +278,7 @@ class AssetListView extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// GRID ASSET CARD (PROFESSIONAL UI)
-// ---------------------------------------------------------------------------
-
+/// Grid Asset Card (Professional UI)
 class AssetGridCard extends StatelessWidget {
   final String id;
   final Map<String, dynamic> data;
@@ -261,8 +292,10 @@ class AssetGridCard extends StatelessWidget {
         : null;
 
     return GestureDetector(
-      onTap: () =>
-          Navigator.push(context, MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: id))),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: id)),
+      ),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -301,12 +334,12 @@ class AssetGridCard extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   Text(
-                    data["city"] ?? "",
+                    data["city"] ?? data["brand"] ?? "",
                     style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    "₨ ${data["price"]}",
+                    "PKR ${data["price"]}",
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Colors.green,
@@ -327,10 +360,7 @@ class AssetGridCard extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// FILTER SHEET (LAND + ELECTRONICS)
-// ---------------------------------------------------------------------------
-
+/// Filter Sheet (Land + Electronics)
 class FilterSheet extends StatefulWidget {
   final String category;
   final ScrollController controller;
@@ -366,6 +396,14 @@ class _FilterSheetState extends State<FilterSheet> {
   }
 
   @override
+  void dispose() {
+    _city.dispose();
+    _brand.dispose();
+    _condition.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isLand = widget.category == "land";
 
@@ -381,16 +419,28 @@ class _FilterSheetState extends State<FilterSheet> {
           children: [
             Row(
               children: [
-                const Text("Filters", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text(
+                  "Filters",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
                 const Spacer(),
-                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
               ],
             ),
-            TextField(controller: _city, decoration: const InputDecoration(labelText: "City")),
+            TextField(
+              controller: _city,
+              decoration: const InputDecoration(labelText: "City"),
+            ),
 
             if (!isLand) ...[
               const SizedBox(height: 12),
-              TextField(controller: _brand, decoration: const InputDecoration(labelText: "Brand")),
+              TextField(
+                controller: _brand,
+                decoration: const InputDecoration(labelText: "Brand"),
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: _condition,
@@ -408,13 +458,40 @@ class _FilterSheetState extends State<FilterSheet> {
                 minP = v.start;
                 maxP = v.end;
               }),
+              labels: RangeLabels(
+                'PKR ${minP.toInt()}',
+                'PKR ${maxP.toInt()}',
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Min: PKR ${minP.toInt()}'),
+                Text('Max: PKR ${maxP.toInt()}'),
+              ],
             ),
 
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton(child: const Text("Cancel"), onPressed: () => Navigator.pop(context)),
+                TextButton(
+                  child: const Text("Clear"),
+                  onPressed: () {
+                    setState(() {
+                      _city.clear();
+                      _brand.clear();
+                      _condition.clear();
+                      minP = 0;
+                      maxP = 100000000;
+                    });
+                  },
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  child: const Text("Cancel"),
+                  onPressed: () => Navigator.pop(context),
+                ),
                 const SizedBox(width: 8),
                 ElevatedButton(
                   child: const Text("Apply"),
@@ -425,9 +502,12 @@ class _FilterSheetState extends State<FilterSheet> {
                     };
 
                     if (_city.text.trim().isNotEmpty) out["city"] = _city.text.trim();
-                    if (!isLand && _brand.text.trim().isNotEmpty) out["brand"] = _brand.text.trim();
-                    if (!isLand &&
-                        _condition.text.trim().isNotEmpty) out["condition"] = _condition.text.trim();
+                    if (!isLand && _brand.text.trim().isNotEmpty) {
+                      out["brand"] = _brand.text.trim();
+                    }
+                    if (!isLand && _condition.text.trim().isNotEmpty) {
+                      out["condition"] = _condition.text.trim();
+                    }
 
                     Navigator.pop(context, out);
                   },

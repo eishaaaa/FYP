@@ -32,8 +32,7 @@ class _DigitalGoodsAppState extends State<DigitalGoodsApp> {
   Future<void> _loadTheme() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      final doc =
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       if (doc.exists && doc.data()!['darkMode'] == true) {
         setState(() => _darkMode = true);
       }
@@ -55,17 +54,17 @@ class _DigitalGoodsAppState extends State<DigitalGoodsApp> {
       brightness: _darkMode ? Brightness.dark : Brightness.light,
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: Color(0xFF0D47A1),
+        seedColor: const Color(0xFF0D47A1),
         brightness: _darkMode ? Brightness.dark : Brightness.light,
       ),
-      appBarTheme: AppBarTheme(
+      appBarTheme: const AppBarTheme(
         backgroundColor: Color(0xFF0D47A1),
         foregroundColor: Colors.white,
         centerTitle: true,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: Color(0xFF0D47A1),
+          backgroundColor: const Color(0xFF0D47A1),
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           minimumSize: const Size(double.infinity, 48),
@@ -107,8 +106,7 @@ class _AppEntryState extends State<AppEntry> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-          body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return _seenOnboarding ? const SplashScreen() : const OnboardingScreen();

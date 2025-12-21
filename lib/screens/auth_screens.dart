@@ -1,8 +1,4 @@
 // lib/screens/auth_screens.dart
-// Unified auth screens: Onboarding, Splash (Code Animation), Login, Register, Forgot Password
-// Clean Material3-friendly UI. Google sign-in included.
-// Video Player REMOVED. Replaced with Flutter Custom Animation.
-
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui';
@@ -14,17 +10,36 @@ import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:introduction_screen/introduction_screen.dart';
+import 'package:image/image.dart' as img;
 import 'user_screens.dart';
 import 'supplier_screens.dart';
-// import 'package:video_player/video_player.dart';
-
 
 final FirebaseAuth auth = FirebaseAuth.instance;
 final FirebaseFirestore db = FirebaseFirestore.instance;
 
-/// -----------------------------
-/// Onboarding
-/// -----------------------------
+/// Compress image to stay under Firestore 1MB limit
+Future<String> compressImageToBase64(Uint8List bytes, {int quality = 70}) async {
+  final image = img.decodeImage(bytes);
+  if (image == null) return base64Encode(bytes);
+
+  // Resize if too large
+  img.Image resized = image;
+  if (image.width > 800) {
+    resized = img.copyResize(image, width: 800);
+  }
+
+  final compressed = img.encodeJpg(resized, quality: quality);
+  final base64Str = base64Encode(compressed);
+
+  // If still too large, reduce quality
+  if (base64Str.length > 900000) {
+    return compressImageToBase64(bytes, quality: quality - 10);
+  }
+
+  return base64Str;
+}
+
+/// Onboarding Screen
 class OnboardingScreen extends StatelessWidget {
   const OnboardingScreen({super.key});
 
@@ -66,10 +81,7 @@ class OnboardingScreen extends StatelessWidget {
   }
 }
 
-/// -----------------------------
-/// Splash: Animated Code (No Video File)
-/// -----------------------------
-
+/// Splash Screen with Animation
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -77,11 +89,8 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-
-  // Animations
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
   late Animation<Offset> _slideAnimation;
@@ -90,13 +99,11 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
 
-    // Animation Controller
     _controller = AnimationController(
       duration: const Duration(milliseconds: 2500),
       vsync: this,
     );
 
-    // Bounce scale animation for logo
     _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
@@ -104,7 +111,6 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    // Fade-in for text
     _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
@@ -112,7 +118,6 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    // Slide-up text animation
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 0.4),
       end: Offset.zero,
@@ -124,7 +129,6 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _controller.forward();
-
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         _goNext();
@@ -192,7 +196,6 @@ class _SplashScreenState extends State<SplashScreen>
     super.dispose();
   }
 
-  // -------------------- UI --------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -204,7 +207,6 @@ class _SplashScreenState extends State<SplashScreen>
             return Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // -------------------- LOGO --------------------
                 Transform.scale(
                   scale: _scaleAnimation.value,
                   child: Container(
@@ -222,24 +224,16 @@ class _SplashScreenState extends State<SplashScreen>
                         )
                       ],
                     ),
-                    child: ClipOval(
-                      child: Image.asset(
-                        "assets/logo.png",  // ← Your PNG logo here
-                        fit: BoxFit.cover,
-                      ),
-                    ),
+                    child: const Icon(Icons.apartment, size: 60, color: Color(0xFF0D47A1)),
                   ),
                 ),
-
                 const SizedBox(height: 30),
-
-                // -------------------- TEXT --------------------
                 FadeTransition(
                   opacity: _opacityAnimation,
                   child: SlideTransition(
                     position: _slideAnimation,
-                    child: Column(
-                      children: const [
+                    child: const Column(
+                      children: [
                         Text(
                           "Digital Goods",
                           style: TextStyle(
@@ -271,9 +265,7 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
-/// -----------------------------
-/// Helper: create Firestore user doc (for Google or new users)
-/// -----------------------------
+/// Create user document if not exists
 Future<void> createUserDocIfNotExists(User user, {String role = 'user', String? photoBase64}) async {
   final docRef = db.collection('users').doc(user.uid);
   final snap = await docRef.get();
@@ -290,13 +282,11 @@ Future<void> createUserDocIfNotExists(User user, {String role = 'user', String? 
   }
 }
 
-/// -----------------------------
-/// Google Sign-In (returns User if success)
-/// -----------------------------
+/// Google Sign-In
 Future<User?> signInWithGoogle(BuildContext ctx) async {
   try {
     final GoogleSignInAccount? gUser = await GoogleSignIn().signIn();
-    if (gUser == null) return null; // user cancelled
+    if (gUser == null) return null;
     final GoogleSignInAuthentication gAuth = await gUser.authentication;
     final credential = GoogleAuthProvider.credential(
       accessToken: gAuth.accessToken,
@@ -305,20 +295,18 @@ Future<User?> signInWithGoogle(BuildContext ctx) async {
     final userCred = await auth.signInWithCredential(credential);
     final user = userCred.user;
     if (user != null) {
-      // ensure firestore doc exists
       await createUserDocIfNotExists(user);
     }
     return user;
   } catch (e) {
-    if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Google sign-in failed: $e')));
+    if (ctx.mounted) {
+      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Google sign-in failed: $e')));
+    }
     return null;
   }
 }
 
-/// -----------------------------
 /// Login Screen
-/// -----------------------------
-// Replace your LoginScreen with this version (works with the globals in auth_screens.dart)
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -412,7 +400,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Use the global _inputDecoration helper (defined later in this file).
     final card = _glassCard(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -457,7 +444,7 @@ class _LoginScreenState extends State<LoginScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text("Don’t have an account? "),
+              const Text("Don't have an account? "),
               GestureDetector(
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
                 child: const Text("Register", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
@@ -500,9 +487,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-/// -----------------------------
 /// Register Screen
-/// -----------------------------
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
   @override
@@ -560,7 +545,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
     setState(() => _loading = true);
     try {
-      final userCred = await auth.createUserWithEmailAndPassword(email: _emailCtrl.text.trim(), password: _passCtrl.text.trim());
+      final userCred = await auth.createUserWithEmailAndPassword(
+        email: _emailCtrl.text.trim(),
+        password: _passCtrl.text.trim(),
+      );
       final uid = userCred.user!.uid;
       final roleString = _role == 'user' ? 'user' : 'supplier_$_supplierType';
       final Map<String, dynamic> data = {
@@ -578,7 +566,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'city': _cityCtrl.text.trim(),
         });
       }
-      if (_photo != null) data['photoBase64'] = base64Encode(_photo!);
+      if (_photo != null) {
+        data['photoBase64'] = await compressImageToBase64(_photo!);
+      }
       await db.collection('users').doc(uid).set(data);
       await userCred.user!.updateDisplayName(roleString);
       if (!mounted) return;
@@ -594,14 +584,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void _msg(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   Future<void> _googleRegisterOrLogin() async {
-    // Only offer google registration/login for user role (not supplier)
     setState(() => _loading = true);
     final user = await signInWithGoogle(context);
     if (user != null) {
       final docRef = db.collection('users').doc(user.uid);
       final snap = await docRef.get();
       if (!snap.exists) {
-        // new Google user -> create with default role = user
         await docRef.set({
           'uid': user.uid,
           'name': user.displayName ?? '',
@@ -626,7 +614,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Make register form scrollable (handles long supplier form on small displays)
     return Scaffold(
       appBar: AppBar(title: const Text('Register')),
       body: SafeArea(
@@ -651,33 +638,72 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                     const SizedBox(height: 18),
 
-                    // Role selection
                     Row(
                       children: [
-                        ChoiceChip(label: const Text('User'), selected: _role == 'user', onSelected: (_) => setState(() => _role = 'user')),
+                        ChoiceChip(
+                          label: const Text('User'),
+                          selected: _role == 'user',
+                          onSelected: (_) => setState(() => _role = 'user'),
+                        ),
                         const SizedBox(width: 12),
-                        ChoiceChip(label: const Text('Supplier'), selected: _role == 'supplier', onSelected: (_) => setState(() => _role = 'supplier')),
+                        ChoiceChip(
+                          label: const Text('Supplier'),
+                          selected: _role == 'supplier',
+                          onSelected: (_) => setState(() => _role = 'supplier'),
+                        ),
                       ],
                     ),
                     if (_role == 'supplier') ...[
                       const SizedBox(height: 12),
                       Row(children: [
-                        ChoiceChip(label: const Text('Land'), selected: _supplierType == 'land', onSelected: (_) => setState(() => _supplierType = 'land')),
+                        ChoiceChip(
+                          label: const Text('Land'),
+                          selected: _supplierType == 'land',
+                          onSelected: (_) => setState(() => _supplierType = 'land'),
+                        ),
                         const SizedBox(width: 12),
-                        ChoiceChip(label: const Text('Electronics'), selected: _supplierType == 'electronics', onSelected: (_) => setState(() => _supplierType = 'electronics')),
+                        ChoiceChip(
+                          label: const Text('Electronics'),
+                          selected: _supplierType == 'electronics',
+                          onSelected: (_) => setState(() => _supplierType = 'electronics'),
+                        ),
                       ]),
                     ],
                     const SizedBox(height: 20),
 
                     TextField(controller: _nameCtrl, decoration: _inputDecoration('Full Name')),
                     const SizedBox(height: 10),
-                    TextField(controller: _emailCtrl, decoration: _inputDecoration('Email'), keyboardType: TextInputType.emailAddress),
+                    TextField(
+                      controller: _emailCtrl,
+                      decoration: _inputDecoration('Email'),
+                      keyboardType: TextInputType.emailAddress,
+                    ),
                     const SizedBox(height: 10),
                     TextField(controller: _phoneCtrl, decoration: _inputDecoration('Phone')),
                     const SizedBox(height: 10),
-                    TextField(controller: _passCtrl, decoration: _inputDecoration('Password', suffix: IconButton(icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off), onPressed: () => setState(() => _obscure = !_obscure))), obscureText: _obscure),
+                    TextField(
+                      controller: _passCtrl,
+                      decoration: _inputDecoration(
+                        'Password',
+                        suffix: IconButton(
+                          icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+                          onPressed: () => setState(() => _obscure = !_obscure),
+                        ),
+                      ),
+                      obscureText: _obscure,
+                    ),
                     const SizedBox(height: 10),
-                    TextField(controller: _confirmCtrl, decoration: _inputDecoration('Confirm Password', suffix: IconButton(icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off), onPressed: () => setState(() => _obscure = !_obscure))), obscureText: _obscure),
+                    TextField(
+                      controller: _confirmCtrl,
+                      decoration: _inputDecoration(
+                        'Confirm Password',
+                        suffix: IconButton(
+                          icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+                          onPressed: () => setState(() => _obscure = !_obscure),
+                        ),
+                      ),
+                      obscureText: _obscure,
+                    ),
 
                     if (_role == 'supplier') ...[
                       const SizedBox(height: 10),
@@ -691,10 +717,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     const SizedBox(height: 20),
                     _loading
                         ? const Center(child: CircularProgressIndicator())
-                        : ElevatedButton(onPressed: _register, style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(48)), child: const Text('Register')),
+                        : ElevatedButton(
+                      onPressed: _register,
+                      style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                      child: const Text('Register'),
+                    ),
                     const SizedBox(height: 16),
 
-                    // Only show Google button for user role — requirement: suppliers must not register with Google
                     if (_role == 'user') ...[
                       InkWell(
                         onTap: _loading ? null : _googleRegisterOrLogin,
@@ -735,9 +764,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 }
 
-/// -----------------------------
-/// Forgot Password
-/// -----------------------------
+/// Forgot Password Screen
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
   @override
@@ -757,16 +784,22 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Future<void> _reset() async {
     final email = _emailCtrl.text.trim();
     if (email.isEmpty) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter email')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter email')));
+      }
       return;
     }
     setState(() => _loading = true);
     try {
       await auth.sendPasswordResetEmail(email: email);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reset email sent')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reset email sent')));
+      }
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -779,18 +812,26 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       body: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(children: [
-          TextField(controller: _emailCtrl, decoration: _inputDecoration('Email'), keyboardType: TextInputType.emailAddress),
+          TextField(
+            controller: _emailCtrl,
+            decoration: _inputDecoration('Email'),
+            keyboardType: TextInputType.emailAddress,
+          ),
           const SizedBox(height: 20),
-          _loading ? const CircularProgressIndicator() : ElevatedButton(onPressed: _reset, style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(48)), child: const Text('Send Reset Link')),
+          _loading
+              ? const CircularProgressIndicator()
+              : ElevatedButton(
+            onPressed: _reset,
+            style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            child: const Text('Send Reset Link'),
+          ),
         ]),
       ),
     );
   }
 }
 
-/// -----------------------------
 /// Input decoration helper
-/// -----------------------------
 InputDecoration _inputDecoration(String label, {Widget? prefix, Widget? suffix}) {
   return InputDecoration(
     labelText: label,
