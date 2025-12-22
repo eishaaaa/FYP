@@ -99,6 +99,97 @@ Widget buildAssetImage(String? s, {BoxFit fit = BoxFit.cover, double width = 80,
   );
 }
 
+/// Get document icon based on type
+Widget _getDocumentIcon(String type) {
+  switch (type.toLowerCase()) {
+    case 'pdf':
+      return const Icon(Icons.picture_as_pdf, color: Colors.red);
+    case 'jpg':
+    case 'jpeg':
+    case 'png':
+      return const Icon(Icons.image, color: Colors.blue);
+    case 'doc':
+    case 'docx':
+      return const Icon(Icons.description, color: Colors.blue);
+    default:
+      return const Icon(Icons.insert_drive_file);
+  }
+}
+
+/// Format file size
+String _formatFileSize(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1048576) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  return '${(bytes / 1048576).toStringAsFixed(1)} MB';
+}
+
+/// Download document handler
+Future<void> _downloadDocument(BuildContext context, Map<String, dynamic> doc) async {
+  try {
+    final base64Data = doc['data'] as String?;
+    if (base64Data == null || base64Data.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Document data not found')),
+      );
+      return;
+    }
+
+    // Decode base64
+    final bytes = base64Decode(base64Data);
+
+    // For web/desktop, you would save the file differently
+    // This example shows a snackbar, but you should implement proper file saving
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Document downloaded (${_formatFileSize(bytes.length)})'),
+        action: SnackBarAction(
+          label: 'View',
+          onPressed: () {
+            _viewDocument(context, bytes, doc['type'] ?? 'pdf', doc['name'] ?? 'Document');
+          },
+        ),
+      ),
+    );
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Download failed: $e')),
+    );
+  }
+}
+
+/// View document
+void _viewDocument(BuildContext context, Uint8List bytes, String type, String name) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(name),
+      content: type.toLowerCase().contains('image')
+          ? Image.memory(bytes)
+          : SizedBox(
+        width: 300,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _getDocumentIcon(type),
+            const SizedBox(height: 16),
+            Text('Document type: $type'),
+            const SizedBox(height: 8),
+            Text('Size: ${_formatFileSize(bytes.length)}'),
+            const SizedBox(height: 16),
+            const Text('This document is stored as base64. For better experience, consider using a document viewer package.'),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
+}
+
 /// Asset Detail Screen (Bug 5 Fix: Display owner name instead of ID)
 class AssetDetailScreen extends StatefulWidget {
   final String assetId;
@@ -212,7 +303,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Plot Area'),
-                    subtitle: Text('${data['plotArea'] ?? '—'}'),
+                    subtitle: Text('${data['plotArea'] ?? '—'} ${data['plotUnit'] ?? ''}'),
                   ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -234,15 +325,24 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                 ],
                 const SizedBox(height: 12),
 
+                // Updated Document Section
                 if (data['documents'] is List && (data['documents'] as List).isNotEmpty) ...[
                   const Text('Documents', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 6),
                   ...((data['documents'] as List).map((d) {
-                    final title = (d is Map && d['name'] != null) ? d['name'] : 'Document';
+                    final doc = d as Map<String, dynamic>;
+                    final title = doc['name'] ?? 'Document';
+                    final type = doc['type'] ?? 'unknown';
+
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: Text(title.toString()),
-                      trailing: const Icon(Icons.description),
+                      leading: _getDocumentIcon(type),
+                      title: Text(title),
+                      subtitle: Text('${type.toUpperCase()} • ${_formatFileSize(doc['size'] ?? 0)}'),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.download),
+                        onPressed: () => _downloadDocument(context, doc),
+                      ),
                     );
                   }).toList()),
                   const SizedBox(height: 12),
