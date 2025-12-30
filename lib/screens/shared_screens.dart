@@ -12,7 +12,7 @@ import 'package:carousel_slider/carousel_slider.dart';
 import 'package:image/image.dart' as img;
 
 import 'auth_screens.dart';
-import 'chatbot_screen.dart';
+import 'chat_screen.dart';
 
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
@@ -138,7 +138,7 @@ Future<void> _downloadDocument(BuildContext context, Map<String, dynamic> doc) a
     final bytes = base64Decode(base64Data);
 
     // For web/desktop, you would save the file differently
-    // This example shows a snackbar, but you should implement proper file saving
+    // This example shows a Snackbar, but you should implement proper file saving
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Document downloaded (${_formatFileSize(bytes.length)})'),
@@ -402,16 +402,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        mini: true,
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ChatbotScreen()),
-          );
-        },
-        child: const Icon(Icons.chat_bubble_outline),
-      ),
+
     );
   }
 
@@ -762,6 +753,13 @@ class TransactionsScreen extends StatelessWidget {
                 itemBuilder: (context, i) {
                   final t = docs[i].data();
                   final id = docs[i].id;
+
+                  final transactionId = id;
+
+                  final otherUid = role.toLowerCase().contains('supplier')
+                      ? t['buyerUid']
+                      : t['sellerUid'];
+
                   final ts = t['createdAt'] as Timestamp?;
                   final time = ts != null ? "${ts.toDate().year}-${ts.toDate().month}-${ts.toDate().day}" : "";
                   final status = (t['status'] ?? '').toString();
@@ -789,11 +787,33 @@ class TransactionsScreen extends StatelessWidget {
                           ],
                           if (allowChat)
                             IconButton(
-                              icon: const Icon(Icons.chat_bubble_outline),
-                              onPressed: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (_) => ChatScreen(transactionId: id)),
-                              ),
+                              icon: const Icon(Icons.chat),
+                              onPressed: () async {
+                                final myUid = auth.currentUser!.uid;
+
+                                // decide who is the other user
+                                final otherUid = role.toLowerCase().contains('supplier')
+                                    ? t['buyerUid']
+                                    : t['sellerUid'];
+
+                                final chatId = id; // transaction document id
+
+                                await db.collection('chats').doc(chatId).set({
+                                  'participants': [myUid, otherUid],
+                                  'lastMessage': '',
+                                  'lastMessageTime': FieldValue.serverTimestamp(),
+                                }, SetOptions(merge: true));
+
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ChatScreen(
+                                      chatId: chatId,
+                                      otherUserId: otherUid,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                         ],
                       ),
@@ -814,126 +834,6 @@ class TransactionsScreen extends StatelessWidget {
 
   Future<void> _updateStatus(String id, String newStatus) async {
     await db.collection('transactions').doc(id).update({'status': newStatus});
-  }
-}
-
-/// Chat Screen
-class ChatScreen extends StatefulWidget {
-  final String transactionId;
-  const ChatScreen({super.key, required this.transactionId});
-
-  @override
-  State<ChatScreen> createState() => _ChatScreenState();
-}
-
-class _ChatScreenState extends State<ChatScreen> {
-  final TextEditingController _msgCtrl = TextEditingController();
-  final ScrollController _scroll = ScrollController();
-
-  @override
-  void dispose() {
-    _msgCtrl.dispose();
-    _scroll.dispose();
-    super.dispose();
-  }
-
-  Future<void> _send() async {
-    final txt = _msgCtrl.text.trim();
-    final user = auth.currentUser;
-    if (txt.isEmpty || user == null) return;
-    final doc = db.collection('chats').doc(widget.transactionId).collection('messages').doc();
-    await doc.set({
-      'text': txt,
-      'senderUid': user.uid,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    _msgCtrl.clear();
-    Future.delayed(const Duration(milliseconds: 150), () {
-      if (_scroll.hasClients) {
-        _scroll.animateTo(
-          _scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final chatRef = db
-        .collection('chats')
-        .doc(widget.transactionId)
-        .collection('messages')
-        .orderBy('createdAt', descending: false);
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chat'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: chatRef.snapshots(),
-              builder: (context, snap) {
-                if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
-                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                final docs = snap.data!.docs;
-                if (docs.isEmpty) return const Center(child: Text('No messages yet'));
-                return ListView.builder(
-                  controller: _scroll,
-                  padding: const EdgeInsets.all(12),
-                  itemCount: docs.length,
-                  itemBuilder: (context, i) {
-                    final m = docs[i].data();
-                    final text = m['text'] ?? '';
-                    final sender = m['senderUid'] ?? '';
-                    final mine = sender == auth.currentUser?.uid;
-                    return Align(
-                      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 6),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: mine ? Colors.green[200] : Colors.grey[200],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(text),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _msgCtrl,
-                      decoration: const InputDecoration(
-                        hintText: 'Type a message',
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(onPressed: _send, child: const Icon(Icons.send)),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
