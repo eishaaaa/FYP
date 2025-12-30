@@ -14,8 +14,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:uuid/uuid.dart';
 import 'package:image/image.dart' as img;
-
+import 'chat_screen.dart';
 import 'shared_screens.dart';
+import 'chat_list_screen.dart';
 import 'auth_screens.dart';
 
 final db = FirebaseFirestore.instance;
@@ -286,13 +287,39 @@ class SupplierHome extends StatelessWidget {
             AssetManagementScreen(type: type),
           ],
         ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => AddAssetScreen(type: type)),
-          ),
-          child: const Icon(Icons.add),
+        floatingActionButton: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            FloatingActionButton(
+              heroTag: 'chat_fab',
+              mini: true,
+              child: const Icon(Icons.chat),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ChatListScreen(),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            FloatingActionButton(
+              heroTag: 'add_asset_fab',
+              child: const Icon(Icons.add),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AddAssetScreen(type: type),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
+
       ),
     );
   }

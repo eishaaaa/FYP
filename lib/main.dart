@@ -22,7 +22,6 @@ class DigitalGoodsApp extends StatefulWidget {
 class _DigitalGoodsAppState extends State<DigitalGoodsApp> {
   bool _darkMode = false;
   bool _loading = true;
-
   @override
   void initState() {
     super.initState();
@@ -30,15 +29,50 @@ class _DigitalGoodsAppState extends State<DigitalGoodsApp> {
   }
 
   Future<void> _loadTheme() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      if (doc.exists && doc.data()!['darkMode'] == true) {
-        setState(() => _darkMode = true);
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user == null) {
+        // User not logged in, fallback to default theme
+        setState(() {
+          _darkMode = false;
+          _loading = false;
+        });
+        return;
       }
+
+      // Read the 'darkMode' field from the user's document in 'users' collection
+      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+
+      if (doc.exists) {
+        final data = doc.data();
+        if (data != null && data.containsKey('darkMode') && data['darkMode'] == true) {
+          setState(() => _darkMode = true);
+        }
+      }
+
+      setState(() => _loading = false);
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        print('Firestore permission denied: ${e.message}');
+      } else {
+        print('Firestore error: ${e.message}');
+      }
+
+      // Fallback in case of error
+      setState(() {
+        _darkMode = false;
+        _loading = false;
+      });
+    } catch (e) {
+      print('Unexpected error: $e');
+      setState(() {
+        _darkMode = false;
+        _loading = false;
+      });
     }
-    setState(() => _loading = false);
   }
+
 
   @override
   Widget build(BuildContext context) {

@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "931953170401",
+    "firebase_url": "https://digitalgoods-f5667-default-rtdb.firebaseio.com",
     "project_id": "digitalgoods-f5667",
     "storage_bucket": "digitalgoods-f5667.firebasestorage.app"
   },
@@ -14,11 +15,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "931953170401-khv9u500sm7m983u8q7dd3qvt76krln7.apps.googleusercontent.com",
+          "client_id": "931953170401-rgfis1no532o99r0clkg752iblnilp06.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.example.digitalgoods",
-            "certificate_hash": "7479b09afe2893ebf210fa7fcc4baa65e0f97e35"
+            "certificate_hash": "2ac64b9e14a01391cab66ba69eae80b01053071f"
           }
         },
         {

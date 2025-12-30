@@ -7,7 +7,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'shared_screens.dart';
-import 'chatbot_screen.dart';
+import 'chat_screen.dart';
+import 'chat_list_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 Uint8List? _decodeImage(String? b64) {
   if (b64 == null || b64.isEmpty) return null;
@@ -65,17 +67,19 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Chatbot FAB (Bug 7)
           FloatingActionButton(
-            heroTag: 'chatbot',
             mini: true,
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ChatbotScreen()),
-            ),
-            child: const Icon(Icons.chat_bubble_outline),
+            child: const Icon(Icons.chat),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ChatListScreen(),
+                ),
+              );
+            },
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           FloatingActionButton(
             heroTag: 'transactions',
             onPressed: () => Navigator.push(
@@ -270,26 +274,49 @@ class AssetListView extends StatelessWidget {
           itemBuilder: (_, i) {
             final doc = filtered[i];
             final data = doc.data() as Map<String, dynamic>;
-            return AssetGridCard(id: doc.id, data: data);
+            final assetId = doc.id; // make sure you get the correct id
+            return AssetGridCard(
+              id: assetId,                 // <-- pass the asset id
+              data: data,                  // <-- pass the asset data
+              currentUserId: FirebaseAuth.instance.currentUser!.uid, // <-- add here
+            );
           },
         );
+
       },
     );
   }
 }
-
-/// Grid Asset Card (Professional UI)
+//Asset Grid card class
 class AssetGridCard extends StatelessWidget {
   final String id;
   final Map<String, dynamic> data;
+  final String currentUserId; // pass this from parent
 
-  const AssetGridCard({super.key, required this.id, required this.data});
+  const AssetGridCard({
+    super.key,
+    required this.id,
+    required this.data,
+    required this.currentUserId,
+  });
+
+  // Example helper to decode image from base64
+  Uint8List? _decodeImage(String base64) {
+    try {
+      return Base64Decoder().convert(base64);
+    } catch (_) {
+      return null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final img = (data["images"] is List && data["images"].isNotEmpty)
         ? _decodeImage(data["images"][0])
         : null;
+
+    final sellerUid = data['supplierId'];
+    final currentUser = FirebaseAuth.instance.currentUser!.uid;
 
     return GestureDetector(
       onTap: () => Navigator.push(
@@ -311,10 +338,16 @@ class AssetGridCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // IMAGE
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               child: img != null
-                  ? Image.memory(img, height: 130, width: double.infinity, fit: BoxFit.cover)
+                  ? Image.memory(
+                img,
+                height: 130,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              )
                   : Container(
                 height: 130,
                 width: double.infinity,
@@ -322,35 +355,137 @@ class AssetGridCard extends StatelessWidget {
                 child: const Icon(Icons.image, size: 40),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    data["title"] ?? "Untitled",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  Text(
-                    data["city"] ?? data["brand"] ?? "",
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    "PKR ${data["price"]}",
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
+
+            // SCROLLABLE INNER CONTENT
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title
+                    Text(
+                      data["title"] ?? "Untitled",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                  ),
-                  if (data["verified"] == true)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 4),
-                      child: Icon(Icons.verified, color: Colors.green, size: 18),
+                    const SizedBox(height: 2),
+
+                    // City or Brand
+                    Text(
+                      data["city"] ?? data["brand"] ?? "",
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
                     ),
-                ],
+                    const SizedBox(height: 6),
+
+                    // Price
+                    Text(
+                      "PKR ${data["price"]}",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+
+                    // Seller info row
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 12,
+                          backgroundImage: data['sellerPhoto'] != null
+                              ? NetworkImage(data['sellerPhoto'])
+                              : null,
+                          child: data['sellerPhoto'] == null
+                              ? const Icon(Icons.person, size: 16)
+                              : null,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+
+                                Text(
+                                data['sellerName'] ?? 'Unknown',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                                 maxLines: 1,
+                                 overflow: TextOverflow.ellipsis,
+                               ),
+
+                              StreamBuilder<DocumentSnapshot>(
+                                stream: FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(sellerUid)
+                                    .snapshots(),
+                                builder: (context, snap) {
+                                  // ⛔ still loading or doc missing
+                                  if (!snap.hasData || !snap.data!.exists) {
+                                    return const Text(
+                                      'offline',
+                                      style: TextStyle(fontSize: 10, color: Colors.grey),
+                                    );
+                                  }
+
+                                  final user = snap.data!.data() as Map<String, dynamic>;
+
+                                  final online = user['online'] == true;
+                                  final lastSeen = user['lastSeen'] as Timestamp?;
+
+                                  final lastSeenText = lastSeen != null
+                                      ? "last seen ${lastSeen.toDate().hour}:${lastSeen.toDate().minute}"
+                                      : "offline";
+
+                                  return Text(
+                                    online ? 'online' : lastSeenText,
+                                    style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // CHAT ICON BUTTON
+                        if (sellerUid != null && currentUser != sellerUid)
+                          IconButton(
+                            icon: const Icon(Icons.chat, size: 20),
+                            onPressed: () async {
+                              final chatId = id; // asset id as chatId
+                              final chatRef = FirebaseFirestore.instance.collection('chats').doc(chatId);
+
+                              // CREATE CHAT DOCUMENT IF NOT EXISTS
+                              await chatRef.set({
+                                'participants': [currentUser, sellerUid],
+                                'lastMessage': '',
+                                'lastMessageTime': FieldValue.serverTimestamp(),
+                                'unread_$sellerUid': 0,
+                                'unread_$currentUser': 0,
+                              }, SetOptions(merge: true));
+
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ChatScreen(
+                                    chatId: chatId,
+                                    otherUserId: sellerUid,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                      ],
+                    ),
+
+                    // Verified badge
+                    if (data["verified"] == true)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Icon(Icons.verified, color: Colors.green, size: 18),
+                      ),
+                  ],
+                ),
               ),
             ),
           ],
