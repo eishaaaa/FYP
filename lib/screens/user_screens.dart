@@ -1,24 +1,19 @@
 // lib/screens/user_screens.dart
-// Bug 11 Fix: Real-time search filtering
-// Professional 2-column grid marketplace UI
-
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+// Internal Imports
 import 'shared_screens.dart';
 import 'chat_screen.dart';
 import 'chat_list_screen.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'portfolio_screen.dart';
+import 'qr_scanner_enhanced.dart';
+import '../blockchain/blockchain_service.dart';
 
-Uint8List? _decodeImage(String? b64) {
-  if (b64 == null || b64.isEmpty) return null;
-  try {
-    return base64Decode(b64);
-  } catch (_) {
-    return null;
-  }
-}
+final db = FirebaseFirestore.instance;
 
 class UserHomeScreen extends StatefulWidget {
   const UserHomeScreen({super.key});
@@ -30,7 +25,7 @@ class UserHomeScreen extends StatefulWidget {
 class _UserHomeScreenState extends State<UserHomeScreen> {
   int _index = 0;
   String _category = "land";
-  String _search = ""; // Bug 11: Real-time search state
+  String _search = "";
   Map<String, dynamic> _filters = {};
 
   void _openFilters() async {
@@ -54,7 +49,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   void _nav(int i) {
     if (i == 1) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const QRScannerScreen()));
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const QRScannerEnhanced()),
+      );
       return;
     }
     setState(() => _index = i);
@@ -63,33 +61,30 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Digital Goods Marketplace")),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton(
-            mini: true,
-            child: const Icon(Icons.chat),
+      appBar: AppBar(
+        title: const Text("Digital Goods Marketplace"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.account_balance_wallet),
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const ChatListScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const PortfolioScreen()),
               );
             },
           ),
-          const SizedBox(height: 8),
-          FloatingActionButton(
-            heroTag: 'transactions',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const TransactionsScreen()),
-            ),
-            child: const Icon(Icons.swap_horiz),
-          ),
         ],
       ),
+      floatingActionButton: _index == 0 ? FloatingActionButton(
+        heroTag: 'chat_fab',
+        child: const Icon(Icons.chat),
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ChatListScreen()),
+          );
+        },
+      ) : null,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
         onTap: _nav,
@@ -101,18 +96,23 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
         ],
       ),
-      body: _index == 2
-          ? const MyAssetsScreen()
-          : _index == 3
-          ? const ProfileScreen()
-          : _mainBody(),
+      body: IndexedStack(
+        index: _index,
+        children: [
+          _mainMarketplaceBody(),
+          const SizedBox(), // Placeholder for Scan (handled by nav)
+          const MyAssetsScreen(),
+          const ProfileScreen(),
+        ],
+      ),
     );
   }
 
-  Widget _mainBody() {
+  Widget _mainMarketplaceBody() {
     return SafeArea(
       child: Column(
         children: [
+          // Search bar
           Padding(
             padding: const EdgeInsets.all(12),
             child: TextField(
@@ -123,36 +123,44 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   icon: const Icon(Icons.filter_list),
                   onPressed: _openFilters,
                 ),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: Colors.grey[100],
               ),
-              // Bug 11 Fix: Real-time filtering
               onChanged: (v) => setState(() => _search = v.trim().toLowerCase()),
             ),
           ),
-          SizedBox(
-            height: 48,
+
+          // Category selector
+          Container(
+            height: 56,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 ChoiceChip(
                   label: const Text("Land"),
                   selected: _category == "land",
-                  onSelected: (_) => setState(() => _category = "land"),
+                  onSelected: (_) => setState(() {
+                    _category = "land";
+                    _filters = {};
+                  }),
                 ),
                 const SizedBox(width: 8),
                 ChoiceChip(
                   label: const Text("Electronics"),
                   selected: _category == "electronics",
-                  onSelected: (_) => setState(() => _category = "electronics"),
+                  onSelected: (_) => setState(() {
+                    _category = "electronics";
+                    _filters = {};
+                  }),
                 ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.tune),
-                  onPressed: _openFilters,
-                )
               ],
             ),
           ),
+
+          // Asset list
           Expanded(
             child: AssetListView(
               category: _category,
@@ -166,7 +174,226 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   }
 }
 
-/// Asset List View (2-column grid)
+// ═══════════════════════════════════════════════════════════
+// MY ASSETS SCREEN (Integrated)
+// ═══════════════════════════════════════════════════════════
+
+class MyAssetsScreen extends StatefulWidget {
+  const MyAssetsScreen({super.key});
+
+  @override
+  State<MyAssetsScreen> createState() => _MyAssetsScreenState();
+}
+
+class _MyAssetsScreenState extends State<MyAssetsScreen> {
+  final BlockchainServiceEnhanced _blockchain = BlockchainServiceEnhanced();
+  bool _loading = false;
+
+  Future<void> _ensureWalletConnected() async {
+    if (!_blockchain.isConnected) {
+      await _blockchain.connectWallet(context);
+    }
+  }
+
+  Future<void> _claimRent(int propertyId) async {
+    setState(() => _loading = true);
+    try {
+      await _ensureWalletConnected();
+      final tx = await _blockchain.claimLandRent(propertyId);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Transaction Sent! Waiting for confirmation...'),
+        ));
+      }
+
+      if (tx != null) {
+        await _blockchain.waitForConfirmation(tx);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Rent Claimed Successfully!'),
+            backgroundColor: Colors.green,
+          ));
+        }
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _submitReview(int tokenId) async {
+    final txtCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Submit Blockchain Review"),
+        content: TextField(
+          controller: txtCtrl,
+          decoration: const InputDecoration(hintText: "Enter your review..."),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () async {
+              if (txtCtrl.text.isEmpty) return;
+              Navigator.pop(ctx);
+              try {
+                await _ensureWalletConnected();
+                final tx = await _blockchain.submitElectronicsReview(
+                    tokenId: tokenId,
+                    reviewText: txtCtrl.text
+                );
+
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text("Review Transaction Sent!"),
+                    backgroundColor: Colors.green,
+                  ));
+                }
+              } catch (e) {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+              }
+            },
+            child: const Text("Submit"),
+          )
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Center(child: Text("Login required"));
+
+    return StreamBuilder<QuerySnapshot>(
+      // Assumes assets are tracked in an 'orders' collection linked to user
+      stream: db.collection('orders').where('buyerId', isEqualTo: user.uid).snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        final orders = snapshot.data!.docs;
+
+        if (orders.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey),
+                const SizedBox(height: 16),
+                const Text("No assets owned yet"),
+                TextButton(
+                  onPressed: () {
+                    // Switch to Home tab (handled by parent logic usually, but here just a hint)
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Go to Home to buy assets")));
+                  },
+                  child: const Text("Browse Marketplace"),
+                )
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: orders.length,
+          itemBuilder: (context, index) {
+            final order = orders[index].data() as Map<String, dynamic>;
+            final assetId = order['assetId'];
+            final category = order['category'] ?? 'land';
+
+            return FutureBuilder<DocumentSnapshot>(
+              future: db.collection('assets').doc(assetId).get(),
+              builder: (ctx, assetSnap) {
+                if (!assetSnap.hasData) return const SizedBox();
+                if (!assetSnap.data!.exists) return const SizedBox();
+
+                final asset = assetSnap.data!.data() as Map<String, dynamic>;
+                final tokenId = asset['blockchainTokenId'] as int?;
+                final title = asset['title'] ?? 'Unknown Asset';
+                final imgList = asset['images'] as List?;
+                final firstImg = (imgList != null && imgList.isNotEmpty) ? imgList.first : null;
+
+                return Card(
+                  elevation: 3,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: Column(
+                    children: [
+                      // Header with Image
+                      ListTile(
+                        contentPadding: const EdgeInsets.all(8),
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: firstImg != null
+                              ? Image.memory(base64Decode(firstImg), width: 60, height: 60, fit: BoxFit.cover)
+                              : Container(width: 60, height: 60, color: Colors.grey[200], child: const Icon(Icons.image)),
+                        ),
+                        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text(category == 'land' ? 'Fractional Ownership' : 'Electronic Device'),
+                        trailing: tokenId != null
+                            ? const Chip(label: Text('NFT'), backgroundColor: Colors.greenAccent, visualDensity: VisualDensity.compact)
+                            : const Chip(label: Text('Pending'), visualDensity: VisualDensity.compact),
+                      ),
+
+                      const Divider(height: 1),
+
+                      // Actions Area
+                      if (tokenId != null && category == 'land')
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              FutureBuilder<BigInt>(
+                                future: _blockchain.getUnclaimedRent(user.uid, tokenId),
+                                builder: (c, s) {
+                                  if (s.hasError) return const Text('Rent: Err');
+                                  final rent = s.data ?? BigInt.zero;
+                                  return Text('Unclaimed: ${_blockchain.weiToEther(rent)} MATIC',
+                                      style: TextStyle(color: Colors.blue[800], fontWeight: FontWeight.bold));
+                                },
+                              ),
+                              ElevatedButton.icon(
+                                icon: _loading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.monetization_on, size: 16),
+                                label: const Text("Claim Rent"),
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                                onPressed: _loading ? null : () => _claimRent(tokenId),
+                              )
+                            ],
+                          ),
+                        ),
+
+                      if (tokenId != null && category == 'electronics')
+                        Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.rate_review, size: 18),
+                              label: const Text("Write Immutable Review"),
+                              onPressed: () => _submitReview(tokenId),
+                            ),
+                          ),
+                        )
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ASSET LIST VIEW (Search/Filter Logic)
+// ═══════════════════════════════════════════════════════════
+
 class AssetListView extends StatelessWidget {
   final String category;
   final String search;
@@ -179,11 +406,11 @@ class AssetListView extends StatelessWidget {
     required this.filters,
   });
 
-  Query _query() {
+  Query _buildQuery() {
     Query q = db
         .collection("assets")
         .where("category", isEqualTo: category)
-        .orderBy("createdAt", descending: true);
+        .where("verified", isEqualTo: true); // Only verified assets shown in market
 
     if (filters["minPrice"] != null) {
       q = q.where("price", isGreaterThanOrEqualTo: filters["minPrice"]);
@@ -192,40 +419,23 @@ class AssetListView extends StatelessWidget {
       q = q.where("price", isLessThanOrEqualTo: filters["maxPrice"]);
     }
 
-    return q;
+    return q.orderBy("price").orderBy("createdAt", descending: true);
   }
 
-  // Bug 11 Fix: Real-time search matching
   bool _matchesSearch(Map<String, dynamic> d) {
     if (search.isEmpty) return true;
     final title = (d["title"] ?? "").toString().toLowerCase();
     final city = (d["city"] ?? "").toString().toLowerCase();
-    final price = (d["price"] ?? "").toString();
     final brand = (d["brand"] ?? "").toString().toLowerCase();
-    final keywords = (d["searchKeywords"] as List?)
-        ?.map((e) => e.toString().toLowerCase())
-        .join(" ") ??
-        "";
-
-    return title.contains(search) ||
-        city.contains(search) ||
-        brand.contains(search) ||
-        price.contains(search) ||
-        keywords.contains(search);
+    return title.contains(search) || city.contains(search) || brand.contains(search);
   }
 
   bool _matchesFilters(Map<String, dynamic> d) {
-    if (filters["city"] != null &&
-        !d["city"].toString().toLowerCase().contains(filters["city"].toLowerCase())) {
-      return false;
+    if (filters["city"] != null && filters["city"].isNotEmpty) {
+      if (!(d["city"] ?? "").toString().toLowerCase().contains(filters["city"].toLowerCase())) return false;
     }
-    if (filters["brand"] != null &&
-        d["brand"]?.toString().toLowerCase() != filters["brand"].toLowerCase()) {
-      return false;
-    }
-    if (filters["condition"] != null &&
-        d["condition"]?.toString().toLowerCase() != filters["condition"].toLowerCase()) {
-      return false;
+    if (filters["brand"] != null && filters["brand"].isNotEmpty) {
+      if ((d["brand"] ?? "").toString().toLowerCase() != filters["brand"].toLowerCase()) return false;
     }
     return true;
   }
@@ -233,33 +443,19 @@ class AssetListView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: _query().snapshots(),
+      stream: _buildQuery().snapshots(),
       builder: (context, snap) {
         if (snap.hasError) return Center(child: Text("Error: ${snap.error}"));
         if (!snap.hasData) return const Center(child: CircularProgressIndicator());
 
         final docs = snap.data!.docs;
-
-        // Bug 11: Apply real-time filtering
         final filtered = docs.where((e) {
           final data = e.data() as Map<String, dynamic>;
           return _matchesFilters(data) && _matchesSearch(data);
         }).toList();
 
         if (filtered.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.search_off, size: 64, color: Colors.grey),
-                const SizedBox(height: 16),
-                Text(
-                  search.isEmpty ? "No assets found" : "No results for '$search'",
-                  style: const TextStyle(fontSize: 16, color: Colors.grey),
-                ),
-              ],
-            ),
-          );
+          return const Center(child: Text("No assets found matching criteria"));
         }
 
         return GridView.builder(
@@ -273,221 +469,62 @@ class AssetListView extends StatelessWidget {
           ),
           itemBuilder: (_, i) {
             final doc = filtered[i];
-            final data = doc.data() as Map<String, dynamic>;
-            final assetId = doc.id; // make sure you get the correct id
             return AssetGridCard(
-              id: assetId,                 // <-- pass the asset id
-              data: data,                  // <-- pass the asset data
-              currentUserId: FirebaseAuth.instance.currentUser!.uid, // <-- add here
+              id: doc.id,
+              data: doc.data() as Map<String, dynamic>,
+              currentUserId: FirebaseAuth.instance.currentUser!.uid,
             );
           },
         );
-
       },
     );
   }
 }
-//Asset Grid card class
+
+// ═══════════════════════════════════════════════════════════
+// FILTER SHEET & ASSET GRID CARD
+// ═══════════════════════════════════════════════════════════
+
 class AssetGridCard extends StatelessWidget {
   final String id;
   final Map<String, dynamic> data;
-  final String currentUserId; // pass this from parent
+  final String currentUserId;
 
-  const AssetGridCard({
-    super.key,
-    required this.id,
-    required this.data,
-    required this.currentUserId,
-  });
-
-  // Example helper to decode image from base64
-  Uint8List? _decodeImage(String base64) {
-    try {
-      return Base64Decoder().convert(base64);
-    } catch (_) {
-      return null;
-    }
-  }
+  const AssetGridCard({super.key, required this.id, required this.data, required this.currentUserId});
 
   @override
   Widget build(BuildContext context) {
-    final img = (data["images"] is List && data["images"].isNotEmpty)
-        ? _decodeImage(data["images"][0])
-        : null;
-
-    final sellerUid = data['supplierId'];
-    final currentUser = FirebaseAuth.instance.currentUser!.uid;
+    final imgList = data["images"] as List?;
+    final firstImg = (imgList != null && imgList.isNotEmpty) ? imgList[0] : null;
 
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: id)),
       ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: const [
-            BoxShadow(
-              blurRadius: 4,
-              color: Colors.black12,
-              offset: Offset(0, 2),
-            )
-          ],
-        ),
+      child: Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // IMAGE
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-              child: img != null
-                  ? Image.memory(
-                img,
-                height: 130,
-                width: double.infinity,
-                fit: BoxFit.cover,
-              )
-                  : Container(
-                height: 130,
-                width: double.infinity,
-                color: Colors.grey[200],
-                child: const Icon(Icons.image, size: 40),
-              ),
-            ),
-
-            // SCROLLABLE INNER CONTENT
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Title
-                    Text(
-                      data["title"] ?? "Untitled",
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 2),
-
-                    // City or Brand
-                    Text(
-                      data["city"] ?? data["brand"] ?? "",
-                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                    ),
-                    const SizedBox(height: 6),
-
-                    // Price
-                    Text(
-                      "PKR ${data["price"]}",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-
-                    // Seller info row
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 12,
-                          backgroundImage: data['sellerPhoto'] != null
-                              ? NetworkImage(data['sellerPhoto'])
-                              : null,
-                          child: data['sellerPhoto'] == null
-                              ? const Icon(Icons.person, size: 16)
-                              : null,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-
-                                Text(
-                                data['sellerName'] ?? 'Unknown',
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                                 maxLines: 1,
-                                 overflow: TextOverflow.ellipsis,
-                               ),
-
-                              StreamBuilder<DocumentSnapshot>(
-                                stream: FirebaseFirestore.instance
-                                    .collection('users')
-                                    .doc(sellerUid)
-                                    .snapshots(),
-                                builder: (context, snap) {
-                                  // ⛔ still loading or doc missing
-                                  if (!snap.hasData || !snap.data!.exists) {
-                                    return const Text(
-                                      'offline',
-                                      style: TextStyle(fontSize: 10, color: Colors.grey),
-                                    );
-                                  }
-
-                                  final user = snap.data!.data() as Map<String, dynamic>;
-
-                                  final online = user['online'] == true;
-                                  final lastSeen = user['lastSeen'] as Timestamp?;
-
-                                  final lastSeenText = lastSeen != null
-                                      ? "last seen ${lastSeen.toDate().hour}:${lastSeen.toDate().minute}"
-                                      : "offline";
-
-                                  return Text(
-                                    online ? 'online' : lastSeenText,
-                                    style: const TextStyle(fontSize: 10, color: Colors.grey),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        // CHAT ICON BUTTON
-                        if (sellerUid != null && currentUser != sellerUid)
-                          IconButton(
-                            icon: const Icon(Icons.chat, size: 20),
-                            onPressed: () async {
-                              final chatId = id; // asset id as chatId
-                              final chatRef = FirebaseFirestore.instance.collection('chats').doc(chatId);
-
-                              // CREATE CHAT DOCUMENT IF NOT EXISTS
-                              await chatRef.set({
-                                'participants': [currentUser, sellerUid],
-                                'lastMessage': '',
-                                'lastMessageTime': FieldValue.serverTimestamp(),
-                                'unread_$sellerUid': 0,
-                                'unread_$currentUser': 0,
-                              }, SetOptions(merge: true));
-
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => ChatScreen(
-                                    chatId: chatId,
-                                    otherUserId: sellerUid,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                      ],
-                    ),
-
-                    // Verified badge
-                    if (data["verified"] == true)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 4),
-                        child: Icon(Icons.verified, color: Colors.green, size: 18),
-                      ),
-                  ],
-                ),
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                child: firstImg != null
+                    ? Image.memory(base64Decode(firstImg), width: double.infinity, fit: BoxFit.cover)
+                    : Container(color: Colors.grey[200], child: const Center(child: Icon(Icons.image))),
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(data['title'] ?? 'Asset', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text("PKR ${data['price'] ?? 0}", style: const TextStyle(color: Colors.green)),
+                ],
+              ),
+            )
           ],
         ),
       ),
@@ -495,18 +532,12 @@ class AssetGridCard extends StatelessWidget {
   }
 }
 
-/// Filter Sheet (Land + Electronics)
 class FilterSheet extends StatefulWidget {
   final String category;
   final ScrollController controller;
   final Map<String, dynamic> existing;
 
-  const FilterSheet({
-    super.key,
-    required this.category,
-    required this.controller,
-    required this.existing,
-  });
+  const FilterSheet({super.key, required this.category, required this.controller, required this.existing});
 
   @override
   State<FilterSheet> createState() => _FilterSheetState();
@@ -515,142 +546,43 @@ class FilterSheet extends StatefulWidget {
 class _FilterSheetState extends State<FilterSheet> {
   late TextEditingController _city;
   late TextEditingController _brand;
-  late TextEditingController _condition;
-
-  double minP = 0;
-  double maxP = 100000000;
 
   @override
   void initState() {
     super.initState();
     _city = TextEditingController(text: widget.existing["city"] ?? "");
     _brand = TextEditingController(text: widget.existing["brand"] ?? "");
-    _condition = TextEditingController(text: widget.existing["condition"] ?? "");
-    minP = (widget.existing["minPrice"] ?? 0).toDouble();
-    maxP = (widget.existing["maxPrice"] ?? 100000000).toDouble();
-  }
-
-  @override
-  void dispose() {
-    _city.dispose();
-    _brand.dispose();
-    _condition.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final isLand = widget.category == "land";
-
     return Container(
+      padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: SingleChildScrollView(
+      child: ListView(
         controller: widget.controller,
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const Text(
-                  "Filters",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-            TextField(
-              controller: _city,
-              decoration: const InputDecoration(labelText: "City"),
-            ),
-
-            if (!isLand) ...[
-              const SizedBox(height: 12),
-              TextField(
-                controller: _brand,
-                decoration: const InputDecoration(labelText: "Brand"),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _condition,
-                decoration: const InputDecoration(labelText: "Condition (new/used)"),
-              ),
-            ],
-
-            const SizedBox(height: 20),
-            const Text("Price Range"),
-            RangeSlider(
-              values: RangeValues(minP, maxP),
-              min: 0,
-              max: 100000000,
-              onChanged: (v) => setState(() {
-                minP = v.start;
-                maxP = v.end;
-              }),
-              labels: RangeLabels(
-                'PKR ${minP.toInt()}',
-                'PKR ${maxP.toInt()}',
-              ),
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Min: PKR ${minP.toInt()}'),
-                Text('Max: PKR ${maxP.toInt()}'),
-              ],
-            ),
-
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  child: const Text("Clear"),
-                  onPressed: () {
-                    setState(() {
-                      _city.clear();
-                      _brand.clear();
-                      _condition.clear();
-                      minP = 0;
-                      maxP = 100000000;
-                    });
-                  },
-                ),
-                const SizedBox(width: 8),
-                TextButton(
-                  child: const Text("Cancel"),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  child: const Text("Apply"),
-                  onPressed: () {
-                    final out = <String, dynamic>{
-                      "minPrice": minP,
-                      "maxPrice": maxP,
-                    };
-
-                    if (_city.text.trim().isNotEmpty) out["city"] = _city.text.trim();
-                    if (!isLand && _brand.text.trim().isNotEmpty) {
-                      out["brand"] = _brand.text.trim();
-                    }
-                    if (!isLand && _condition.text.trim().isNotEmpty) {
-                      out["condition"] = _condition.text.trim();
-                    }
-
-                    Navigator.pop(context, out);
-                  },
-                )
-              ],
-            )
+        children: [
+          const Text("Filters", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 20),
+          TextField(controller: _city, decoration: const InputDecoration(labelText: "City", border: OutlineInputBorder())),
+          if (widget.category == "electronics") ...[
+            const SizedBox(height: 10),
+            TextField(controller: _brand, decoration: const InputDecoration(labelText: "Brand", border: OutlineInputBorder())),
           ],
-        ),
+          const SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context, {
+                "city": _city.text.trim(),
+                "brand": _brand.text.trim(),
+              });
+            },
+            child: const Text("Apply Filters"),
+          )
+        ],
       ),
     );
   }

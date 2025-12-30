@@ -1,24 +1,26 @@
 // lib/screens/shared_screens.dart
+// Complete shared screens with blockchain, IPFS, and all integrations
+
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:uuid/uuid.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import 'package:carousel_slider/carousel_slider.dart';
-import 'package:image/image.dart' as img;
-
+import 'package:uuid/uuid.dart'; // Added for ID generation
 import 'auth_screens.dart';
 import 'chat_screen.dart';
+import 'review_screen.dart';
+import 'reviews_list.dart';
+import 'qr_generator_screen.dart';
+import 'land_fractions_screen.dart';
+import '../blockchain/blockchain_service.dart';
+import '../blockchain/ipfs_service.dart';
 
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
-final _uuid = const Uuid();
 
-/// Helper: fetch current role
+/// Fetch current user role
 Future<String> fetchCurrentRole() async {
   try {
     final user = auth.currentUser;
@@ -32,7 +34,7 @@ Future<String> fetchCurrentRole() async {
   }
 }
 
-/// Utility: try decode base64
+/// Decode base64 image safely
 Uint8List? _tryBase64Decode(String? s) {
   if (s == null || s.isEmpty) return null;
   try {
@@ -43,8 +45,13 @@ Uint8List? _tryBase64Decode(String? s) {
   }
 }
 
-/// Utility: build image from base64 or URL
-Widget buildAssetImage(String? s, {BoxFit fit = BoxFit.cover, double width = 80, double height = 80}) {
+/// Build asset image from base64 or URL
+Widget buildAssetImage(
+    String? s, {
+      BoxFit fit = BoxFit.cover,
+      double width = 80,
+      double height = 80,
+    }) {
   if (s == null || s.isEmpty) {
     return Container(
       width: width,
@@ -99,7 +106,7 @@ Widget buildAssetImage(String? s, {BoxFit fit = BoxFit.cover, double width = 80,
   );
 }
 
-/// Get document icon based on type
+/// Get document icon
 Widget _getDocumentIcon(String type) {
   switch (type.toLowerCase()) {
     case 'pdf':
@@ -123,74 +130,7 @@ String _formatFileSize(int bytes) {
   return '${(bytes / 1048576).toStringAsFixed(1)} MB';
 }
 
-/// Download document handler
-Future<void> _downloadDocument(BuildContext context, Map<String, dynamic> doc) async {
-  try {
-    final base64Data = doc['data'] as String?;
-    if (base64Data == null || base64Data.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Document data not found')),
-      );
-      return;
-    }
-
-    // Decode base64
-    final bytes = base64Decode(base64Data);
-
-    // For web/desktop, you would save the file differently
-    // This example shows a Snackbar, but you should implement proper file saving
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Document downloaded (${_formatFileSize(bytes.length)})'),
-        action: SnackBarAction(
-          label: 'View',
-          onPressed: () {
-            _viewDocument(context, bytes, doc['type'] ?? 'pdf', doc['name'] ?? 'Document');
-          },
-        ),
-      ),
-    );
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Download failed: $e')),
-    );
-  }
-}
-
-/// View document
-void _viewDocument(BuildContext context, Uint8List bytes, String type, String name) {
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(name),
-      content: type.toLowerCase().contains('image')
-          ? Image.memory(bytes)
-          : SizedBox(
-        width: 300,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _getDocumentIcon(type),
-            const SizedBox(height: 16),
-            Text('Document type: $type'),
-            const SizedBox(height: 8),
-            Text('Size: ${_formatFileSize(bytes.length)}'),
-            const SizedBox(height: 16),
-            const Text('This document is stored as base64. For better experience, consider using a document viewer package.'),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Close'),
-        ),
-      ],
-    ),
-  );
-}
-
-/// Asset Detail Screen (Bug 5 Fix: Display owner name instead of ID)
+/// Complete Asset Detail Screen with Blockchain Integration
 class AssetDetailScreen extends StatefulWidget {
   final String assetId;
   const AssetDetailScreen({super.key, required this.assetId});
@@ -200,13 +140,19 @@ class AssetDetailScreen extends StatefulWidget {
 }
 
 class _AssetDetailScreenState extends State<AssetDetailScreen> {
+  final _blockchainService = BlockchainServiceEnhanced();
+  final _ipfsService = IPFSService();
+  final _uuid = const Uuid();
+
   late Future<Map<String, dynamic?>> _loadFuture;
+  Map<String, dynamic>? _blockchainData;
+  Map<String, dynamic>? _ipfsData;
+  bool _verifyingBlockchain = false;
 
   Future<Map<String, dynamic?>> _load() async {
     final assetSnap = await db.collection('assets').doc(widget.assetId).get();
     final role = await fetchCurrentRole();
 
-    // Bug 5 Fix: Fetch owner name
     String ownerName = 'Unknown';
     if (assetSnap.exists) {
       final ownerId = assetSnap.data()?['ownerId'] ?? assetSnap.data()?['ownerUid'];
@@ -214,13 +160,49 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
         try {
           final ownerSnap = await db.collection('users').doc(ownerId).get();
           if (ownerSnap.exists) {
-            ownerName = ownerSnap.data()?['name'] ?? ownerSnap.data()?['email'] ?? 'Unknown';
+            ownerName = ownerSnap.data()?['name'] ??
+                ownerSnap.data()?['email'] ??
+                'Unknown';
           }
         } catch (_) {}
+      }
+
+      // Load blockchain data if available
+      final blockchainId = assetSnap.data()?['blockchainTokenId'] as int?;
+      if (blockchainId != null) {
+        await _loadBlockchainData(assetSnap.data()!['category'], blockchainId);
       }
     }
 
     return {'assetSnap': assetSnap, 'role': role, 'ownerName': ownerName};
+  }
+
+  Future<void> _loadBlockchainData(String category, int tokenId) async {
+    try {
+      await _blockchainService.init();
+
+      if (category == 'electronics') {
+        _blockchainData = await _blockchainService.getDevice(tokenId);
+      } else if (category == 'land') {
+        _blockchainData = await _blockchainService.getLandProperty(tokenId);
+      }
+
+      // Load IPFS data
+      if (_blockchainData != null) {
+        final ipfsHash = _blockchainData!['ipfsMetadata'] ??
+            _blockchainData!['tokenURI'];
+        if (ipfsHash != null && ipfsHash.isNotEmpty) {
+          final hash = _ipfsService.extractHashFromUrl(ipfsHash);
+          if (hash != null) {
+            _ipfsData = await _ipfsService.retrieveJSON(hash);
+          }
+        }
+      }
+
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Error loading blockchain data: $e');
+    }
   }
 
   @override
@@ -234,185 +216,720 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Asset Detail'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code),
+            onPressed: () => _showQRCode(context),
+          ),
+        ],
       ),
       body: FutureBuilder<Map<String, dynamic?>>(
         future: _loadFuture,
         builder: (context, snapshot) {
-          if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text('Error: ${snapshot.error}'),
+                ],
+              ),
+            );
+          }
 
-          final assetSnap = snapshot.data!['assetSnap'] as DocumentSnapshot<Map<String, dynamic>>;
-          final role = (snapshot.data!['role'] as String?) ?? 'user';
-          final ownerName = (snapshot.data!['ownerName'] as String?) ?? 'Unknown';
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-          if (!assetSnap.exists) return const Center(child: Text('Asset not found'));
-          final data = assetSnap.data() ?? <String, dynamic>{};
+          final assetSnap = snapshot.data!['assetSnap'] as DocumentSnapshot;
+          final role = snapshot.data!['role'] as String;
+          final ownerName = snapshot.data!['ownerName'] as String;
 
-          db.collection('assets').doc(widget.assetId).update({'views': FieldValue.increment(1)}).catchError((_) {});
+          if (!assetSnap.exists) {
+            return const Center(child: Text('Asset not found'));
+          }
 
-          final images = (data['images'] as List?)?.cast<String>() ?? [];
+          final data = assetSnap.data() as Map<String, dynamic>;
 
-          return SingleChildScrollView(
+          // Increment view count
+          db.collection('assets')
+              .doc(widget.assetId)
+              .update({'views': FieldValue.increment(1)})
+              .catchError((_) {});
+
+          return _buildAssetDetails(context, data, role, ownerName);
+        },
+      ),
+    );
+  }
+
+  Widget _buildAssetDetails(
+      BuildContext context,
+      Map<String, dynamic> data,
+      String role,
+      String ownerName,
+      ) {
+    final images = (data['images'] as List?)?.cast<String>() ?? [];
+    final hasBlockchainId = data['blockchainTokenId'] != null;
+    final isLand = data['category'] == 'land';
+
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Image carousel
+          if (images.isNotEmpty)
+            CarouselSlider(
+              options: CarouselOptions(
+                height: 250,
+                autoPlay: true,
+                enlargeCenterPage: true,
+              ),
+              items: images.map((img) {
+                return Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.symmetric(horizontal: 5),
+                  child: buildAssetImage(
+                    img,
+                    width: double.infinity,
+                    height: 250,
+                    fit: BoxFit.cover,
+                  ),
+                );
+              }).toList(),
+            )
+          else
+            Container(
+              height: 250,
+              color: Colors.grey[200],
+              child: const Center(
+                child: Icon(Icons.image, size: 80, color: Colors.grey),
+              ),
+            ),
+
+          Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (images.isNotEmpty)
-                  CarouselSlider(
-                    options: CarouselOptions(height: 220, autoPlay: true),
-                    items: images.map((img) {
-                      return SizedBox(
-                        width: double.infinity,
-                        child: buildAssetImage(img, width: double.infinity, height: 220, fit: BoxFit.cover),
-                      );
-                    }).toList(),
-                  )
-                else
-                  Container(
-                    height: 220,
-                    color: Colors.grey[200],
-                    child: const Center(child: Icon(Icons.image, size: 80)),
-                  ),
+                // Title and blockchain badge
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        data['title'] ?? 'Untitled',
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    if (hasBlockchainId)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.verified, color: Colors.white, size: 16),
+                            SizedBox(width: 4),
+                            Text(
+                              'NFT',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+
                 const SizedBox(height: 12),
+
+                // Price
                 Text(
-                  data['title'] ?? data['name'] ?? '',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'PKR ${data['price'] ?? 0}',
-                  style: const TextStyle(fontSize: 18, color: Colors.green),
-                ),
-                const SizedBox(height: 12),
-                Text(data['description'] ?? ''),
-                const SizedBox(height: 12),
-
-                // Bug 5 Fix: Display owner name
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Owner'),
-                  subtitle: Text(ownerName),
-                  leading: const SizedBox(width: 56, height: 56, child: Icon(Icons.person)),
+                  'PKR ${data['price']}',
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
+                  ),
                 ),
 
-                if (data['category'] == 'land') ...[
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Plot Area'),
-                    subtitle: Text('${data['plotArea'] ?? '—'} ${data['plotUnit'] ?? ''}'),
+                const SizedBox(height: 16),
+
+                // Description
+                if (data['description'] != null) ...[
+                  const Text(
+                    'Description',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('City'),
-                    subtitle: Text(data['city'] ?? '—'),
+                  const SizedBox(height: 8),
+                  Text(
+                    data['description'],
+                    style: const TextStyle(fontSize: 15),
                   ),
+                  const SizedBox(height: 16),
                 ],
-                if (data['category'] == 'electronics') ...[
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Brand'),
-                    subtitle: Text(data['brand'] ?? '—'),
-                  ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Condition'),
-                    subtitle: Text(data['condition'] ?? '—'),
-                  ),
+
+                // Blockchain verification section
+                if (hasBlockchainId && _blockchainData != null) ...[
+                  _buildBlockchainSection(data['category']),
+                  const SizedBox(height: 16),
                 ],
+
+                // Category-specific details
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Details',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildDetailRow('Owner', ownerName),
+                        if (isLand) ...[
+                          _buildDetailRow(
+                            'Plot Area',
+                            '${data['plotArea']} ${data['plotUnit']}',
+                          ),
+                          _buildDetailRow('City', data['city'] ?? '—'),
+                          _buildDetailRow('Location', data['location'] ?? '—'),
+                        ] else ...[
+                          _buildDetailRow('Brand', data['brand'] ?? '—'),
+                          _buildDetailRow('Model', data['model'] ?? '—'),
+                          _buildDetailRow('Condition', data['condition'] ?? '—'),
+                          if (data['serial'] != null)
+                            _buildDetailRow('Serial', data['serial']),
+                          if (data['warranty'] != null)
+                            _buildDetailRow(
+                              'Warranty',
+                              '${data['warranty']} months',
+                            ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Documents
+                if (data['documents'] is List &&
+                    (data['documents'] as List).isNotEmpty) ...[
+                  _buildDocumentsSection(data['documents'] as List),
+                  const SizedBox(height: 16),
+                ],
+
+                // Action buttons
+                if (!role.contains('supplier')) ...[
+                  _buildUserActions(context, data),
+                ] else ...[
+                  _buildSupplierActions(context, data, role),
+                ],
+
+                const SizedBox(height: 24),
+
+                // Reviews section
+                const Text(
+                  'Reviews',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const SizedBox(height: 12),
-
-                // Updated Document Section
-                if (data['documents'] is List && (data['documents'] as List).isNotEmpty) ...[
-                  const Text('Documents', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 6),
-                  ...((data['documents'] as List).map((d) {
-                    final doc = d as Map<String, dynamic>;
-                    final title = doc['name'] ?? 'Document';
-                    final type = doc['type'] ?? 'unknown';
-
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: _getDocumentIcon(type),
-                      title: Text(title),
-                      subtitle: Text('${type.toUpperCase()} • ${_formatFileSize(doc['size'] ?? 0)}'),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.download),
-                        onPressed: () => _downloadDocument(context, doc),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ReviewScreen(
+                          assetId: widget.assetId,
+                          blockchainTokenId: data['blockchainTokenId'] as int?,
+                          assetType: data['category'] ?? 'electronics',
+                        ),
                       ),
                     );
-                  }).toList()),
-                  const SizedBox(height: 12),
-                ],
-
-                Center(child: QrImageView(data: 'asset://${widget.assetId}', size: 140)),
+                  },
+                  icon: const Icon(Icons.rate_review),
+                  label: const Text('Write a Review'),
+                ),
                 const SizedBox(height: 12),
-
-                if (!role.toLowerCase().contains('supplier')) ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _requestToBuy(
-                            context,
-                            widget.assetId,
-                            data['ownerId'] ?? data['ownerUid'],
-                          ),
-                          icon: const Icon(Icons.shopping_cart),
-                          label: const Text('Request to Buy'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: () => _toggleFavorite(context, widget.assetId),
-                        icon: const Icon(Icons.favorite_border),
-                        label: const Text('Favorite'),
-                      ),
-                    ],
-                  ),
-                ] else ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _verifyAsset(context, widget.assetId),
-                          icon: const Icon(Icons.verified),
-                          label: const Text('Verify Asset'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: () => _transferOwnership(context, widget.assetId),
-                        icon: const Icon(Icons.swap_horiz),
-                        label: const Text('Transfer'),
-                      ),
-                    ],
-                  ),
-                ],
-
-                const SizedBox(height: 18),
-                const Text('Related Items', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                RelatedItemsList(type: data['category'] ?? data['type'], city: data['city']),
+                ReviewsList(assetId: widget.assetId),
               ],
             ),
-          );
-        },
+          ),
+        ],
       ),
-
     );
   }
 
-  Future<void> _requestToBuy(BuildContext ctx, String assetId, String? sellerId) async {
+  Widget _buildBlockchainSection(String category) {
+    return Card(
+      color: Colors.blue[50],
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.verified_user, color: Colors.blue[700]),
+                const SizedBox(width: 8),
+                const Text(
+                  'Blockchain Verified',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (_blockchainData != null) ...[
+              if (category == 'electronics') ...[
+                _buildDetailRow('Brand', _blockchainData!['brand']),
+                _buildDetailRow('Model', _blockchainData!['model']),
+                _buildDetailRow('Serial', _blockchainData!['serialNumber']),
+                _buildDetailRow(
+                  'Verified',
+                  _blockchainData!['isVerified'] ? 'Yes' : 'Pending',
+                ),
+              ] else if (category == 'land') ...[
+                _buildDetailRow('Location', _blockchainData!['location']),
+                _buildDetailRow('City', _blockchainData!['city']),
+                _buildDetailRow(
+                  'Total Fractions',
+                  _blockchainData!['totalFractions'].toString(),
+                ),
+                _buildDetailRow(
+                  'Price per Fraction',
+                  '${_blockchainService.weiToEther(_blockchainData!['pricePerFraction'])} MATIC',
+                ),
+              ],
+              if (_ipfsData != null) ...[
+                const SizedBox(height: 8),
+                const Divider(),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.cloud_done, color: Colors.green[700]),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Documents stored on IPFS',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDocumentsSection(List documents) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Documents',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...documents.map((doc) {
+              final d = doc as Map<String, dynamic>;
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: _getDocumentIcon(d['type'] ?? 'file'),
+                title: Text(d['name'] ?? 'Document'),
+                subtitle: Text(
+                  '${(d['type'] ?? 'FILE').toString().toUpperCase()} • ${_formatFileSize(d['size'] ?? 0)}',
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.download),
+                  onPressed: () {
+                    // Download document
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Downloading ${d['name']}...'),
+                      ),
+                    );
+                  },
+                ),
+              );
+            }).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserActions(BuildContext context, Map<String, dynamic> data) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _requestToBuy(
+                  context,
+                  widget.assetId,
+                  data['ownerId'] ?? data['ownerUid'],
+                  data, // Pass full data
+                ),
+                icon: const Icon(Icons.shopping_cart),
+                label: Text(data['category'] == 'land' ? 'Purchase/Invest' : 'Request to Buy'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (data['blockchainTokenId'] != null)
+              OutlinedButton.icon(
+                onPressed: () async {
+                  // Verify on blockchain
+                  final blockchainService = BlockchainServiceEnhanced();
+                  await blockchainService.init();
+
+                  if (data['category'] == 'electronics') {
+                    final device = await blockchainService.getDevice(data['blockchainTokenId']);
+                    if (device != null) {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Blockchain Verification'),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Brand: ${device['brand']}'),
+                              Text('Model: ${device['model']}'),
+                              Text('Serial: ${device['serialNumber']}'),
+                              Text('Verified: ${device['isVerified'] ? '✓' : '✗'}'),
+                            ],
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('Close'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  } else {
+                    final property = await blockchainService.getLandProperty(data['blockchainTokenId']);
+                    if (property != null) {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Blockchain Verification'),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Location: ${property['location']}'),
+                              Text('Area: ${property['totalArea']} ${property['areaUnit']}'),
+                              Text('Fractions: ${property['totalFractions']}'),
+                              Text('Verified: ${property['isVerified'] ? '✓' : '✗'}'),
+                            ],
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('Close'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.verified),
+                label: const Text('Verify'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 50),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _toggleFavorite(context, widget.assetId),
+                icon: const Icon(Icons.favorite_border),
+                label: const Text('Favorite'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  // Share asset
+                },
+                icon: const Icon(Icons.share),
+                label: const Text('Share'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSupplierActions(BuildContext context, Map<String, dynamic> data, String role) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _verifyAsset(context, widget.assetId),
+                icon: const Icon(Icons.verified),
+                label: const Text('Verify'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => QRGeneratorScreen(
+                        assetId: widget.assetId,
+                        category: data['category'],
+                        blockchainTokenId: data['blockchainTokenId'],
+                        title: data['title'] ?? 'Asset',
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.qr_code_2),
+                label: const Text('QR Code'),
+              ),
+            ),
+          ],
+        ),
+        if (role.toLowerCase().contains('supplier') && data['blockchainTokenId'] != null) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () async {
+                // Show transfer dialog
+                final recipientCtrl = TextEditingController();
+
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Transfer Ownership'),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('Transfer this NFT to another address:'),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: recipientCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Recipient Address/User ID',
+                            hintText: '0x... or user ID',
+                          ),
+                        ),
+                      ],
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Cancel'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Transfer'),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirmed == true && recipientCtrl.text.isNotEmpty) {
+                  // TODO: Implement blockchain transfer
+                  // This would call smart contract transferFrom function
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Transfer initiated (implementation pending)'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  }
+                }
+
+                recipientCtrl.dispose();
+              },
+              icon: const Icon(Icons.send),
+              label: const Text('Transfer NFT'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              '$label:',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showQRCode(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('QR Code')),
+          body: Center(
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    'Scan to verify',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.qr_code,
+                      size: 200,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _requestToBuy(BuildContext ctx, String assetId, String? sellerId, Map<String, dynamic> assetData) async {
     final user = auth.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please login to request')));
+      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please login')));
       return;
     }
 
+    final category = assetData['category'] ?? '';
+    final blockchainTokenId = assetData['blockchainTokenId'] as int?;
+
+    // For LAND: Show fractional purchase option
+    if (category == 'land' && blockchainTokenId != null) {
+      final choice = await showDialog<String>(
+        context: ctx,
+        builder: (dialogCtx) => AlertDialog(
+          title: const Text('Purchase Options'),
+          content: const Text('Would you like to purchase fractions of this property?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx, 'cancel'),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx, 'full'),
+              child: const Text('Request Full Purchase'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogCtx, 'fractions'),
+              child: const Text('Buy Fractions'),
+            ),
+          ],
+        ),
+      );
+
+      if (choice == 'fractions') {
+        // Navigate to fractional purchase screen
+        if (ctx.mounted) {
+          Navigator.push(
+            ctx,
+            MaterialPageRoute(
+              builder: (_) => LandFractionsScreen(
+                assetId: assetId,
+                blockchainPropertyId: blockchainTokenId,
+              ),
+            ),
+          );
+        }
+        return;
+      } else if (choice != 'full') {
+        return; // User cancelled
+      }
+    }
+
+    // For ELECTRONICS or full land purchase: Create transaction request
     final existing = await db
         .collection('transactions')
         .where('assetId', isEqualTo: assetId)
@@ -422,9 +939,11 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
         .get();
 
     if (existing.docs.isNotEmpty) {
-      ScaffoldMessenger.of(ctx).showSnackBar(
-        const SnackBar(content: Text('You already have a request for this asset')),
-      );
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          const SnackBar(content: Text('You already have a request for this asset')),
+        );
+      }
       return;
     }
 
@@ -435,132 +954,71 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
       'buyerUid': user.uid,
       'sellerUid': sellerId,
       'status': 'pending',
+      'category': category,
+      'blockchainTokenId': blockchainTokenId,
       'createdAt': FieldValue.serverTimestamp(),
     });
 
+    // Create chat document
     await db.collection('chats').doc(txId).set({
       'transactionId': txId,
+      'assetId': assetId,
+      'buyerUid': user.uid,
+      'sellerUid': sellerId,
       'createdAt': FieldValue.serverTimestamp(),
     });
 
     if (ctx.mounted) {
-      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Request Sent')));
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Request sent! Chat will open when supplier approves.'),
+          backgroundColor: Colors.green,
+        ),
+      );
     }
   }
 
   Future<void> _verifyAsset(BuildContext ctx, String assetId) async {
     await db.collection('assets').doc(assetId).update({'verified': true});
     if (ctx.mounted) {
-      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Asset marked verified')));
-    }
-  }
-
-  Future<void> _transferOwnership(BuildContext ctx, String assetId) async {
-    if (ctx.mounted) {
       ScaffoldMessenger.of(ctx).showSnackBar(
-        const SnackBar(content: Text('Transfer ownership - not implemented')),
+        const SnackBar(content: Text('Asset verified successfully')),
       );
+      setState(() {
+        _loadFuture = _load();
+      });
     }
   }
 
   Future<void> _toggleFavorite(BuildContext ctx, String assetId) async {
     final user = auth.currentUser;
-    if (user == null) {
-      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please login to favorite')));
-      return;
-    }
-    final favRef = db.collection('users').doc(user.uid).collection('favorites').doc(assetId);
+    if (user == null) return;
+
+    final favRef = db
+        .collection('users')
+        .doc(user.uid)
+        .collection('favorites')
+        .doc(assetId);
+
     final doc = await favRef.get();
     if (doc.exists) {
       await favRef.delete();
       if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Removed from favorites')));
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          const SnackBar(content: Text('Removed from favorites')),
+        );
       }
     } else {
-      await favRef.set({'assetId': assetId, 'createdAt': FieldValue.serverTimestamp()});
+      await favRef.set({
+        'assetId': assetId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
       if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Added to favorites')));
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          const SnackBar(content: Text('Added to favorites')),
+        );
       }
     }
-  }
-}
-
-/// QR Scanner Screen
-class QRScannerScreen extends StatefulWidget {
-  const QRScannerScreen({super.key});
-  @override
-  State<QRScannerScreen> createState() => _QRScannerScreenState();
-}
-
-class _QRScannerScreenState extends State<QRScannerScreen> {
-  final _controller = MobileScannerController();
-  bool _processing = false;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _handleCode(String code) async {
-    if (_processing) return;
-    setState(() => _processing = true);
-    try {
-      final id = code.startsWith('asset://') ? code.split('://').last : code;
-      final doc = await db.collection('assets').doc(id).get();
-      if (!doc.exists) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Asset not found')));
-        }
-        return;
-      }
-
-      final role = await fetchCurrentRole();
-      if (role.toLowerCase().contains('supplier')) {
-        await db.collection('assets').doc(id).update({'verifications': FieldValue.increment(1)});
-      }
-
-      if (!mounted) return;
-      Navigator.push(context, MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: id)));
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Scan error: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _processing = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Scan QR'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Stack(
-        children: [
-          MobileScanner(
-            controller: _controller,
-            onDetect: (capture) {
-              final code = capture.barcodes.first.rawValue;
-              if (code != null) _handleCode(code);
-            },
-          ),
-          if (_processing)
-            const Align(
-              alignment: Alignment.topCenter,
-              child: Padding(
-                padding: EdgeInsets.all(12),
-                child: CircularProgressIndicator(),
-              ),
-            ),
-        ],
-      ),
-    );
   }
 }
 
@@ -753,12 +1211,6 @@ class TransactionsScreen extends StatelessWidget {
                 itemBuilder: (context, i) {
                   final t = docs[i].data();
                   final id = docs[i].id;
-
-                  final transactionId = id;
-
-                  final otherUid = role.toLowerCase().contains('supplier')
-                      ? t['buyerUid']
-                      : t['sellerUid'];
 
                   final ts = t['createdAt'] as Timestamp?;
                   final time = ts != null ? "${ts.toDate().year}-${ts.toDate().month}-${ts.toDate().day}" : "";
