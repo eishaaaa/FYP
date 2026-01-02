@@ -1,3 +1,4 @@
+// lib/blockchain/blockchain_service.dart
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -20,6 +21,15 @@ class BlockchainServiceEnhanced {
     _client = Web3Client(ContractConfig.rpcUrl, http.Client());
   }
 
+  /// Helper: Aggressively removes invisible characters and spaces
+  String _sanitizeAddress(String address) {
+    String clean = address.replaceAll(RegExp(r'[^0-9a-fA-FxX]'), '');
+    if (!clean.startsWith('0x')) {
+      clean = '0x$clean';
+    }
+    return clean;
+  }
+
   /// Initialize contracts and load ABIs
   Future<void> init() async {
     if (_isInitialized) return;
@@ -31,21 +41,23 @@ class BlockchainServiceEnhanced {
       final electronicsJson = jsonDecode(electronicsAbi);
       final landJson = jsonDecode(landAbi);
 
+      final cleanElectronicsAddr = _sanitizeAddress(ContractConfig.electronicsNFTAddress);
+      final cleanLandAddr = _sanitizeAddress(ContractConfig.landNFTAddress);
+
       _electronicsContract = DeployedContract(
         ContractAbi.fromJson(jsonEncode(electronicsJson['abi']), 'ElectronicsNFT'),
-        EthereumAddress.fromHex(ContractConfig.electronicsNFTAddress),
+        EthereumAddress.fromHex(cleanElectronicsAddr),
       );
 
       _landContract = DeployedContract(
         ContractAbi.fromJson(jsonEncode(landJson['abi']), 'LandFractionalNFT'),
-        EthereumAddress.fromHex(ContractConfig.landNFTAddress),
+        EthereumAddress.fromHex(cleanLandAddr),
       );
 
       _isInitialized = true;
       print('✅ Blockchain Service Initialized');
     } catch (e) {
       print('❌ Blockchain Init Error: $e');
-      // Do not rethrow in production to avoid crashing UI on startup
     }
   }
 
@@ -58,7 +70,6 @@ class BlockchainServiceEnhanced {
       await modal.openModalView();
     }
 
-    // Safe null check for namespaces
     if (modal.isConnected && modal.session != null) {
       final session = modal.session!;
       if (session.namespaces != null && session.namespaces?['eip155'] != null) {
@@ -117,20 +128,31 @@ class BlockchainServiceEnhanced {
 
     try {
       final gasPrice = await _client.getGasPrice();
-      final estimatedGas = await _client.estimateGas(
-        sender: EthereumAddress.fromHex(connectedAddress!),
-        to: transaction.to,
-        data: transaction.data,
-        value: transaction.value,
-      );
+      // Increase gas price slightly (10%) to ensure it goes through
+      final adjustedGasPrice = (gasPrice.getInWei * BigInt.from(110)) ~/ BigInt.from(100);
+
+      BigInt estimatedGas;
+      try {
+        estimatedGas = await _client.estimateGas(
+          sender: EthereumAddress.fromHex(connectedAddress!),
+          to: transaction.to,
+          data: transaction.data,
+          value: transaction.value,
+        );
+      } catch (e) {
+        print('⚠️ Gas estimation failed, using fallback: $e');
+        estimatedGas = BigInt.from(500000);
+      }
+
+      final adjustedGasLimit = (estimatedGas * BigInt.from(120)) ~/ BigInt.from(100);
 
       final txParams = {
         'from': connectedAddress,
         'to': transaction.to?.toString(),
         'data': bytesToHex(transaction.data ?? Uint8List(0), include0x: true),
         'value': '0x${(transaction.value?.getInWei ?? BigInt.zero).toRadixString(16)}',
-        'gas': '0x${estimatedGas.toRadixString(16)}',
-        'gasPrice': '0x${gasPrice.getInWei.toRadixString(16)}',
+        'gas': '0x${adjustedGasLimit.toRadixString(16)}',
+        'gasPrice': '0x${adjustedGasPrice.toRadixString(16)}',
       };
 
       final session = _walletService.appKitModal.session!;
@@ -151,7 +173,7 @@ class BlockchainServiceEnhanced {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // ELECTRONICS METHODS (Read & Write)
+  // ELECTRONICS METHODS
   // ═══════════════════════════════════════════════════════════
 
   Future<Map<String, dynamic>?> getDevice(int tokenId) async {
@@ -163,7 +185,6 @@ class BlockchainServiceEnhanced {
         function: function,
         params: [BigInt.from(tokenId)],
       );
-      // Result: [brand, model, serial, warranty, mintedAt, originalOwner, isVerified]
       return {
         'brand': result[0],
         'model': result[1],
@@ -206,7 +227,9 @@ class BlockchainServiceEnhanced {
 
   Future<String?> submitElectronicsReview({required int tokenId, required String reviewText}) async {
     await init();
-    final reviewHash = keccakUtf8(reviewText);
+    final reviewBytes = Uint8List.fromList(utf8.encode(reviewText));
+    // Keccak256 is available in web3dart package
+    final reviewHash = keccak256(reviewBytes);
     final function = _electronicsContract.function('submitReview');
     final transaction = Transaction.callContract(
       contract: _electronicsContract,
@@ -216,8 +239,26 @@ class BlockchainServiceEnhanced {
     return await _sendTransaction(transaction);
   }
 
+  Future<String?> transferElectronic({
+    required String toAddress,
+    required int tokenId,
+  }) async {
+    await init();
+    final function = _electronicsContract.function('safeTransferFrom');
+    final transaction = Transaction.callContract(
+      contract: _electronicsContract,
+      function: function,
+      parameters: [
+        EthereumAddress.fromHex(connectedAddress!),
+        EthereumAddress.fromHex(toAddress),
+        BigInt.from(tokenId),
+      ],
+    );
+    return await _sendTransaction(transaction);
+  }
+
   // ═══════════════════════════════════════════════════════════
-  // LAND METHODS (Read & Write)
+  // LAND METHODS
   // ═══════════════════════════════════════════════════════════
 
   Future<Map<String, dynamic>?> getLandProperty(int propertyId) async {
@@ -344,6 +385,27 @@ class BlockchainServiceEnhanced {
     return await _sendTransaction(transaction);
   }
 
+  Future<String?> transferLandFraction({
+    required String toAddress,
+    required int propertyId,
+    required int amount,
+  }) async {
+    await init();
+    final function = _landContract.function('safeTransferFrom');
+    final transaction = Transaction.callContract(
+      contract: _landContract,
+      function: function,
+      parameters: [
+        EthereumAddress.fromHex(connectedAddress!),
+        EthereumAddress.fromHex(toAddress),
+        BigInt.from(propertyId),
+        BigInt.from(amount),
+        Uint8List(0),
+      ],
+    );
+    return await _sendTransaction(transaction);
+  }
+
   // ═══════════════════════════════════════════════════════════
   // UTILS
   // ═══════════════════════════════════════════════════════════
@@ -353,7 +415,12 @@ class BlockchainServiceEnhanced {
   }
 
   BigInt etherToWei(double ether) {
-    return EtherAmount.fromBase10String(EtherUnit.ether, ether.toString()).getInWei;
+    String val = ether.toString();
+    // Safety check: if number is "2.0", turn it into "2"
+    if (val.endsWith('.0')) {
+      val = val.substring(0, val.length - 2);
+    }
+    return EtherAmount.fromBase10String(EtherUnit.ether, val).getInWei;
   }
 
   String weiToEther(BigInt wei) {

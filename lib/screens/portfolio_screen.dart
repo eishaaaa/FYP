@@ -124,6 +124,115 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
     }
   }
 
+  // NEW: Transfer Dialog
+  Future<void> _showTransferDialog(PortfolioItem holding) async {
+    final addressController = TextEditingController();
+    final amountController = TextEditingController(text: '1');
+    bool transferring = false;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text('Transfer ${holding.title}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'You own ${holding.fractions} fractions',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: addressController,
+                decoration: const InputDecoration(
+                  labelText: 'Recipient Address (0x...)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.wallet),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Amount to Transfer',
+                  border: const OutlineInputBorder(),
+                  helperText: 'Max: ${holding.fractions}',
+                ),
+              ),
+              if (transferring) ...[
+                const SizedBox(height: 16),
+                const Center(child: CircularProgressIndicator()),
+                const Text('Please confirm in wallet...',
+                    style: TextStyle(fontSize: 12)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: transferring ? null : () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: transferring
+                  ? null
+                  : () async {
+                final to = addressController.text.trim();
+                final amount = int.tryParse(amountController.text) ?? 0;
+
+                if (to.isEmpty || !to.startsWith('0x')) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Invalid Address')),
+                  );
+                  return;
+                }
+                if (amount <= 0 || amount > holding.fractions) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Invalid Amount')),
+                  );
+                  return;
+                }
+
+                setState(() => transferring = true);
+
+                try {
+                  final tx = await _blockchainService.transferLandFraction(
+                    toAddress: to,
+                    propertyId: holding.propertyId,
+                    amount: amount,
+                  );
+
+                  if (mounted) Navigator.pop(context);
+
+                  if (tx != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content:
+                        Text('Transfer initiated! TX: ${tx.substring(0, 8)}...'),
+                      ),
+                    );
+                    // Refresh portfolio after delay
+                    Future.delayed(
+                        const Duration(seconds: 5), _loadPortfolio);
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    setState(() => transferring = false);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  }
+                }
+              },
+              child: const Text('Transfer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -395,19 +504,28 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                 ),
               ),
 
-              // Action button
-              IconButton(
-                icon: const Icon(Icons.arrow_forward_ios, size: 16),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => RentDistributionScreen(
-                        propertyId: holding.propertyId,
-                      ),
-                    ),
-                  );
-                },
+              // Action buttons (Transfer & Rent)
+              Column(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.send, size: 20, color: Colors.blue),
+                    tooltip: 'Transfer',
+                    onPressed: () => _showTransferDialog(holding),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => RentDistributionScreen(
+                            propertyId: holding.propertyId,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
             ],
           ),
@@ -443,6 +561,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
     );
   }
 }
+
 class PortfolioItem {
   final String assetId;
   final int propertyId;

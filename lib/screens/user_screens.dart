@@ -1,13 +1,11 @@
 // lib/screens/user_screens.dart
 import 'dart:convert';
-import 'dart:typed_data';
+// import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
-// Internal Imports
 import 'shared_screens.dart';
-import 'chat_screen.dart';
+// import 'chat_screen.dart';
 import 'chat_list_screen.dart';
 import 'portfolio_screen.dart';
 import 'qr_scanner_enhanced.dart';

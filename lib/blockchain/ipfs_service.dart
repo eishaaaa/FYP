@@ -6,8 +6,8 @@ import 'package:crypto/crypto.dart';
 
 class IPFSService {
   // Pinata credentials (free tier: 1GB storage)
-  static const String _pinataApiKey = 'YOUR_PINATA_API_KEY';
-  static const String _pinataSecretKey = 'YOUR_PINATA_SECRET_KEY';
+  static const String _pinataApiKey = ' 5cbc426b2267259c8bf7';
+  static const String _pinataSecretKey = 'f4afe708f3a1a20cb6c9f9f51262f5c2cf15ca301e9b117312573e575268d56d';
 
   // Pinata endpoints
   static const String _pinataUploadUrl = 'https://api.pinata.cloud/pinning/pinFileToIPFS';

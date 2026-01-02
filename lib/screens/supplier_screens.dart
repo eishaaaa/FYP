@@ -1,6 +1,4 @@
 // lib/screens/supplier_screens.dart
-// COMPLETE MERGE: UI + Firestore + IPFS + Blockchain + WalletConnect
-// lib/screens/supplier_screens.dart
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -28,7 +26,10 @@ extension _Cap on String {
   String capitalize() => isEmpty ? this : '${this[0].toUpperCase()}${substring(1)}';
 }
 
-/// Compress image aggressively for Firestore (Speed optimization)
+// -----------------------------------------------------------------------------
+// UTILITIES (Compression & Storage)
+// -----------------------------------------------------------------------------
+
 Future<String> compressImageToBase64(Uint8List bytes, {int quality = 70}) async {
   final image = img.decodeImage(bytes);
   if (image == null) return base64Encode(bytes);
@@ -48,20 +49,17 @@ Future<String> compressImageToBase64(Uint8List bytes, {int quality = 70}) async 
   return base64Str;
 }
 
-/// Format file size for display
 String _formatFileSize(int bytes) {
   if (bytes < 1024) return '$bytes B';
   if (bytes < 1048576) return '${(bytes / 1024).toStringAsFixed(1)} KB';
   return '${(bytes / 1048576).toStringAsFixed(1)} MB';
 }
 
-/// Smart document storage based on size
 class DocumentStorage {
-  static const int smallFileLimit = 100 * 1024; // 100KB
-  static const int mediumFileLimit = 500 * 1024; // 500KB
-  static const int maxChunkSize = 900 * 1024; // 900KB safe for Firestore
+  static const int smallFileLimit = 100 * 1024;
+  static const int mediumFileLimit = 500 * 1024;
+  static const int maxChunkSize = 900 * 1024;
 
-  /// Store document based on its size
   static Future<Map<String, dynamic>> storeDocument(
       Uint8List bytes,
       String fileName,
@@ -69,7 +67,6 @@ class DocumentStorage {
       ) async {
     final originalSize = bytes.length;
 
-    // Strategy based on file size
     if (originalSize <= smallFileLimit) {
       return _storeSmallFile(bytes, fileName, fileType, originalSize);
     } else if (originalSize <= mediumFileLimit) {
@@ -180,6 +177,10 @@ class DocumentStorage {
   }
 }
 
+// -----------------------------------------------------------------------------
+// MAIN SCREENS
+// -----------------------------------------------------------------------------
+
 class SupplierHomeScreen extends StatefulWidget {
   final String type;
   const SupplierHomeScreen({super.key, required this.type});
@@ -198,7 +199,7 @@ class _SupplierHomeScreenState extends State<SupplierHomeScreen> {
     _pages = <Widget>[
       SupplierHome(type: widget.type),
       const QRScannerEnhanced(),
-      const MyAssetsScreen(), // Shared screen
+      const MyAssetsScreen(),
       const ProfileScreen(),
     ];
   }
@@ -304,14 +305,12 @@ class SupplierDashboard extends StatelessWidget {
               return _statCard('Total Assets', Icons.inventory_2, count, Colors.blue);
             },
           ),
-          // Additional stats can be added here
         ],
       ),
     );
   }
 }
 
-// ✅ UPDATED: AssetManagementScreen with Rent Distribution Logic
 class AssetManagementScreen extends StatelessWidget {
   final String type;
   const AssetManagementScreen({super.key, required this.type});
@@ -328,7 +327,7 @@ class AssetManagementScreen extends StatelessWidget {
             const Text('Enter amount in MATIC to distribute to all fraction holders.'),
             TextField(
               controller: _rentCtrl,
-              keyboardType: TextInputType.number,
+              keyboardType: TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(labelText: 'Amount (MATIC)', suffixText: 'MATIC'),
             ),
           ],
@@ -337,28 +336,45 @@ class AssetManagementScreen extends StatelessWidget {
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () async {
-              if (_rentCtrl.text.isEmpty) return;
+              // 1. INPUT VALIDATION: Check numbers BEFORE blocking call
+              final textAmount = _rentCtrl.text.trim().replaceAll(',', '');
+              if (textAmount.isEmpty) return;
+
+              final amountEth = double.tryParse(textAmount);
+              if (amountEth == null || amountEth <= 0) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid Amount: Please enter a number like 0.1 or 10'), backgroundColor: Colors.red));
+                return;
+              }
               Navigator.pop(ctx);
 
               try {
                 final service = BlockchainServiceEnhanced();
                 await service.init();
 
-                // Ensure wallet is connected
                 if (!service.isConnected) {
                   await service.connectWallet(context);
                 }
 
-                final amountEth = double.parse(_rentCtrl.text);
+                if (!context.mounted) return;
+
                 final amountWei = service.etherToWei(amountEth);
 
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Confirm transaction in wallet...')));
 
                 await service.distributeLandRent(propertyId: propertyId, amount: amountWei);
 
+                if (!context.mounted) return;
+
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rent Distributed Successfully!'), backgroundColor: Colors.green));
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+                if (context.mounted) {
+                  // Display exact error from Blockchain Service
+                  showDialog(context: context, builder: (_) => AlertDialog(
+                      title: const Text('Error'),
+                      content: Text(e.toString()),
+                      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))]
+                  ));
+                }
               }
             },
             child: const Text('Distribute'),
@@ -378,7 +394,6 @@ class AssetManagementScreen extends StatelessWidget {
       builder: (context, snap) {
         if (!snap.hasData) return const Center(child: CircularProgressIndicator());
         final docs = snap.data!.docs;
-
         if (docs.isEmpty) return const Center(child: Text("No assets found"));
 
         return ListView.builder(
@@ -398,11 +413,10 @@ class AssetManagementScreen extends StatelessWidget {
                     subtitle: Text('Price: ${data['price']}'),
                     trailing: tokenId != null
                         ? const Chip(label: Text('NFT Minted'), backgroundColor: Colors.greenAccent)
-                        : const Chip(label: Text('Draft')),
+                        : const Chip(label: Text('Draft'), backgroundColor: Colors.grey),
                   ),
                   ButtonBar(
                     children: [
-                      // Distribute Rent Button for Landlords
                       if (type == 'land' && tokenId != null)
                         TextButton.icon(
                           icon: const Icon(Icons.monetization_on, color: Colors.amber),
@@ -423,6 +437,15 @@ class AssetManagementScreen extends StatelessWidget {
                           ),
                         ),
                       ),
+                      TextButton(
+                        child: const Text('Edit'),
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => EditAssetScreen(assetId: doc.id, type: type),
+                          ),
+                        ),
+                      ),
                     ],
                   )
                 ],
@@ -435,8 +458,10 @@ class AssetManagementScreen extends StatelessWidget {
   }
 }
 
+// -----------------------------------------------------------------------------
+// ASSET FORM (The Core UI for Data Entry)
+// -----------------------------------------------------------------------------
 
-/// ENHANCED Asset Form with Smart Document Upload & Blockchain Fields
 class AssetForm extends StatefulWidget {
   final String type;
   final Map<String, dynamic>? initialData;
@@ -463,10 +488,6 @@ class _AssetFormState extends State<AssetForm> {
   String _plotUnit = 'marla';
   bool _uploadingDocuments = false;
 
-  // Track warnings and errors
-  final List<String> _warnings = [];
-  final List<String> _errors = [];
-
   late final TextEditingController _titleCtrl = TextEditingController(text: widget.initialData?['title'] ?? '');
   late final TextEditingController _descCtrl = TextEditingController(text: widget.initialData?['description'] ?? '');
   late final TextEditingController _priceCtrl = TextEditingController(text: widget.initialData?['price']?.toString() ?? '');
@@ -476,8 +497,6 @@ class _AssetFormState extends State<AssetForm> {
   late final TextEditingController _modelCtrl = TextEditingController(text: widget.initialData?['model'] ?? '');
   late final TextEditingController _serialCtrl = TextEditingController(text: widget.initialData?['serial'] ?? '');
   late final TextEditingController _warrantyCtrl = TextEditingController(text: widget.initialData?['warranty'] ?? '');
-
-  // New field for blockchain land
   late final TextEditingController _fractionsCtrl = TextEditingController(text: widget.initialData?['totalFractions']?.toString() ?? '100');
 
   @override
@@ -485,7 +504,6 @@ class _AssetFormState extends State<AssetForm> {
     super.initState();
     _condition = widget.initialData?['condition']?.toString() ?? 'new';
     _plotUnit = widget.initialData?['plotUnit']?.toString() ?? 'marla';
-
     if (widget.initialData?['documents'] != null) {
       final docs = widget.initialData!['documents'] as List<dynamic>;
       _documents = docs.cast<Map<String, dynamic>>();
@@ -494,16 +512,9 @@ class _AssetFormState extends State<AssetForm> {
 
   @override
   void dispose() {
-    _titleCtrl.dispose();
-    _descCtrl.dispose();
-    _priceCtrl.dispose();
-    _plotCtrl.dispose();
-    _cityCtrl.dispose();
-    _brandCtrl.dispose();
-    _modelCtrl.dispose();
-    _serialCtrl.dispose();
-    _warrantyCtrl.dispose();
-    _fractionsCtrl.dispose();
+    _titleCtrl.dispose(); _descCtrl.dispose(); _priceCtrl.dispose(); _plotCtrl.dispose();
+    _cityCtrl.dispose(); _brandCtrl.dispose(); _modelCtrl.dispose(); _serialCtrl.dispose();
+    _warrantyCtrl.dispose(); _fractionsCtrl.dispose();
     super.dispose();
   }
 
@@ -513,9 +524,8 @@ class _AssetFormState extends State<AssetForm> {
     if (picked.isEmpty) return;
     for (final p in picked) {
       final b = await p.readAsBytes();
-      _images.add(b);
+      setState(() => _images.add(b));
     }
-    setState(() {});
   }
 
   Future<void> _takePhoto() async {
@@ -529,9 +539,6 @@ class _AssetFormState extends State<AssetForm> {
 
   Future<void> _pickDocuments() async {
     setState(() => _uploadingDocuments = true);
-    _warnings.clear();
-    _errors.clear();
-
     try {
       final res = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -540,120 +547,76 @@ class _AssetFormState extends State<AssetForm> {
         withData: true,
       );
 
-      if (res == null || res.files.isEmpty) {
-        setState(() => _uploadingDocuments = false);
-        return;
-      }
-
-      final newDocuments = <Map<String, dynamic>>[];
-      final skippedFiles = <String>[];
-
-      for (final file in res.files) {
-        if (file.bytes == null) {
-          skippedFiles.add('${file.name} (no data)');
-          continue;
+      if (res != null) {
+        for (final file in res.files) {
+          if (file.bytes != null) {
+            setState(() {
+              _documents.add({
+                'bytes': file.bytes!,
+                'name': file.name,
+                'type': file.extension ?? 'unknown',
+                'size': file.size,
+                'originalSize': file.size,
+              });
+            });
+          }
         }
-
-        if (file.size > 5 * 1024 * 1024) {
-          _errors.add('${file.name} exceeds 5MB limit');
-          skippedFiles.add('${file.name} (too large >5MB)');
-          continue;
-        }
-
-        final totalSize = _calculateTotalSize(newDocuments) + file.size;
-        if (totalSize > 10 * 1024 * 1024) {
-          _errors.add('Total documents size would exceed 10MB limit');
-          break;
-        }
-
-        newDocuments.add({
-          'bytes': file.bytes!,
-          'name': file.name,
-          'type': file.extension ?? 'unknown',
-          'size': file.size,
-          'originalSize': file.size,
-        });
-      }
-
-      if (newDocuments.isNotEmpty) {
-        setState(() {
-          _documents.addAll(newDocuments);
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('✓ ${newDocuments.length} document(s) added successfully'), backgroundColor: Colors.green),
-          );
-        }
-      }
-
-      if (skippedFiles.isNotEmpty && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Skipped ${skippedFiles.length} files'), backgroundColor: Colors.orange),
-        );
       }
     } catch (e) {
-      debugPrint('Error picking documents: $e');
+      debugPrint('Error: $e');
     } finally {
       setState(() => _uploadingDocuments = false);
     }
   }
 
-  Future<Map<String, dynamic>> _collect() async {
-    _warnings.clear();
-    _errors.clear();
+  // NOTE: Validation Logic moved here to be safer
+  Future<Map<String, dynamic>?> _collect() async {
+    final price = double.tryParse(_priceCtrl.text.replaceAll(',', ''));
+    if (price == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid Price Format')));
+      return null;
+    }
 
     // 1. Process Images for Firestore
     final compressedImages = <String>[];
     for (final imgBytes in _images) {
-      final compressed = await compressImageToBase64(imgBytes);
-      compressedImages.add(compressed);
+      compressedImages.add(await compressImageToBase64(imgBytes));
     }
 
-    // 2. Process Documents for Firestore (Chunk/Smart Store)
+    // 2. Process Documents for Firestore
     final processedDocs = <Map<String, dynamic>>[];
     for (final doc in _documents) {
-      // If it has 'bytes', it's a new file. If not, it's an existing one from Firestore.
       if (doc.containsKey('bytes')) {
         final bytes = doc['bytes'] as Uint8List;
-        final fileName = doc['name'] as String;
-        final fileType = doc['type'] as String;
-        final originalSize = doc['originalSize'] as int;
-
-        try {
-          final storedDoc = await DocumentStorage.storeDocument(bytes, fileName, fileType);
-
-          if (originalSize > 500 * 1024) {
-            _warnings.add('"$fileName" is large. It will be split into chunks.');
-          }
-
-          processedDocs.add(storedDoc);
-        } catch (e) {
-          _errors.add('Failed to process "$fileName"');
-        }
+        final processed = await DocumentStorage.storeDocument(bytes, doc['name'], doc['type']);
+        processedDocs.add(processed);
       } else {
         processedDocs.add(doc);
       }
     }
 
-    // 3. Prepare Payload
     final Map<String, dynamic> out = {
       'title': _titleCtrl.text.trim(),
       'description': _descCtrl.text.trim(),
-      'price': double.tryParse(_priceCtrl.text) ?? 0.0,
+      'price': price,
       'images': compressedImages,
       'searchKeywords': _titleCtrl.text.trim().toLowerCase().split(RegExp(r'\s+')),
       'documents': processedDocs,
-
-      // Pass RAW data for IPFS (these will be removed before saving to Firestore)
       'rawImages': _images,
       'rawDocuments': _documents.where((d) => d.containsKey('bytes')).toList(),
     };
 
     if (widget.type == 'land') {
-      out['plotArea'] = _plotCtrl.text.trim();
+      final area = int.tryParse(_plotCtrl.text.replaceAll(',', ''));
+      final fracs = int.tryParse(_fractionsCtrl.text.replaceAll(',', ''));
+      if (area == null || fracs == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid Plot Area or Fractions')));
+        return null;
+      }
+      out['plotArea'] = area; // Store as int
       out['plotUnit'] = _plotUnit;
       out['city'] = _cityCtrl.text.trim();
-      out['totalFractions'] = int.tryParse(_fractionsCtrl.text) ?? 100;
+      out['totalFractions'] = fracs; // Store as int
     } else {
       out['brand'] = _brandCtrl.text.trim();
       out['model'] = _modelCtrl.text.trim();
@@ -661,24 +624,7 @@ class _AssetFormState extends State<AssetForm> {
       out['warranty'] = _warrantyCtrl.text.trim();
       out['condition'] = _condition;
     }
-
     return out;
-  }
-
-  Widget _getDocumentIcon(String type) {
-    switch (type.toLowerCase()) {
-      case 'pdf': return const Icon(Icons.picture_as_pdf, color: Colors.red, size: 24);
-      case 'jpg':
-      case 'jpeg':
-      case 'png': return const Icon(Icons.image, color: Colors.blue, size: 24);
-      case 'doc':
-      case 'docx': return const Icon(Icons.description, color: Colors.blue, size: 24);
-      default: return const Icon(Icons.insert_drive_file, size: 24);
-    }
-  }
-
-  int _calculateTotalSize(List<Map<String, dynamic>> docs) {
-    return docs.fold<int>(0, (sum, doc) => (sum + (doc['size'] ?? 0) as int));
   }
 
   @override
@@ -690,203 +636,71 @@ class _AssetFormState extends State<AssetForm> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (_documents.isNotEmpty) ...[
-              Card(
-                color: Colors.blue[50],
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.blue[700]),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Documents are stored securely in Firestore',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue[900]),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '• Small files (<100KB): Stored directly\n• Medium files (100KB-500KB): Compressed if image\n• Large files (>500KB): Split into chunks',
-                              style: TextStyle(fontSize: 11, color: Colors.blue[800]),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            TextFormField(controller: _titleCtrl, decoration: const InputDecoration(labelText: 'Title'), validator: (v) => (v ?? '').isEmpty ? 'Required' : null),
-            const SizedBox(height: 8),
+            TextFormField(controller: _titleCtrl, decoration: const InputDecoration(labelText: 'Title'), validator: (v) => v!.isEmpty ? 'Required' : null),
             TextFormField(controller: _descCtrl, decoration: const InputDecoration(labelText: 'Description'), maxLines: 3),
-            const SizedBox(height: 8),
-            TextFormField(controller: _priceCtrl, decoration: const InputDecoration(labelText: 'Price (PKR)'), keyboardType: TextInputType.number, validator: (v) => (v ?? '').isEmpty ? 'Required' : null),
+            // FIX: Using decimal input type
+            TextFormField(controller: _priceCtrl, decoration: const InputDecoration(labelText: 'Price'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
             const SizedBox(height: 12),
 
             if (widget.type == 'land') ...[
               DropdownButtonFormField<String>(
                 value: _plotUnit,
-                items: const [
-                  DropdownMenuItem(value: 'marla', child: Text('Marla')),
-                  DropdownMenuItem(value: 'kanal', child: Text('Kanal')),
-                ],
-                onChanged: (v) => setState(() => _plotUnit = v ?? 'marla'),
+                items: const [DropdownMenuItem(value: 'marla', child: Text('Marla')), DropdownMenuItem(value: 'kanal', child: Text('Kanal'))],
+                onChanged: (v) => setState(() => _plotUnit = v!),
                 decoration: const InputDecoration(labelText: 'Plot Unit'),
               ),
-              const SizedBox(height: 8),
-              TextFormField(controller: _plotCtrl, decoration: InputDecoration(labelText: 'Plot Area ($_plotUnit)'), keyboardType: TextInputType.number),
-              const SizedBox(height: 8),
+              TextFormField(controller: _plotCtrl, decoration: const InputDecoration(labelText: 'Plot Area (Integer)'), keyboardType: TextInputType.number),
               TextFormField(controller: _cityCtrl, decoration: const InputDecoration(labelText: 'City / Address')),
-              const SizedBox(height: 8),
               TextFormField(controller: _fractionsCtrl, decoration: const InputDecoration(labelText: 'Total Fractions (Default 100)'), keyboardType: TextInputType.number),
-              const SizedBox(height: 12),
             ] else ...[
               TextFormField(controller: _brandCtrl, decoration: const InputDecoration(labelText: 'Brand')),
-              const SizedBox(height: 8),
               TextFormField(controller: _modelCtrl, decoration: const InputDecoration(labelText: 'Model')),
-              const SizedBox(height: 8),
               TextFormField(controller: _serialCtrl, decoration: const InputDecoration(labelText: 'Serial / IMEI')),
-              const SizedBox(height: 8),
-              TextFormField(controller: _warrantyCtrl, decoration: const InputDecoration(labelText: 'Warranty (months)'), keyboardType: TextInputType.number),
-              const SizedBox(height: 8),
+              TextFormField(controller: _warrantyCtrl, decoration: const InputDecoration(labelText: 'Warranty (Date/Months)')),
               DropdownButtonFormField<String>(
                 value: _condition,
-                items: const [
-                  DropdownMenuItem(value: 'new', child: Text('New')),
-                  DropdownMenuItem(value: 'used', child: Text('Used')),
-                ],
-                onChanged: (v) => setState(() => _condition = v ?? 'new'),
+                items: const [DropdownMenuItem(value: 'new', child: Text('New')), DropdownMenuItem(value: 'used', child: Text('Used'))],
+                onChanged: (v) => setState(() => _condition = v!),
                 decoration: const InputDecoration(labelText: 'Condition'),
               ),
-              const SizedBox(height: 12),
             ],
 
-            // Image Upload
             const Divider(height: 32),
+            const Text('Images', style: TextStyle(fontWeight: FontWeight.bold)),
+            Wrap(children: _images.map((bytes) => Padding(padding: const EdgeInsets.only(right: 8, top: 8), child: Image.memory(bytes, width: 80, height: 80, fit: BoxFit.cover))).toList()),
             Row(children: [
-              const Icon(Icons.image, size: 20),
-              const SizedBox(width: 8),
-              const Text('Images', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              if (_images.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(color: Colors.green, borderRadius: BorderRadius.circular(12)),
-                  child: Text('${_images.length}', style: const TextStyle(color: Colors.white, fontSize: 12)),
-                ),
-              ],
-            ]),
-            const SizedBox(height: 8),
-            Row(children: [
-              Expanded(child: ElevatedButton.icon(onPressed: _pickImages, icon: const Icon(Icons.photo_library), label: const Text('Gallery'))),
-              const SizedBox(width: 8),
-              Expanded(child: ElevatedButton.icon(onPressed: _takePhoto, icon: const Icon(Icons.camera_alt), label: const Text('Camera'))),
+              TextButton.icon(onPressed: _pickImages, icon: const Icon(Icons.photo_library), label: const Text('Add Gallery')),
+              TextButton.icon(onPressed: _takePhoto, icon: const Icon(Icons.camera_alt), label: const Text('Camera')),
             ]),
 
-            // Document Upload
             const Divider(height: 32),
-            Row(children: [
-              const Icon(Icons.attach_file, size: 20),
-              const SizedBox(width: 8),
-              const Text('Documents', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              if (_documents.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(color: Colors.blue, borderRadius: BorderRadius.circular(12)),
-                  child: Text('${_documents.length}', style: const TextStyle(color: Colors.white, fontSize: 12)),
-                ),
-              ],
-            ]),
-            const SizedBox(height: 8),
+            const Text('Documents (Attached to IPFS & Secure Storage)', style: TextStyle(fontWeight: FontWeight.bold)),
+            if (_documents.isNotEmpty)
+              Column(children: _documents.map((d) => ListTile(
+                leading: const Icon(Icons.description),
+                title: Text(d['name']),
+                subtitle: Text(_formatFileSize(d['size'] ?? 0)),
+                trailing: IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() => _documents.remove(d))),
+              )).toList()),
             ElevatedButton.icon(
               onPressed: _uploadingDocuments ? null : _pickDocuments,
-              icon: _uploadingDocuments ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.file_upload),
-              label: Text(_uploadingDocuments ? 'Loading...' : 'Attach Documents (PDF, Images, DOC)'),
+              icon: _uploadingDocuments ? const CircularProgressIndicator() : const Icon(Icons.file_upload),
+              label: const Text('Attach Documents'),
             ),
-            const SizedBox(height: 4),
-            Text('Max 5MB per file, 10MB total', style: TextStyle(fontSize: 11, color: Colors.grey[600]), textAlign: TextAlign.center),
-
-            // Document List
-            if (_documents.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              ..._documents.asMap().entries.map((entry) {
-                final index = entry.key;
-                final doc = entry.value;
-                final size = doc['size'] as int;
-                return Card(
-                  child: ListTile(
-                    leading: _getDocumentIcon(doc['type'] ?? ''),
-                    title: Text(doc['name'] ?? 'Doc'),
-                    subtitle: Text('${_formatFileSize(size)}'),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => setState(() => _documents.removeAt(index)),
-                    ),
-                  ),
-                );
-              }),
-            ],
 
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: () async {
-                if (!_formKey.currentState!.validate()) return;
-
-                if (_warnings.isNotEmpty) {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Large Files'),
-                      content: Column(mainAxisSize: MainAxisSize.min, children: _warnings.map((w) => Text('• $w')).toList()),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                        ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue')),
-                      ],
-                    ),
-                  );
-                  if (confirm != true) return;
+                if (_formKey.currentState!.validate()) {
+                  final payload = await _collect();
+                  if (payload != null) {
+                    await widget.onSubmit(payload);
+                  }
                 }
-
-                if (_documents.isNotEmpty) {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Confirm Upload'),
-                      content: Text('Upload ${_documents.length} documents?'),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                        ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Upload')),
-                      ],
-                    ),
-                  );
-                  if (confirm != true) return;
-                }
-
-                final payload = await _collect();
-                if (_errors.isNotEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Errors: ${_errors.join(", ")}'), backgroundColor: Colors.red));
-                  return;
-                }
-                await widget.onSubmit(payload);
               },
-              style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(48), backgroundColor: Colors.green[700]),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.cloud_upload, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Text(widget.isEdit ? 'Save Changes' : 'Mint NFT & Submit', style: const TextStyle(color: Colors.white)),
-                ],
-              ),
+              style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50), backgroundColor: Colors.indigo),
+              child: Text(widget.isEdit ? 'Save Changes' : 'Mint NFT & Upload to IPFS', style: const TextStyle(color: Colors.white, fontSize: 16)),
             ),
-            const SizedBox(height: 12),
           ],
         ),
       ),
@@ -894,125 +708,222 @@ class _AssetFormState extends State<AssetForm> {
   }
 }
 
-/// Add Asset Screen: Handles Blockchain/IPFS + Firestore Logic
+// -----------------------------------------------------------------------------
+// ADD ASSET SCREEN (Logic Wrapper: Firestore + IPFS + Blockchain)
+// -----------------------------------------------------------------------------
+
 class AddAssetScreen extends StatefulWidget {
   final String type;
   const AddAssetScreen({super.key, required this.type});
+
   @override
   State<AddAssetScreen> createState() => _AddAssetScreenState();
 }
 
 class _AddAssetScreenState extends State<AddAssetScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _titleCtrl = TextEditingController();
-  final _priceCtrl = TextEditingController();
-  // Electronics
-  final _serialCtrl = TextEditingController();
-  final _brandCtrl = TextEditingController();
-  final _modelCtrl = TextEditingController();
-  final _warrantyCtrl = TextEditingController();
-  // Land
-  final _locationCtrl = TextEditingController();
-  final _cityCtrl = TextEditingController();
-  final _areaCtrl = TextEditingController();
-  final _fractionsCtrl = TextEditingController();
+  bool _isLoading = false;
+  String _statusMessage = '';
 
-  bool _uploading = false;
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _uploading = true);
+  Future<void> _handleCreate(Map<String, dynamic> data) async {
+    setState(() {
+      _isLoading = true;
+      _statusMessage = 'Initializing Blockchain & IPFS...';
+    });
 
     try {
       final blockchain = BlockchainServiceEnhanced();
       await blockchain.init();
-      // ✅ FIX: Pass context
-      if (!blockchain.isConnected) await blockchain.connectWallet(context);
+      final ipfs = IPFSService();
 
+      if (!blockchain.isConnected) {
+        setState(() => _statusMessage = 'Please connect wallet...');
+        await blockchain.connectWallet(context);
+      }
+
+      if (!mounted) return;
+      if (!blockchain.isConnected) throw Exception('Wallet not connected');
+
+      // 1. Upload Images to IPFS
+      String? imageHash;
+      if (data['rawImages'] != null && (data['rawImages'] as List).isNotEmpty) {
+        setState(() => _statusMessage = 'Uploading Image to IPFS...');
+        final mainImage = (data['rawImages'] as List)[0] as Uint8List;
+        final res = await ipfs.uploadFile(fileBytes: mainImage, fileName: 'nft_image.jpg');
+        if (!res.success) throw Exception('Image Upload Failed: ${res.error}');
+        imageHash = res.ipfsHash;
+      }
+
+      if (!mounted) return;
+
+      // 2. Upload Documents to IPFS
+      String? primaryDocHash;
+      if (data['rawDocuments'] != null) {
+        setState(() => _statusMessage = 'Uploading Documents to IPFS...');
+        final rawDocs = data['rawDocuments'] as List<Map<String, dynamic>>;
+        for (var doc in rawDocs) {
+          final res = await ipfs.uploadFile(
+            fileBytes: doc['bytes'],
+            fileName: doc['name'],
+          );
+          if (res.success) {
+            primaryDocHash ??= res.ipfsHash;
+            final fsDocs = data['documents'] as List<Map<String, dynamic>>;
+            final match = fsDocs.firstWhere((d) => d['name'] == doc['name'], orElse: () => {});
+            if (match.isNotEmpty) {
+              match['ipfsHash'] = res.ipfsHash;
+              match['ipfsUrl'] = res.ipfsUrl;
+            }
+          }
+        }
+      }
+
+      if (!mounted) return;
+
+      // 3. Create Metadata
+      setState(() => _statusMessage = 'Generating Metadata...');
+      Map<String, dynamic> metadata;
+
+      // Safe parsing helpers
+      final safeTitle = data['title']?.toString() ?? 'Asset';
+      final safeCity = data['city']?.toString() ?? 'Unknown';
+
+      if (widget.type == 'electronics') {
+        metadata = ipfs.createElectronicsMetadata(
+          brand: data['brand'] ?? 'Unknown',
+          model: data['model'] ?? 'Unknown',
+          serialNumber: data['serial'] ?? 'Unknown',
+          warrantyExpiry: data['warranty'] ?? 'Unknown',
+          condition: data['condition'] ?? 'New',
+          imageHash: imageHash,
+          warrantyDocHash: primaryDocHash,
+        );
+      } else {
+        // Safe casting (handled in _collect now, but double check)
+        final plotAreaInt = data['plotArea'] as int? ?? 0;
+        final totalFractionsInt = data['totalFractions'] as int? ?? 100;
+        final priceDouble = data['price'] as double? ?? 0.0;
+
+        metadata = ipfs.createLandMetadata(
+          location: safeTitle,
+          city: safeCity,
+          totalArea: plotAreaInt,
+          areaUnit: data['plotUnit'] ?? 'marla',
+          totalFractions: totalFractionsInt,
+          pricePerFraction: priceDouble.toString(),
+          imageHash: imageHash,
+          deedHash: primaryDocHash,
+        );
+      }
+
+      // 4. Upload Metadata to IPFS
+      setState(() => _statusMessage = 'Uploading Metadata to IPFS...');
+      final metaRes = await ipfs.uploadJSON(jsonData: metadata, name: '${safeTitle}_metadata');
+      if (!metaRes.success) throw Exception('Metadata Upload Failed');
+      final metadataHash = metaRes.ipfsHash!;
+
+      if (!mounted) return;
+
+      // 5. Mint on Blockchain
+      setState(() => _statusMessage = 'Minting on Blockchain (Please confirm in Wallet)...');
       String? txHash;
-      String ipfsHash = "QmHashPlaceholder"; // In real app, use IPFSService to upload image
 
       if (widget.type == 'electronics') {
         txHash = await blockchain.mintElectronics(
           toAddress: blockchain.connectedAddress!,
-          serialNumber: _serialCtrl.text,
-          brand: _brandCtrl.text,
-          model: _modelCtrl.text,
-          warrantyExpiry: _warrantyCtrl.text,
-          tokenURI: "ipfs://$ipfsHash",
+          serialNumber: data['serial'] ?? '000',
+          brand: data['brand'] ?? 'Unknown',
+          model: data['model'] ?? 'Unknown',
+          warrantyExpiry: data['warranty'] ?? 'Unknown',
+          tokenURI: 'ipfs://$metadataHash',
         );
       } else {
+        // CRITICAL: Safe conversion for Blockchain BigInts
+        final plotAreaInt = data['plotArea'] as int? ?? 0;
+        final totalFractionsInt = data['totalFractions'] as int? ?? 100;
+        final priceDouble = data['price'] as double? ?? 0.0;
+
         txHash = await blockchain.createLandProperty(
-          location: _locationCtrl.text,
-          city: _cityCtrl.text,
-          totalArea: int.parse(_areaCtrl.text),
-          areaUnit: "Marla",
-          totalFractions: int.parse(_fractionsCtrl.text),
-          pricePerFraction: blockchain.etherToWei(double.parse(_priceCtrl.text)),
-          ipfsMetadata: "ipfs://$ipfsHash",
+          location: safeTitle,
+          city: safeCity,
+          totalArea: plotAreaInt,
+          areaUnit: data['plotUnit'] ?? 'marla',
+          totalFractions: totalFractionsInt,
+          pricePerFraction: blockchain.etherToWei(priceDouble),
+          ipfsMetadata: 'ipfs://$metadataHash',
         );
       }
 
-      if (txHash != null) {
-        // Save to Firestore for display
-        await FirebaseFirestore.instance.collection('assets').add({
-          'title': _titleCtrl.text,
-          'price': double.parse(_priceCtrl.text),
-          'category': widget.type,
-          'ownerId': FirebaseAuth.instance.currentUser!.uid,
-          'blockchainTx': txHash,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-        if (mounted) Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Asset Minted Successfully!")));
-      }
+      if (!mounted) return;
+
+      if (txHash == null) throw Exception('Transaction failed or rejected');
+
+      // 6. Save to Firestore
+      setState(() => _statusMessage = 'Saving to Database...');
+
+      data.remove('rawImages');
+      data.remove('rawDocuments');
+
+      await db.collection('assets').add({
+        ...data,
+        'category': widget.type,
+        'ownerId': auth.currentUser!.uid,
+        'blockchainTx': txHash,
+        'ipfsMetadataHash': metadataHash,
+        'isMinted': true,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Success! Asset Minted & Uploaded.'), backgroundColor: Colors.green));
+      Navigator.pop(context);
+
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      if (mounted) {
+        // NOTE: I removed the custom "Configuration Error" override here
+        // so you can see the REAL error if it happens.
+        showDialog(context: context, builder: (_) => AlertDialog(
+          title: const Text('Error'),
+          content: Text(e.toString()),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+        ));
+      }
     } finally {
-      if (mounted) setState(() => _uploading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text("Add ${widget.type}")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
+    if (_isLoading) {
+      return Scaffold(
+        body: Center(
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              TextFormField(controller: _titleCtrl, decoration: const InputDecoration(labelText: "Title"), validator: (v) => v!.isEmpty ? "Required" : null),
-              TextFormField(controller: _priceCtrl, decoration: const InputDecoration(labelText: "Price"), keyboardType: TextInputType.number),
-
-              if (widget.type == 'electronics') ...[
-                TextFormField(controller: _serialCtrl, decoration: const InputDecoration(labelText: "Serial Number")),
-                TextFormField(controller: _brandCtrl, decoration: const InputDecoration(labelText: "Brand")),
-                TextFormField(controller: _modelCtrl, decoration: const InputDecoration(labelText: "Model")),
-                TextFormField(controller: _warrantyCtrl, decoration: const InputDecoration(labelText: "Warranty Date")),
-              ],
-
-              if (widget.type == 'land') ...[
-                TextFormField(controller: _locationCtrl, decoration: const InputDecoration(labelText: "Location")),
-                TextFormField(controller: _cityCtrl, decoration: const InputDecoration(labelText: "City")),
-                TextFormField(controller: _areaCtrl, decoration: const InputDecoration(labelText: "Area (Marla)"), keyboardType: TextInputType.number),
-                TextFormField(controller: _fractionsCtrl, decoration: const InputDecoration(labelText: "Total Fractions"), keyboardType: TextInputType.number),
-              ],
-
+              const CircularProgressIndicator(),
               const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _uploading ? null : _submit,
-                child: _uploading ? const CircularProgressIndicator() : const Text("Mint on Blockchain"),
-              ),
+              Text(_statusMessage, style: const TextStyle(fontSize: 16), textAlign: TextAlign.center),
             ],
           ),
         ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: Text("Add ${widget.type.capitalize()}")),
+      body: AssetForm(
+        type: widget.type,
+        onSubmit: _handleCreate,
       ),
     );
   }
 }
-/// Edit Asset Screen
+
+// -----------------------------------------------------------------------------
+// EDIT SCREEN
+// -----------------------------------------------------------------------------
+
 class EditAssetScreen extends StatefulWidget {
   final String assetId;
   final String type;
@@ -1025,7 +936,6 @@ class EditAssetScreen extends StatefulWidget {
 class _EditAssetScreenState extends State<EditAssetScreen> {
   Map<String, dynamic>? _initial;
   bool _loading = true;
-  bool _saving = false;
 
   @override
   void initState() {
@@ -1036,50 +946,25 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
   Future<void> _load() async {
     try {
       final doc = await db.collection('assets').doc(widget.assetId).get();
-      if (doc.exists) {
-        setState(() {
-          _initial = doc.data() as Map<String, dynamic>?;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading asset: $e');
+      if (doc.exists) setState(() => _initial = doc.data());
     } finally {
       setState(() => _loading = false);
     }
   }
 
   Future<void> _handleSave(Map<String, dynamic> data) async {
-    setState(() => _saving = true);
-    try {
-      // Remove raw bytes (no need for re-upload on simple edit)
-      data.remove('rawImages');
-      data.remove('rawDocuments');
-
-      await db.collection('assets').doc(widget.assetId).update({
-        ...data,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Asset updated'), backgroundColor: Colors.green));
-      Navigator.pop(context);
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+    data.remove('rawImages');
+    data.remove('rawDocuments');
+    await db.collection('assets').doc(widget.assetId).update(data);
+    if(mounted) Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    if (_initial == null) return const Scaffold(body: Center(child: Text('Asset not found')));
-
     return Scaffold(
       appBar: AppBar(title: const Text('Edit Asset')),
-      body: _saving
-          ? const Center(child: CircularProgressIndicator())
-          : AssetForm(type: widget.type, initialData: _initial, isEdit: true, onSubmit: _handleSave),
+      body: AssetForm(type: widget.type, initialData: _initial, isEdit: true, onSubmit: _handleSave),
     );
   }
 }
