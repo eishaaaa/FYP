@@ -1,11 +1,9 @@
 // lib/screens/user_screens.dart
 import 'dart:convert';
-// import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'shared_screens.dart';
-// import 'chat_screen.dart';
 import 'chat_list_screen.dart';
 import 'portfolio_screen.dart';
 import 'qr_scanner_enhanced.dart';
@@ -268,7 +266,6 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
     if (user == null) return const Center(child: Text("Login required"));
 
     return StreamBuilder<QuerySnapshot>(
-      // Assumes assets are tracked in an 'orders' collection linked to user
       stream: db.collection('orders').where('buyerId', isEqualTo: user.uid).snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
@@ -284,8 +281,8 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                 const Text("No assets owned yet"),
                 TextButton(
                   onPressed: () {
-                    // Switch to Home tab (handled by parent logic usually, but here just a hint)
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Go to Home to buy assets")));
+                    // This is just a visual hint, real nav is via tabs
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Go to Home tab to buy assets")));
                   },
                   child: const Text("Browse Marketplace"),
                 )
@@ -405,10 +402,11 @@ class AssetListView extends StatelessWidget {
   });
 
   Query _buildQuery() {
+    // 1. FIXED QUERY: Changed 'verified' to 'isMinted' to match supplier upload
     Query q = db
         .collection("assets")
         .where("category", isEqualTo: category)
-        .where("verified", isEqualTo: true); // Only verified assets shown in market
+        .where("isMinted", isEqualTo: true);
 
     if (filters["minPrice"] != null) {
       q = q.where("price", isGreaterThanOrEqualTo: filters["minPrice"]);
@@ -463,7 +461,8 @@ class AssetListView extends StatelessWidget {
             crossAxisCount: 2,
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
-            childAspectRatio: 0.70,
+            // 2. FIXED ALIGNMENT: Adjusted ratio for better fit
+            childAspectRatio: 0.75,
           ),
           itemBuilder: (_, i) {
             final doc = filtered[i];
@@ -515,11 +514,22 @@ class AssetGridCard extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.all(8.0),
+              // 3. FIXED OVERFLOW: Added Flexible/overflow protection
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(data['title'] ?? 'Asset', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text("PKR ${data['price'] ?? 0}", style: const TextStyle(color: Colors.green)),
+                  Text(
+                      data['title'] ?? 'Asset',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.bold)
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                      "PKR ${data['price'] ?? 0}",
+                      style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)
+                  ),
                 ],
               ),
             )
@@ -544,12 +554,16 @@ class FilterSheet extends StatefulWidget {
 class _FilterSheetState extends State<FilterSheet> {
   late TextEditingController _city;
   late TextEditingController _brand;
+  late TextEditingController _minPrice;
+  late TextEditingController _maxPrice;
 
   @override
   void initState() {
     super.initState();
     _city = TextEditingController(text: widget.existing["city"] ?? "");
     _brand = TextEditingController(text: widget.existing["brand"] ?? "");
+    _minPrice = TextEditingController(text: widget.existing["minPrice"]?.toString() ?? "");
+    _maxPrice = TextEditingController(text: widget.existing["maxPrice"]?.toString() ?? "");
   }
 
   @override
@@ -565,6 +579,14 @@ class _FilterSheetState extends State<FilterSheet> {
         children: [
           const Text("Filters", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(child: TextField(controller: _minPrice, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Min Price", border: OutlineInputBorder()))),
+              const SizedBox(width: 12),
+              Expanded(child: TextField(controller: _maxPrice, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Max Price", border: OutlineInputBorder()))),
+            ],
+          ),
+          const SizedBox(height: 12),
           TextField(controller: _city, decoration: const InputDecoration(labelText: "City", border: OutlineInputBorder())),
           if (widget.category == "electronics") ...[
             const SizedBox(height: 10),
@@ -573,9 +595,13 @@ class _FilterSheetState extends State<FilterSheet> {
           const SizedBox(height: 20),
           ElevatedButton(
             onPressed: () {
+              final min = double.tryParse(_minPrice.text);
+              final max = double.tryParse(_maxPrice.text);
               Navigator.pop(context, {
                 "city": _city.text.trim(),
                 "brand": _brand.text.trim(),
+                if (min != null) "minPrice": min,
+                if (max != null) "maxPrice": max,
               });
             },
             child: const Text("Apply Filters"),

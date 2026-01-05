@@ -727,39 +727,63 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
   Future<void> _handleCreate(Map<String, dynamic> data) async {
     setState(() {
       _isLoading = true;
-      _statusMessage = 'Initializing Blockchain & IPFS...';
+      _statusMessage = 'Initializing...';
     });
 
     try {
       final blockchain = BlockchainServiceEnhanced();
+      // Initialize services
       await blockchain.init();
       final ipfs = IPFSService();
 
+      // ---------------------------------------------------------
+      // STEP 1: WALLET CONNECTION
+      // ---------------------------------------------------------
       if (!blockchain.isConnected) {
-        setState(() => _statusMessage = 'Please connect wallet...');
+        setState(() => _statusMessage = 'Waiting for Wallet Connection...');
+
+        // This opens MetaMask. When you return, it waits up to 30s for the address.
         await blockchain.connectWallet(context);
       }
 
       if (!mounted) return;
-      if (!blockchain.isConnected) throw Exception('Wallet not connected');
 
-      // 1. Upload Images to IPFS
+      // Critical Check: Did the connection actually succeed?
+      if (!blockchain.isConnected) {
+        throw Exception('Wallet connection failed or timed out. Please make sure you are on the Amoy Testnet.');
+      }
+
+      // ---------------------------------------------------------
+      // STEP 2: UPLOAD IMAGE TO IPFS (Optimized)
+      // ---------------------------------------------------------
       String? imageHash;
       if (data['rawImages'] != null && (data['rawImages'] as List).isNotEmpty) {
-        setState(() => _statusMessage = 'Uploading Image to IPFS...');
-        final mainImage = (data['rawImages'] as List)[0] as Uint8List;
-        final res = await ipfs.uploadFile(fileBytes: mainImage, fileName: 'nft_image.jpg');
+        setState(() => _statusMessage = 'Compressing & Uploading Image...');
+
+        // FIX: Compress image before upload to prevent infinite loading on large files
+        final rawBytes = (data['rawImages'] as List)[0] as Uint8List;
+        final compressedBase64 = await compressImageToBase64(rawBytes, quality: 60);
+        final compressedBytes = base64Decode(compressedBase64);
+
+        final res = await ipfs.uploadFile(
+            fileBytes: compressedBytes,
+            fileName: 'nft_image.jpg'
+        );
+
         if (!res.success) throw Exception('Image Upload Failed: ${res.error}');
         imageHash = res.ipfsHash;
       }
 
       if (!mounted) return;
 
-      // 2. Upload Documents to IPFS
+      // ---------------------------------------------------------
+      // STEP 3: UPLOAD DOCUMENTS
+      // ---------------------------------------------------------
       String? primaryDocHash;
       if (data['rawDocuments'] != null) {
         setState(() => _statusMessage = 'Uploading Documents to IPFS...');
         final rawDocs = data['rawDocuments'] as List<Map<String, dynamic>>;
+
         for (var doc in rawDocs) {
           final res = await ipfs.uploadFile(
             fileBytes: doc['bytes'],
@@ -767,6 +791,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
           );
           if (res.success) {
             primaryDocHash ??= res.ipfsHash;
+            // Update the firestore data structure with IPFS links
             final fsDocs = data['documents'] as List<Map<String, dynamic>>;
             final match = fsDocs.firstWhere((d) => d['name'] == doc['name'], orElse: () => {});
             if (match.isNotEmpty) {
@@ -779,11 +804,12 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
 
       if (!mounted) return;
 
-      // 3. Create Metadata
+      // ---------------------------------------------------------
+      // STEP 4: PREPARE METADATA
+      // ---------------------------------------------------------
       setState(() => _statusMessage = 'Generating Metadata...');
       Map<String, dynamic> metadata;
 
-      // Safe parsing helpers
       final safeTitle = data['title']?.toString() ?? 'Asset';
       final safeCity = data['city']?.toString() ?? 'Unknown';
 
@@ -798,7 +824,6 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
           warrantyDocHash: primaryDocHash,
         );
       } else {
-        // Safe casting (handled in _collect now, but double check)
         final plotAreaInt = data['plotArea'] as int? ?? 0;
         final totalFractionsInt = data['totalFractions'] as int? ?? 100;
         final priceDouble = data['price'] as double? ?? 0.0;
@@ -815,7 +840,9 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         );
       }
 
-      // 4. Upload Metadata to IPFS
+      // ---------------------------------------------------------
+      // STEP 5: UPLOAD METADATA
+      // ---------------------------------------------------------
       setState(() => _statusMessage = 'Uploading Metadata to IPFS...');
       final metaRes = await ipfs.uploadJSON(jsonData: metadata, name: '${safeTitle}_metadata');
       if (!metaRes.success) throw Exception('Metadata Upload Failed');
@@ -823,8 +850,10 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
 
       if (!mounted) return;
 
-      // 5. Mint on Blockchain
-      setState(() => _statusMessage = 'Minting on Blockchain (Please confirm in Wallet)...');
+      // ---------------------------------------------------------
+      // STEP 6: MINT ON BLOCKCHAIN
+      // ---------------------------------------------------------
+      setState(() => _statusMessage = 'Please Confirm Transaction in Wallet...');
       String? txHash;
 
       if (widget.type == 'electronics') {
@@ -837,7 +866,6 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
           tokenURI: 'ipfs://$metadataHash',
         );
       } else {
-        // CRITICAL: Safe conversion for Blockchain BigInts
         final plotAreaInt = data['plotArea'] as int? ?? 0;
         final totalFractionsInt = data['totalFractions'] as int? ?? 100;
         final priceDouble = data['price'] as double? ?? 0.0;
@@ -853,15 +881,17 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         );
       }
 
-      if (!mounted) return;
-
       if (txHash == null) throw Exception('Transaction failed or rejected');
 
-      // 6. Save to Firestore
+      // ---------------------------------------------------------
+      // STEP 7: SAVE TO DATABASE
+      // ---------------------------------------------------------
       setState(() => _statusMessage = 'Saving to Database...');
 
       data.remove('rawImages');
       data.remove('rawDocuments');
+
+      // Update the _handleCreate method inside the db.collection('assets').add block:
 
       await db.collection('assets').add({
         ...data,
@@ -870,18 +900,20 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         'blockchainTx': txHash,
         'ipfsMetadataHash': metadataHash,
         'isMinted': true,
+        'verified': true, // ADD THIS: Ensures compatibility with older queries
         'createdAt': FieldValue.serverTimestamp(),
       });
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Success! Asset Minted & Uploaded.'), backgroundColor: Colors.green));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Success! Asset Minted & Uploaded.'),
+          backgroundColor: Colors.green
+      ));
       Navigator.pop(context);
 
     } catch (e) {
       if (mounted) {
-        // NOTE: I removed the custom "Configuration Error" override here
-        // so you can see the REAL error if it happens.
         showDialog(context: context, builder: (_) => AlertDialog(
           title: const Text('Error'),
           content: Text(e.toString()),
@@ -892,7 +924,6 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
