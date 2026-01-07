@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════
-// COMPLETE BLOCKCHAIN SERVICE (FINAL FIX)
-// Place this in: lib/blockchain/blockchain_service.dart
+// COMPLETE BLOCKCHAIN SERVICE
+// Location: lib/blockchain/blockchain_service.dart
+// Updates: Added getOwnerOf() and standard ownership checks
 // ═══════════════════════════════════════════════════════════
 
 import 'dart:convert';
@@ -81,7 +82,7 @@ class BlockchainServiceEnhanced {
   bool get isConnected => _walletService.isConnected;
 
   // ═══════════════════════════════════════════════════════════
-  // ✅ THE FIX: ROBUST TRANSACTION LOGIC
+  // ROBUST TRANSACTION LOGIC
   // ═══════════════════════════════════════════════════════════
 
   Future<String> _sendTransaction(Transaction transaction) async {
@@ -91,11 +92,9 @@ class BlockchainServiceEnhanced {
     if (session == null) throw Exception('Session is null. Reconnect.');
 
     // 1. NETWORK CHECK
-    // If the wallet is on the wrong chain, we attempt to warn or switch
     final requiredChainId = 'eip155:${ContractConfig.chainId}';
     final approvedChains = session.namespaces?['eip155']?.chains ?? [];
 
-    // Strict check: If session doesn't support Amoy, warn user
     if (!approvedChains.contains(requiredChainId)) {
       debugPrint('⚠️ Network Warning: App expects $requiredChainId. Wallet chains: $approvedChains');
     }
@@ -103,9 +102,8 @@ class BlockchainServiceEnhanced {
     try {
       debugPrint('🚀 Preparing Transaction...');
 
-      // 2. CLEAN PARAMETERS (The Fix for Stale Nonces)
-      // We explicitly REMOVE 'nonce', 'gas', and 'gasPrice'.
-      // This forces MetaMask to calculate the NEXT valid nonce for every single click.
+      // 2. CLEAN PARAMETERS
+      // We explicitly REMOVE 'nonce', 'gas', and 'gasPrice' to let MetaMask handle them
       final txParams = {
         'from': connectedAddress,
         'to': transaction.to?.toString(),
@@ -125,15 +123,13 @@ class BlockchainServiceEnhanced {
         ),
       );
 
-      // 4. 🔥 FORCE OPEN METAMASK (Deep Link)
-      // We wait 1 second to ensure the request is registered, then switch apps.
+      // 4. FORCE OPEN METAMASK (Deep Link)
       await Future.delayed(const Duration(milliseconds: 1000));
       _walletService.appKitModal.launchConnectedWallet();
 
       debugPrint('⏳ Waiting for user signature...');
 
       // 5. TIMEOUT
-      // We wait 3 minutes. If you have "pending" transactions in MetaMask, clear them!
       final result = await futureResult.timeout(
         const Duration(minutes: 3),
         onTimeout: () {
@@ -150,12 +146,41 @@ class BlockchainServiceEnhanced {
       if (e.toString().contains('User rejected')) {
         throw Exception('User rejected the transaction');
       }
-      // If RPC Error -32000, it usually means "Nonce too low" (Stale state)
       if (e.toString().contains('-32000')) {
         throw Exception('Wallet Sync Error: Please clear "Activity" or "Nonce" in MetaMask settings.');
       }
       rethrow;
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // GLOBAL HELPERS (NEW)
+  // ═══════════════════════════════════════════════════════════
+
+  /// Fetch the *current* owner of a token from the blockchain.
+  /// This is essential for validating transfers and QR scans.
+  Future<String?> getOwnerOf(String type, int tokenId) async {
+    await init();
+    try {
+      if (type == 'electronics') {
+        // ERC-721: Use standard ownerOf(tokenId)
+        final function = _electronicsContract.function('ownerOf');
+        final result = await _client.call(
+          contract: _electronicsContract,
+          function: function,
+          params: [BigInt.from(tokenId)],
+        );
+        return (result.first as EthereumAddress).toString();
+      } else if (type == 'land') {
+        // ERC-1155: No single owner. We return the creator/original owner for display.
+        // Actual ownership is determined by user balances (getUserFractions).
+        final property = await getLandProperty(tokenId);
+        return property?['originalOwner'];
+      }
+    } catch (e) {
+      debugPrint('Error fetching ownerOf: $e');
+    }
+    return null;
   }
 
   // ═══════════════════════════════════════════════════════════

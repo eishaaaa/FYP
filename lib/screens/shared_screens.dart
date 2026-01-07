@@ -14,6 +14,8 @@ import 'review_screen.dart';
 import 'reviews_list.dart';
 import 'qr_generator_screen.dart';
 import 'land_fractions_screen.dart';
+import 'transfer_screen.dart'; // Added: Transfer functionality
+import 'transfer_history_screen.dart'; // Added: History functionality
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
 
@@ -746,62 +748,72 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
         ),
         if (role.toLowerCase().contains('supplier') && data['blockchainTokenId'] != null) ...[
           const SizedBox(height: 12),
+          // 1. Transfer Button
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: () async {
-                // Show transfer dialog
-                final recipientCtrl = TextEditingController();
-
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Transfer Ownership'),
-                    content: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('Transfer this NFT to another address:'),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: recipientCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Recipient Address/User ID',
-                            hintText: '0x... or user ID',
-                          ),
-                        ),
-                      ],
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('Cancel'),
-                      ),
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text('Transfer'),
-                      ),
-                    ],
-                  ),
-                );
-
-                if (confirmed == true && recipientCtrl.text.isNotEmpty) {
-                  // TODO: Implement blockchain transfer
-                  // This would call smart contract transferFrom function
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Transfer initiated (implementation pending)'),
-                        backgroundColor: Colors.orange,
-                      ),
+                // For Land: Check balance before transferring
+                int? maxAmount;
+                if (data['category'] == 'land') {
+                  final bs = BlockchainServiceEnhanced();
+                  // Attempt to get balance if already connected or connect
+                  if (!bs.isConnected) {
+                    // This is a soft check; TransferScreen will enforce connection
+                  } else {
+                    maxAmount = await bs.getUserFractions(
+                        bs.connectedAddress!,
+                        data['blockchainTokenId']
                     );
                   }
                 }
 
-                recipientCtrl.dispose();
+                if (context.mounted) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TransferScreen(
+                        assetId: widget.assetId,
+                        assetTitle: data['title'] ?? 'Asset',
+                        assetType: data['category'] ?? 'electronics',
+                        tokenId: data['blockchainTokenId'],
+                        maxAmount: maxAmount,
+                      ),
+                    ),
+                  ).then((result) {
+                    if (result == true) {
+                      // Reload data if transfer happened
+                      setState(() {
+                        _loadFuture = _load();
+                      });
+                    }
+                  });
+                }
               },
               icon: const Icon(Icons.send),
-              label: const Text('Transfer NFT'),
+              label: const Text('Transfer Ownership'),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // 2. History Button
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => TransferHistoryScreen(
+                      assetId: widget.assetId,
+                      assetTitle: data['title'] ?? 'Asset',
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.history),
+              label: const Text('View Transfer History'),
             ),
           ),
         ],

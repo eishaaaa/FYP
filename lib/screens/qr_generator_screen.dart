@@ -33,6 +33,7 @@ class _QRGeneratorScreenState extends State<QRGeneratorScreen> {
   /// Generate QR data with blockchain ID
   String _generateQRData() {
     // Format: asset://type/firebase_id/blockchain_id
+    // This format is now perfectly compatible with the Scanner's Uri.parse()
     final blockchainPart = widget.blockchainTokenId?.toString() ?? 'pending';
     return 'asset://${widget.category}/${widget.assetId}/$blockchainPart';
   }
@@ -204,7 +205,7 @@ class _QRGeneratorScreenState extends State<QRGeneratorScreen> {
                       size: 250,
                       backgroundColor: Colors.white,
                       errorCorrectionLevel: QrErrorCorrectLevel.H,
-                      embeddedImage: const AssetImage('assets/logo.png'), // Optional
+                      embeddedImage: const AssetImage('assets/logo.png'),
                       embeddedImageStyle: const QrEmbeddedImageStyle(
                         size: Size(40, 40),
                       ),

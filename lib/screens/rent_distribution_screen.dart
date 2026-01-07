@@ -107,6 +107,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen> {
         if (confirmed) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
+
               content: Text('✅ Rent distributed successfully!'),
               backgroundColor: Colors.green,
             ),

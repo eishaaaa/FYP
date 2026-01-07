@@ -1,11 +1,12 @@
 // FILE: lib/screens/qr_scanner_enhanced.dart
-// =====================================================
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
-import 'user_screens.dart'; // Import for navigation to details if needed
+import 'user_screens.dart';
 import 'shared_screens.dart';
+import 'transfer_history_screen.dart';
+
 class QRScannerEnhanced extends StatefulWidget {
   const QRScannerEnhanced({super.key});
 
@@ -25,20 +26,25 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
     setState(() => _processing = true);
 
     try {
+      // Robust URI Parsing fixes the "double slash" bug
       // Expected Format: asset://type/firebase_id/blockchain_id
-      // Example: asset://land/abc123firebase/10
-      // Example Pending: asset://land/abc123firebase/pending
+      final uri = Uri.parse(code);
 
-      final parts = code.split('/');
-      if (parts.length < 4) {
-        throw Exception('Invalid QR code format. Expected asset://type/id/token_id');
+      if (uri.scheme != 'asset') {
+        throw Exception('Invalid QR type. Expected "asset://", got "$code"');
       }
 
-      final type = parts[1];
-      final firebaseId = parts[2];
-      final blockchainIdString = parts[3];
+      // pathSegments automatically handles the "//" and splitting
+      // For "asset://land/123/45", segments are ['land', '123', '45']
+      if (uri.pathSegments.length < 3) {
+        throw Exception('Incomplete QR data. Expected 3 segments, got ${uri.pathSegments.length}');
+      }
 
-      // 1. FIX: Handle "pending" state gracefully
+      final type = uri.pathSegments[0];
+      final firebaseId = uri.pathSegments[1];
+      final blockchainIdString = uri.pathSegments[2];
+
+      // 1. Handle "pending" state gracefully
       if (blockchainIdString.toLowerCase() == 'pending' || blockchainIdString.toLowerCase() == 'null') {
         if (!mounted) return;
         await showDialog(
@@ -59,8 +65,7 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
               TextButton(
                   onPressed: () {
                     Navigator.pop(ctx);
-                    // Optional: You could navigate to the firebase detail view here if you wanted
-                    // Navigator.push(context, MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: firebaseId)));
+                    // Optional: Resume scanning immediately or wait
                   },
                   child: const Text("OK")
               )
@@ -73,7 +78,7 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
       // 2. Parse ID after verifying it's not pending
       final blockchainId = int.tryParse(blockchainIdString);
       if (blockchainId == null) {
-        throw Exception('Invalid Blockchain ID: $blockchainIdString');
+        throw Exception('Invalid Blockchain ID format: $blockchainIdString');
       }
 
       // 3. Fetch Data from Blockchain
@@ -90,7 +95,15 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
         throw Exception('Asset #$blockchainId not found on blockchain.');
       }
 
-      // 4. Fetch IPFS Data (if available)
+      // 4. Fetch Current Owner
+      String? currentOwner;
+      try {
+        currentOwner = await _blockchainService.getOwnerOf(type, blockchainId);
+      } catch (e) {
+        debugPrint("Owner fetch error: $e");
+      }
+
+      // 5. Fetch IPFS Data (if available)
       final ipfsHash = blockchainData['ipfsMetadata'] ?? blockchainData['tokenURI'];
       Map<String, dynamic>? ipfsData;
 
@@ -107,7 +120,7 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
 
       if (!mounted) return;
 
-      // 5. Show Success Dialog
+      // 6. Show Success Dialog
       await showDialog(
         context: context,
         builder: (ctx) => VerificationResultDialog(
@@ -116,10 +129,12 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
           blockchainId: blockchainId,
           blockchainData: blockchainData!,
           ipfsData: ipfsData,
+          currentOwner: currentOwner,
         ),
       );
 
     } catch (e) {
+      debugPrint("Scan Error: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -130,7 +145,7 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
         );
       }
     } finally {
-      // Resume scanning after processing is done (optional delay to prevent double-scan)
+      // Delay slightly before allowing next scan to prevent double-trigger
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) setState(() => _processing = false);
     }
@@ -208,6 +223,7 @@ class VerificationResultDialog extends StatelessWidget {
   final int blockchainId;
   final Map<String, dynamic> blockchainData;
   final Map<String, dynamic>? ipfsData;
+  final String? currentOwner;
 
   const VerificationResultDialog({
     super.key,
@@ -216,11 +232,12 @@ class VerificationResultDialog extends StatelessWidget {
     required this.blockchainId,
     required this.blockchainData,
     this.ipfsData,
+    this.currentOwner,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Note: Some contracts return 'isVerified' as a boolean, others might not.
+    // Determine verification status
     final isVerified = blockchainData['isVerified'] == true;
 
     return AlertDialog(
@@ -263,7 +280,10 @@ class VerificationResultDialog extends StatelessWidget {
             const Text('Blockchain Record:', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             _buildDetailRow('Token ID', '#$blockchainId'),
-            _buildDetailRow('Owner', _shortenAddress(blockchainData['originalOwner']?.toString() ?? 'Unknown')),
+            _buildDetailRow('Original Minter', _shortenAddress(blockchainData['originalOwner']?.toString() ?? 'Unknown')),
+
+            if (currentOwner != null)
+              _buildDetailRow('Current Owner', _shortenAddress(currentOwner!), isHighlight: true),
 
             if (type == 'electronics') ...[
               _buildDetailRow('Brand', blockchainData['brand'] ?? '-'),
@@ -293,33 +313,37 @@ class VerificationResultDialog extends StatelessWidget {
         ),
       ),
       actions: [
+        TextButton.icon(
+          onPressed: () {
+            Navigator.pop(context);
+            // Navigate to History Screen
+            Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => TransferHistoryScreen(
+                  assetId: firebaseId,
+                  assetTitle: blockchainData['brand'] ?? blockchainData['location'] ?? 'Asset',
+                ))
+            );
+          },
+          icon: const Icon(Icons.history),
+          label: const Text('History'),
+        ),
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('Close'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.pop(context);
-            // Navigate to full details
-            Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: firebaseId))
-            );
-          },
-          child: const Text('View Full Details'),
         ),
       ],
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildDetailRow(String label, String value, {bool isHighlight = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 80,
+            width: 100,
             child: Text(
               '$label:',
               style: const TextStyle(color: Colors.grey, fontSize: 13),
@@ -328,7 +352,10 @@ class VerificationResultDialog extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontWeight: FontWeight.w500),
+              style: TextStyle(
+                fontWeight: isHighlight ? FontWeight.bold : FontWeight.w500,
+                color: isHighlight ? Colors.green[700] : Colors.black87,
+              ),
             ),
           ),
         ],
