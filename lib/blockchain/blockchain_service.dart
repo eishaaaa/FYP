@@ -1,7 +1,12 @@
 // ═══════════════════════════════════════════════════════════
-// COMPLETE BLOCKCHAIN SERVICE
+// COMPLETE BLOCKCHAIN SERVICE (OPTIMIZED GAS VERSION)
 // Location: lib/blockchain/blockchain_service.dart
-// Updates: Added getOwnerOf() and standard ownership checks
+//
+// UPDATES:
+// 1. Gas Fees: Set to 25.5 Gwei (Minimum allowed by Network is 25).
+// 2. Struct Parsing: Correctly handles nested lists.
+// 3. ABI Loading: Supports both flat JSON and Artifacts.
+// 4. Added Verification Methods for Admin.
 // ═══════════════════════════════════════════════════════════
 
 import 'dart:convert';
@@ -46,20 +51,28 @@ class BlockchainServiceEnhanced {
 
     try {
       // Load ABI files
-      final electronicsAbi = await rootBundle.loadString('assets/abi/ElectronicsNFT.json');
-      final landAbi = await rootBundle.loadString('assets/abi/LandFractionalNFT.json');
+      final electronicsAbiString = await rootBundle.loadString('assets/abi/ElectronicsNFT.json');
+      final landAbiString = await rootBundle.loadString('assets/abi/LandFractionalNFT.json');
 
-      final electronicsJson = jsonDecode(electronicsAbi);
-      final landJson = jsonDecode(landAbi);
+      final electronicsJson = jsonDecode(electronicsAbiString);
+      final landJson = jsonDecode(landAbiString);
+
+      // FIX: Robustly extract ABI whether it is a Map (Hardhat Artifact) or List (Flat ABI)
+      List<dynamic> getAbiList(dynamic jsonInput) {
+        if (jsonInput is Map<String, dynamic> && jsonInput.containsKey('abi')) {
+          return jsonInput['abi'];
+        }
+        return jsonInput as List<dynamic>;
+      }
 
       // Setup Contracts
       _electronicsContract = DeployedContract(
-        ContractAbi.fromJson(jsonEncode(electronicsJson['abi']), 'ElectronicsNFT'),
+        ContractAbi.fromJson(jsonEncode(getAbiList(electronicsJson)), 'ElectronicsNFT'),
         EthereumAddress.fromHex(_sanitizeAddress(ContractConfig.electronicsNFTAddress)),
       );
 
       _landContract = DeployedContract(
-        ContractAbi.fromJson(jsonEncode(landJson['abi']), 'LandFractionalNFT'),
+        ContractAbi.fromJson(jsonEncode(getAbiList(landJson)), 'LandFractionalNFT'),
         EthereumAddress.fromHex(_sanitizeAddress(ContractConfig.landNFTAddress)),
       );
 
@@ -82,7 +95,7 @@ class BlockchainServiceEnhanced {
   bool get isConnected => _walletService.isConnected;
 
   // ═══════════════════════════════════════════════════════════
-  // ROBUST TRANSACTION LOGIC
+  // ROBUST TRANSACTION LOGIC (LOWEST SAFE GAS)
   // ═══════════════════════════════════════════════════════════
 
   Future<String> _sendTransaction(Transaction transaction) async {
@@ -102,13 +115,22 @@ class BlockchainServiceEnhanced {
     try {
       debugPrint('🚀 Preparing Transaction...');
 
+      // FIX: TUNED GAS FEES (Lowest Safe Values)
+      // Network Requirement: Min 25 Gwei Tip
+      // Our Setting: 25.5 Gwei Tip (Just enough to pass)
+      final maxPriorityFee = BigInt.from(25500000000); // 25.5 Gwei
+      final maxFee = BigInt.from(50000000000);         // 50 Gwei (Cap)
+
       // 2. CLEAN PARAMETERS
-      // We explicitly REMOVE 'nonce', 'gas', and 'gasPrice' to let MetaMask handle them
       final txParams = {
         'from': connectedAddress,
         'to': transaction.to?.toString(),
         'data': bytesToHex(transaction.data ?? Uint8List(0), include0x: true),
         'value': '0x${(transaction.value?.getInWei ?? BigInt.zero).toRadixString(16)}',
+
+        // VITAL: Explicit Gas Fields
+        'maxPriorityFeePerGas': '0x${maxPriorityFee.toRadixString(16)}',
+        'maxFeePerGas': '0x${maxFee.toRadixString(16)}',
       };
 
       debugPrint('🚀 Sending Request to Wallet: $txParams');
@@ -146,19 +168,18 @@ class BlockchainServiceEnhanced {
       if (e.toString().contains('User rejected')) {
         throw Exception('User rejected the transaction');
       }
-      if (e.toString().contains('-32000')) {
-        throw Exception('Wallet Sync Error: Please clear "Activity" or "Nonce" in MetaMask settings.');
+      if (e.toString().contains('5000') || e.toString().contains('needed')) {
+        throw Exception('Network requires ~25 Gwei gas. Please ensure you have enough Test MATIC.');
       }
       rethrow;
     }
   }
 
   // ═══════════════════════════════════════════════════════════
-  // GLOBAL HELPERS (NEW)
+  // GLOBAL HELPERS
   // ═══════════════════════════════════════════════════════════
 
   /// Fetch the *current* owner of a token from the blockchain.
-  /// This is essential for validating transfers and QR scans.
   Future<String?> getOwnerOf(String type, int tokenId) async {
     await init();
     try {
@@ -172,8 +193,7 @@ class BlockchainServiceEnhanced {
         );
         return (result.first as EthereumAddress).toString();
       } else if (type == 'land') {
-        // ERC-1155: No single owner. We return the creator/original owner for display.
-        // Actual ownership is determined by user balances (getUserFractions).
+        // ERC-1155: Get 'originalOwner' from property struct
         final property = await getLandProperty(tokenId);
         return property?['originalOwner'];
       }
@@ -212,6 +232,17 @@ class BlockchainServiceEnhanced {
     return await _sendTransaction(transaction);
   }
 
+  Future<String?> verifyElectronics(int tokenId) async {
+    await init();
+    final function = _electronicsContract.function('verifyDevice');
+    final transaction = Transaction.callContract(
+      contract: _electronicsContract,
+      function: function,
+      parameters: [BigInt.from(tokenId)],
+    );
+    return await _sendTransaction(transaction);
+  }
+
   Future<Map<String, dynamic>?> getDevice(int tokenId) async {
     await init();
     try {
@@ -221,14 +252,18 @@ class BlockchainServiceEnhanced {
         function: function,
         params: [BigInt.from(tokenId)],
       );
+
+      // FIX: Unwrap the struct (it is the first item in the result list)
+      final deviceData = result[0] as List<dynamic>;
+
       return {
-        'brand': result[0],
-        'model': result[1],
-        'serialNumber': result[2],
-        'warrantyExpiry': result[3],
-        'mintedAt': (result[4] as BigInt).toInt(),
-        'originalOwner': (result[5] as EthereumAddress).toString(),
-        'isVerified': result[6],
+        'brand': deviceData[0],
+        'model': deviceData[1],
+        'serialNumber': deviceData[2],
+        'warrantyExpiry': deviceData[3],
+        'mintedAt': (deviceData[4] as BigInt).toInt(),
+        'originalOwner': (deviceData[5] as EthereumAddress).toString(),
+        'isVerified': deviceData[6],
       };
     } catch (e) {
       debugPrint('Error getDevice: $e');
@@ -256,7 +291,6 @@ class BlockchainServiceEnhanced {
 
   Future<String?> submitElectronicsReview({required int tokenId, required String reviewText}) async {
     await init();
-    // Hash the review text
     final reviewBytes = Uint8List.fromList(utf8.encode(reviewText));
     final reviewHash = keccak256(reviewBytes);
 
@@ -300,6 +334,17 @@ class BlockchainServiceEnhanced {
     return await _sendTransaction(transaction);
   }
 
+  Future<String?> verifyLand(int propertyId) async {
+    await init();
+    final function = _landContract.function('verifyProperty');
+    final transaction = Transaction.callContract(
+      contract: _landContract,
+      function: function,
+      parameters: [BigInt.from(propertyId)],
+    );
+    return await _sendTransaction(transaction);
+  }
+
   Future<String?> purchaseLandFractions({
     required int propertyId,
     required int amount,
@@ -326,17 +371,20 @@ class BlockchainServiceEnhanced {
         params: [BigInt.from(propertyId)],
       );
 
+      // FIX: Unwrap the struct
+      final landData = result[0] as List<dynamic>;
+
       return {
-        'location': result[0],
-        'city': result[1],
-        'totalArea': (result[2] as BigInt).toInt(),
-        'areaUnit': result[3],
-        'totalFractions': (result[4] as BigInt).toInt(),
-        'pricePerFraction': result[5] as BigInt,
-        'createdAt': (result[6] as BigInt).toInt(),
-        'originalOwner': (result[7] as EthereumAddress).toString(),
-        'ipfsMetadata': result[8],
-        'isVerified': result[9],
+        'location': landData[0],
+        'city': landData[1],
+        'totalArea': (landData[2] as BigInt).toInt(),
+        'areaUnit': landData[3],
+        'totalFractions': (landData[4] as BigInt).toInt(),
+        'pricePerFraction': landData[5] as BigInt,
+        'createdAt': (landData[6] as BigInt).toInt(),
+        'originalOwner': (landData[7] as EthereumAddress).toString(),
+        'ipfsMetadata': landData[8],
+        'isVerified': landData[9],
       };
     } catch (e) {
       debugPrint('Error getLandProperty: $e');

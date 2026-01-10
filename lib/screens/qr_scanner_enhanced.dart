@@ -26,7 +26,7 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
     setState(() => _processing = true);
 
     try {
-      // Robust URI Parsing fixes the "double slash" bug
+      // Robust URI Parsing
       // Expected Format: asset://type/firebase_id/blockchain_id
       final uri = Uri.parse(code);
 
@@ -34,17 +34,20 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
         throw Exception('Invalid QR type. Expected "asset://", got "$code"');
       }
 
-      // pathSegments automatically handles the "//" and splitting
-      // For "asset://land/123/45", segments are ['land', '123', '45']
-      if (uri.pathSegments.length < 3) {
-        throw Exception('Incomplete QR data. Expected 3 segments, got ${uri.pathSegments.length}');
+      // FIX: Relaxed check (Allow 2 segments for old QRs, 3 for new)
+      if (uri.pathSegments.length < 2) {
+        throw Exception('Incomplete QR data. Expected at least 2 segments (Type/ID), got ${uri.pathSegments.length}');
       }
 
       final type = uri.pathSegments[0];
       final firebaseId = uri.pathSegments[1];
-      final blockchainIdString = uri.pathSegments[2];
 
-      // 1. Handle "pending" state gracefully
+      // FIX: Safely handle missing 3rd segment (Blockchain ID)
+      final blockchainIdString = uri.pathSegments.length > 2
+          ? uri.pathSegments[2]
+          : 'pending';
+
+      // 1. Handle "pending" or "legacy" state gracefully
       if (blockchainIdString.toLowerCase() == 'pending' || blockchainIdString.toLowerCase() == 'null') {
         if (!mounted) return;
         await showDialog(
@@ -54,12 +57,20 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
               children: [
                 Icon(Icons.hourglass_empty, color: Colors.orange[700]),
                 const SizedBox(width: 8),
-                const Text("Pending Blockchain"),
+                // FIX: Wrapped in Expanded to prevent RenderFlex Overflow
+                const Expanded(
+                  child: Text(
+                    "Pending or Legacy Asset",
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
               ],
             ),
             content: const Text(
-              "This asset has been uploaded but is still waiting for blockchain confirmation (Mining).\n\n"
-                  "Please try scanning again in a few minutes.",
+              "This asset is either waiting for blockchain confirmation or is using an older QR format.\n\n"
+                  "Please try regenerating the QR code if the asset is already minted.",
             ),
             actions: [
               TextButton(
@@ -138,7 +149,7 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Scan Error: $e'),
+            content: Text('Scan Error: ${e.toString().replaceAll("Exception:", "")}'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 4),
           ),
