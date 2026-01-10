@@ -26,7 +26,7 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
     setState(() => _processing = true);
 
     try {
-      // Robust URI Parsing fixes the "double slash" bug
+      // Robust URI Parsing
       // Expected Format: asset://type/firebase_id/blockchain_id
       final uri = Uri.parse(code);
 
@@ -34,8 +34,7 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
         throw Exception('Invalid QR type. Expected "asset://", got "$code"');
       }
 
-      // FIX: Relaxed check to allow 2 segments (Old format) or 3 segments (New format)
-      // pathSegments handles splitting automatically
+      // FIX: Relaxed check (Allow 2 segments for old QRs, 3 for new)
       if (uri.pathSegments.length < 2) {
         throw Exception('Incomplete QR data. Expected at least 2 segments (Type/ID), got ${uri.pathSegments.length}');
       }
@@ -43,13 +42,12 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
       final type = uri.pathSegments[0];
       final firebaseId = uri.pathSegments[1];
 
-      // FIX: Handle missing 3rd segment gracefully
+      // FIX: Safely handle missing 3rd segment (Blockchain ID)
       final blockchainIdString = uri.pathSegments.length > 2
           ? uri.pathSegments[2]
           : 'pending';
 
-      // 1. Handle "pending" state gracefully
-      // This also catches old QR codes that didn't have a Token ID yet
+      // 1. Handle "pending" or "legacy" state gracefully
       if (blockchainIdString.toLowerCase() == 'pending' || blockchainIdString.toLowerCase() == 'null') {
         if (!mounted) return;
         await showDialog(
@@ -59,7 +57,15 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
               children: [
                 Icon(Icons.hourglass_empty, color: Colors.orange[700]),
                 const SizedBox(width: 8),
-                const Text("Pending or Legacy Asset"),
+                // FIX: Wrapped in Expanded to prevent RenderFlex Overflow
+                const Expanded(
+                  child: Text(
+                    "Pending or Legacy Asset",
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
               ],
             ),
             content: const Text(

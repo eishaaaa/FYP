@@ -6,6 +6,7 @@
 // 1. Gas Fees: Set to 25.5 Gwei (Minimum allowed by Network is 25).
 // 2. Struct Parsing: Correctly handles nested lists.
 // 3. ABI Loading: Supports both flat JSON and Artifacts.
+// 4. Added Verification Methods for Admin.
 // ═══════════════════════════════════════════════════════════
 
 import 'dart:convert';
@@ -231,6 +232,17 @@ class BlockchainServiceEnhanced {
     return await _sendTransaction(transaction);
   }
 
+  Future<String?> verifyElectronics(int tokenId) async {
+    await init();
+    final function = _electronicsContract.function('verifyDevice');
+    final transaction = Transaction.callContract(
+      contract: _electronicsContract,
+      function: function,
+      parameters: [BigInt.from(tokenId)],
+    );
+    return await _sendTransaction(transaction);
+  }
+
   Future<Map<String, dynamic>?> getDevice(int tokenId) async {
     await init();
     try {
@@ -318,6 +330,17 @@ class BlockchainServiceEnhanced {
         pricePerFraction,
         ipfsMetadata,
       ],
+    );
+    return await _sendTransaction(transaction);
+  }
+
+  Future<String?> verifyLand(int propertyId) async {
+    await init();
+    final function = _landContract.function('verifyProperty');
+    final transaction = Transaction.callContract(
+      contract: _landContract,
+      function: function,
+      parameters: [BigInt.from(propertyId)],
     );
     return await _sendTransaction(transaction);
   }
