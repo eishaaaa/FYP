@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'transfer_screen.dart';
+import '../blockchain/blockchain_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -105,14 +107,107 @@ class _ChatScreenState extends State<ChatScreen> {
       'unreadCount.$myUid': 0,
     });
   }
-
   String _formatTime(Timestamp? ts) {
     if (ts == null) return '';
+
     final d = ts.toDate();
-    final h = d.hour.toString().padLeft(2, '0');
-    final m = d.minute.toString().padLeft(2, '0');
-    return '$h:$m';
+
+    // Format date: day/month/year
+    final day = d.day;
+    final month = d.month;
+    final year = d.year;
+
+    // Format time in 12-hour format with AM/PM
+    int hour = d.hour;
+    final minute = d.minute.toString().padLeft(2, '0');
+    final amPm = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12;
+    if (hour == 0) hour = 12;
+
+    return '$day/$month/$year at $hour:$minute $amPm';
   }
+
+  /// Builds the "Proceed to Transfer" button for a chat with a linked asset
+  Widget _buildProceedToTransferButton(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: _db.collection('chats').doc(widget.chatId).snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || !snapshot.data!.exists) return const SizedBox();
+
+        final chatData = snapshot.data!.data() as Map<String, dynamic>;
+        final assetId = chatData['assetId'];
+        final assetTypeStr = chatData['assetType'];
+        final tokenId = chatData['blockchainTokenId'];
+        final sellerUid = chatData['sellerUid'];
+        final buyerUid = widget.otherUserId;
+
+        // Only show button if asset exists and current user is the seller
+        if (assetId == null || sellerUid != myUid) return const SizedBox();
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.swap_horiz),
+              label: const Text('Proceed to Transfer'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                minimumSize: const Size(double.infinity, 48),
+              ),
+              onPressed: () async {
+                // 1️⃣ Fetch buyer wallet from Firestore
+                final buyerDoc = await _db.collection('users').doc(widget.otherUserId).get();
+                final buyerWallet = buyerDoc.data()?['walletAddress'];
+
+                // 2️⃣ Fetch seller wallet from blockchain connection
+                final blockchain = BlockchainServiceEnhanced();
+                await blockchain.init();
+                final sellerWallet = blockchain.connectedAddress;
+
+                // 3️⃣ Check wallets before proceeding
+                if (buyerWallet == null) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Buyer wallet not found in database')),
+                  );
+                  return;
+                }
+                if (sellerWallet == null) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please connect your wallet first')),
+                  );
+                  return;
+                }
+
+                // Navigate to TransferScreen
+                if (!context.mounted) return;
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => TransferScreen(
+                      assetId: assetId,
+                      assetType: assetTypeStr == 'electronics'
+                          ? AssetType.electronics
+                          : AssetType.land,
+                      tokenId: assetTypeStr == 'electronics' ? tokenId : null,
+                      propertyId: assetTypeStr == 'land' ? tokenId : null,
+                      buyerUid: buyerUid,
+                      buyerWallet: buyerWallet,
+                      sellerUid: sellerUid,
+                      sellerWallet: sellerWallet,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -154,104 +249,76 @@ class _ChatScreenState extends State<ChatScreen> {
           },
         ),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _db
-                  .collection('chats')
-                  .doc(widget.chatId)
-                  .collection('messages')
-                  .orderBy('timestamp', descending: true)
-                  .snapshots(),
-              builder: (context, snap) {
-                if (!snap.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+        body: Column(
+          children: [
 
-                final docs = snap.data!.docs;
-                if (docs.isEmpty) {
-                  return const Center(child: Text('Say hello 👋'));
-                }
-
-                return ListView.builder(
-                  reverse: true,
-                  itemCount: docs.length,
-                  itemBuilder: (context, i) {
-                    final m = docs[i];
-                    final msg = m.data() as Map<String, dynamic>;
-                    final isMe = msg['senderId'] == myUid;
-
-                    if (!isMe && msg['seen'] == false) {
-                      m.reference.update({'seen': true});
-                    }
-
-                    return _messageBubble(msg, isMe);
-                  },
-                );
-              },
-            ),
-          ),
-
-          if (_isTyping)
-            const Padding(
-              padding: EdgeInsets.only(left: 12, bottom: 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('typing...'),
+            // 1️⃣ Chat Messages List
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: _db
+                    .collection('chats')
+                    .doc(widget.chatId)
+                    .collection('messages')
+                    .orderBy('timestamp', descending: true)
+                    .snapshots(),
+                builder: (context, snap) {
+                  if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+                  final docs = snap.data!.docs;
+                  if (docs.isEmpty) return const Center(child: Text('Say hello 👋'));
+                  return ListView.builder(
+                    reverse: true,
+                    itemCount: docs.length,
+                    itemBuilder: (context, i) {
+                      final msg = docs[i].data() as Map<String, dynamic>;
+                      final isMe = msg['senderId'] == myUid;
+                      return _messageBubble(msg, isMe);
+                    },
+                  );
+                },
               ),
             ),
-          StreamBuilder<DocumentSnapshot>(
-            stream: _db.collection('chats').doc(widget.chatId).snapshots(),
-            builder: (context, snap) {
-              if (!snap.hasData || !snap.data!.exists) {
-                return const SizedBox();
-              }
 
-              final data = snap.data!.data() as Map<String, dynamic>;
-              final isTyping = data['typing'] == true;
-
-              return isTyping
-                  ? const Padding(
-                padding: EdgeInsets.only(left: 12, bottom: 6),
+            // 2️⃣ Typing indicator
+            if (_isTyping)
+              const Padding(
+                padding: EdgeInsets.only(left: 12, bottom: 4),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(
-                    'typing...',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
+                  child: Text('typing...'),
                 ),
-              )
-                  : const SizedBox();
-            },
-          ),
-          SafeArea(
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    onChanged: (value) {
-                      _db.collection('chats').doc(widget.chatId).set({
-                        'typing': value.isNotEmpty,
-                      }, SetOptions(merge: true));
-                    },
-                    onSubmitted: (value) => _sendMessage(),
-                    decoration: const InputDecoration(
-                      hintText: 'Type a message',
-                      contentPadding: EdgeInsets.all(12),
+              ),
+
+            // 3️⃣ **Proceed to Transfer Button — ALWAYS visible if conditions met**
+            _buildProceedToTransferButton(context),
+
+            // 4️⃣ Chat Input Field
+            SafeArea(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      onChanged: (value) {
+                        _db.collection('chats').doc(widget.chatId).set({
+                          'typing': value.isNotEmpty,
+                        }, SetOptions(merge: true));
+                      },
+                      onSubmitted: (value) => _sendMessage(),
+                      decoration: const InputDecoration(
+                        hintText: 'Type a message',
+                        contentPadding: EdgeInsets.all(12),
+                      ),
                     ),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.send),
-                  onPressed: _sendMessage,
-                ),
-              ],
+                  IconButton(
+                    icon: const Icon(Icons.send),
+                    onPressed: _sendMessage,
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        )
     );
   }
 
