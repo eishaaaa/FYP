@@ -321,8 +321,7 @@ class VerificationResultDialog extends StatelessWidget {
                 context,
                 MaterialPageRoute(builder: (_) => TransferHistoryScreen(
                   assetId: firebaseId,
-                  assetTitle: blockchainData['brand'] ?? blockchainData['location'] ?? 'Asset',
-                ))
+                ),),
             );
           },
           icon: const Icon(Icons.history),
