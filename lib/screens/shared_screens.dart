@@ -18,7 +18,6 @@ import 'transfer_screen.dart'; // Added: Transfer functionality
 import 'transfer_history_screen.dart'; // Added: History functionality
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
-
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
 
@@ -710,6 +709,11 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
   }
 
   Widget _buildSupplierActions(BuildContext context, Map<String, dynamic> data, String role) {
+    final currentUserUid = FirebaseAuth.instance.currentUser!.uid;
+    final sellerUid = currentUserUid;
+
+    final sellerWallet =
+        BlockchainServiceEnhanced().connectedAddress;
     return Column(
       children: [
         Row(
@@ -753,36 +757,60 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: () async {
-                // For Land: Check balance before transferring
                 int? maxAmount;
+
                 if (data['category'] == 'land') {
                   final bs = BlockchainServiceEnhanced();
-                  // Attempt to get balance if already connected or connect
-                  if (!bs.isConnected) {
-                    // This is a soft check; TransferScreen will enforce connection
-                  } else {
+                  if (bs.isConnected) {
                     maxAmount = await bs.getUserFractions(
-                        bs.connectedAddress!,
-                        data['blockchainTokenId']
+                      bs.connectedAddress!,
+                      data['blockchainTokenId'],
                     );
                   }
+                }
+
+                if (sellerWallet == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please connect your wallet')),
+                  );
+                  return;
                 }
 
                 if (context.mounted) {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => TransferScreen(
-                        assetId: widget.assetId,
-                        assetTitle: data['title'] ?? 'Asset',
-                        assetType: data['category'] ?? 'electronics',
-                        tokenId: data['blockchainTokenId'],
-                        maxAmount: maxAmount,
-                      ),
+                      builder: (_) {
+                        final buyerWallet = data['buyerWallet'] ?? '';
+                        final sellerUid = data['sellerUid'] ?? FirebaseAuth.instance.currentUser!.uid;
+                        final sellerWallet = BlockchainServiceEnhanced().connectedAddress ?? '';
+
+                        if (data['category'] == 'electronics') {
+                          return TransferScreen(
+                            assetId: widget.assetId,
+                            assetType: AssetType.electronics,
+                            buyerUid: data['buyerUid'], // make sure this exists in your data
+                            buyerWallet: buyerWallet,
+                            sellerUid: sellerUid,
+                            sellerWallet: sellerWallet,
+                            tokenId: data['blockchainTokenId'],
+                          );
+                        } else {
+                          return TransferScreen(
+                            assetId: widget.assetId,
+                            assetType: AssetType.land,
+                            buyerUid: data['buyerUid'],
+                            buyerWallet: buyerWallet,
+                            sellerUid: sellerUid,
+                            sellerWallet: sellerWallet,
+                            propertyId: data['propertyId'],
+                            fractionAmount: maxAmount,
+                          );
+                        }
+                      },
                     ),
                   ).then((result) {
                     if (result == true) {
-                      // Reload data if transfer happened
                       setState(() {
                         _loadFuture = _load();
                       });
@@ -807,7 +835,6 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                   MaterialPageRoute(
                     builder: (_) => TransferHistoryScreen(
                       assetId: widget.assetId,
-                      assetTitle: data['title'] ?? 'Asset',
                     ),
                   ),
                 );
