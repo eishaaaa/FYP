@@ -1,12 +1,11 @@
 // ═══════════════════════════════════════════════════════════
-// COMPLETE BLOCKCHAIN SERVICE (OPTIMIZED GAS VERSION)
+// COMPLETE BLOCKCHAIN SERVICE (FINAL OPTIMIZED VERSION)
 // Location: lib/blockchain/blockchain_service.dart
 //
-// UPDATES:
-// 1. Gas Fees: Set to 25.5 Gwei (Minimum allowed by Network is 25).
-// 2. Struct Parsing: Correctly handles nested lists.
-// 3. ABI Loading: Supports both flat JSON and Artifacts.
-// 4. Added Verification Methods for Admin.
+// FIXES INCLUDED:
+// 1. Gas Fees: Tuned to 25.5 Gwei (Minimum safe for Amoy Testnet)
+// 2. Struct Parsing: Correctly unwraps nested lists from Web3Dart
+// 3. ABI Loading: Handles both Hardhat Artifacts and Flat JSON
 // ═══════════════════════════════════════════════════════════
 
 import 'dart:convert';
@@ -95,7 +94,7 @@ class BlockchainServiceEnhanced {
   bool get isConnected => _walletService.isConnected;
 
   // ═══════════════════════════════════════════════════════════
-  // ROBUST TRANSACTION LOGIC (LOWEST SAFE GAS)
+  // ROBUST TRANSACTION LOGIC (GAS OPTIMIZED)
   // ═══════════════════════════════════════════════════════════
 
   Future<String> _sendTransaction(Transaction transaction) async {
@@ -115,7 +114,7 @@ class BlockchainServiceEnhanced {
     try {
       debugPrint('🚀 Preparing Transaction...');
 
-      // FIX: TUNED GAS FEES (Lowest Safe Values)
+      // FIX: TUNED GAS FEES (Lowest Safe Values for Amoy)
       // Network Requirement: Min 25 Gwei Tip
       // Our Setting: 25.5 Gwei Tip (Just enough to pass)
       final maxPriorityFee = BigInt.from(25500000000); // 25.5 Gwei
@@ -128,7 +127,7 @@ class BlockchainServiceEnhanced {
         'data': bytesToHex(transaction.data ?? Uint8List(0), include0x: true),
         'value': '0x${(transaction.value?.getInWei ?? BigInt.zero).toRadixString(16)}',
 
-        // VITAL: Explicit Gas Fields
+        // VITAL: Explicit Gas Fields to prevent "Transaction underpriced" errors
         'maxPriorityFeePerGas': '0x${maxPriorityFee.toRadixString(16)}',
         'maxFeePerGas': '0x${maxFee.toRadixString(16)}',
       };
@@ -232,17 +231,6 @@ class BlockchainServiceEnhanced {
     return await _sendTransaction(transaction);
   }
 
-  Future<String?> verifyElectronics(int tokenId) async {
-    await init();
-    final function = _electronicsContract.function('verifyDevice');
-    final transaction = Transaction.callContract(
-      contract: _electronicsContract,
-      function: function,
-      parameters: [BigInt.from(tokenId)],
-    );
-    return await _sendTransaction(transaction);
-  }
-
   Future<Map<String, dynamic>?> getDevice(int tokenId) async {
     await init();
     try {
@@ -334,17 +322,6 @@ class BlockchainServiceEnhanced {
     return await _sendTransaction(transaction);
   }
 
-  Future<String?> verifyLand(int propertyId) async {
-    await init();
-    final function = _landContract.function('verifyProperty');
-    final transaction = Transaction.callContract(
-      contract: _landContract,
-      function: function,
-      parameters: [BigInt.from(propertyId)],
-    );
-    return await _sendTransaction(transaction);
-  }
-
   Future<String?> purchaseLandFractions({
     required int propertyId,
     required int amount,
@@ -371,7 +348,7 @@ class BlockchainServiceEnhanced {
         params: [BigInt.from(propertyId)],
       );
 
-      // FIX: Unwrap the struct
+      // FIX: Unwrap the struct (same logic as getDevice)
       final landData = result[0] as List<dynamic>;
 
       return {

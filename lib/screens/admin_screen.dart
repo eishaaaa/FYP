@@ -4,8 +4,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-// IMPORT BLOCKCHAIN SERVICE
-import '../blockchain/blockchain_service.dart';
 
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
@@ -338,60 +336,16 @@ class AssetModeration extends StatelessWidget {
                         Expanded(
                           child: ElevatedButton.icon(
                             onPressed: () async {
-                              try {
-                                // 1. Initialize Service
-                                final blockchain = BlockchainServiceEnhanced();
-                                await blockchain.init();
-
-                                // 2. Connect Wallet (Admin must be connected!)
-                                if (!blockchain.isConnected) {
-                                  await blockchain.connectWallet(context);
-                                }
-
-                                if (!blockchain.isConnected) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Wallet not connected'), backgroundColor: Colors.red)
-                                  );
-                                  return;
-                                }
-
-                                // 3. Execute Blockchain Transaction
-                                final tokenId = asset['blockchainTokenId'] as int?;
-                                final category = asset['category'] as String?;
-
-                                if (tokenId != null) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Verifying on Blockchain... Please confirm in wallet.'))
-                                  );
-
-                                  if (category == 'electronics') {
-                                    await blockchain.verifyElectronics(tokenId);
-                                  } else if (category == 'land') {
-                                    await blockchain.verifyLand(tokenId);
-                                  }
-                                }
-
-                                // 4. Update Database (Only if blockchain tx succeeds or was skipped)
-                                await db.collection('assets').doc(assetId).update({
-                                  'verified': true,
-                                  'verifiedAt': FieldValue.serverTimestamp(),
-                                });
-
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('✅ Asset approved on Blockchain & DB'),
-                                      backgroundColor: Colors.green,
-                                    ),
-                                  );
-                                }
-                              } catch (e) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Verification Failed: $e'), backgroundColor: Colors.red),
-                                  );
-                                }
-                              }
+                              await db.collection('assets').doc(assetId).update({
+                                'verified': true,
+                                'verifiedAt': FieldValue.serverTimestamp(),
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('✅ Asset approved'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
                             },
                             icon: const Icon(Icons.check),
                             label: const Text('Approve'),
