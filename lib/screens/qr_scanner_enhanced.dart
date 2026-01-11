@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
-import 'user_screens.dart';
-import 'shared_screens.dart';
+// import 'user_screens.dart';
+// import 'shared_screens.dart';
 import 'transfer_history_screen.dart';
 
 class QRScannerEnhanced extends StatefulWidget {
@@ -318,10 +318,10 @@ class VerificationResultDialog extends StatelessWidget {
             Navigator.pop(context);
             // Navigate to History Screen
             Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => TransferHistoryScreen(
-                  assetId: firebaseId,
-                ),),
+              context,
+              MaterialPageRoute(builder: (_) => TransferHistoryScreen(
+                assetId: firebaseId,
+              ),),
             );
           },
           icon: const Icon(Icons.history),

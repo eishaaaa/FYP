@@ -11,8 +11,11 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:introduction_screen/introduction_screen.dart';
 import 'package:image/image.dart' as img;
+
+// IMPORTS FOR NAVIGATION
 import 'user_screens.dart';
 import 'supplier_screens.dart';
+import 'admin_screen.dart'; // <--- ADDED THIS IMPORT
 
 final FirebaseAuth auth = FirebaseAuth.instance;
 final FirebaseFirestore db = FirebaseFirestore.instance;
@@ -162,22 +165,34 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         return;
       }
 
-      final role = snap.data()?["role"] ?? "user";
+      // FIX: Robust Role Logic
+      final rawRole = snap.data()?["role"] as String? ?? "user";
+      final role = rawRole.toLowerCase().trim();
 
       if (!mounted) return;
 
-      if (role == "user") {
+      // 1. Check Admin
+      if (role.contains("admin")) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const UserHomeScreen()),
+          MaterialPageRoute(builder: (_) => const AdminHomeScreen()),
         );
-      } else {
+      }
+      // 2. Check Supplier
+      else if (role.contains("supplier")) {
         final type = role.contains("land") ? "land" : "electronics";
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (_) => SupplierHomeScreen(type: type),
           ),
+        );
+      }
+      // 3. Default to User
+      else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const UserHomeScreen()),
         );
       }
     } catch (e) {
@@ -345,15 +360,25 @@ class _LoginScreenState extends State<LoginScreen> {
       if (user == null) throw Exception('Login returned null user');
 
       final snap = await db.collection('users').doc(user.uid).get();
-      final role = (snap.data()?['role'] as String?) ?? 'user';
+
+      // FIX: Robust Role Logic
+      final rawRole = (snap.data()?['role'] as String?) ?? 'user';
+      final role = rawRole.toLowerCase().trim();
 
       if (!mounted) return;
 
-      if (role == 'user') {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserHomeScreen()));
-      } else {
+      // 1. Check Admin
+      if (role.contains('admin')) {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminHomeScreen()));
+      }
+      // 2. Check Supplier
+      else if (role.contains('supplier')) {
         final type = (role.contains('land')) ? 'land' : 'electronics';
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)));
+      }
+      // 3. Default to User
+      else {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserHomeScreen()));
       }
     } catch (e) {
       if (mounted) {
@@ -369,13 +394,20 @@ class _LoginScreenState extends State<LoginScreen> {
     final user = await signInWithGoogle(context);
     if (user != null) {
       final snapshot = await db.collection('users').doc(user.uid).get();
-      final role = snapshot.data()?['role'] as String? ?? 'user';
+
+      // FIX: Robust Role Logic
+      final rawRole = snapshot.data()?['role'] as String? ?? 'user';
+      final role = rawRole.toLowerCase().trim();
+
       if (!mounted) return;
-      if (role == 'user') {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserHomeScreen()));
-      } else {
+
+      if (role.contains('admin')) {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminHomeScreen()));
+      } else if (role.contains('supplier')) {
         final type = role.contains('land') ? 'land' : 'electronics';
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)));
+      } else {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserHomeScreen()));
       }
     }
     if (mounted) setState(() => _loading = false);
@@ -600,13 +632,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'createdAt': FieldValue.serverTimestamp(),
         });
       }
-      final role = (await docRef.get()).data()?['role'] as String? ?? 'user';
+
+      // FIX: Robust Role Logic
+      final rawRole = (await docRef.get()).data()?['role'] as String? ?? 'user';
+      final role = rawRole.toLowerCase().trim();
+
       if (!mounted) return;
-      if (role == 'user') {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserHomeScreen()));
-      } else {
+
+      if (role.contains('admin')) {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminHomeScreen()));
+      } else if (role.contains('supplier')) {
         final type = role.contains('land') ? 'land' : 'electronics';
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)));
+      } else {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserHomeScreen()));
       }
     }
     if (mounted) setState(() => _loading = false);

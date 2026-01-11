@@ -488,22 +488,44 @@ class _AssetFormState extends State<AssetForm> {
   String _plotUnit = 'marla';
   bool _uploadingDocuments = false;
 
-  late final TextEditingController _titleCtrl = TextEditingController(text: widget.initialData?['title'] ?? '');
-  late final TextEditingController _descCtrl = TextEditingController(text: widget.initialData?['description'] ?? '');
-  late final TextEditingController _priceCtrl = TextEditingController(text: widget.initialData?['price']?.toString() ?? '');
-  late final TextEditingController _plotCtrl = TextEditingController(text: widget.initialData?['plotArea']?.toString() ?? '');
-  late final TextEditingController _cityCtrl = TextEditingController(text: widget.initialData?['city'] ?? '');
-  late final TextEditingController _brandCtrl = TextEditingController(text: widget.initialData?['brand'] ?? '');
-  late final TextEditingController _modelCtrl = TextEditingController(text: widget.initialData?['model'] ?? '');
-  late final TextEditingController _serialCtrl = TextEditingController(text: widget.initialData?['serial'] ?? '');
-  late final TextEditingController _warrantyCtrl = TextEditingController(text: widget.initialData?['warranty'] ?? '');
-  late final TextEditingController _fractionsCtrl = TextEditingController(text: widget.initialData?['totalFractions']?.toString() ?? '100');
+  // ✅ SAFE INITIALIZATION: Using .toString() to handle numeric or null values from Firestore
+  late final TextEditingController _titleCtrl = TextEditingController(
+      text: widget.initialData?['title']?.toString() ?? ''
+  );
+  late final TextEditingController _descCtrl = TextEditingController(
+      text: widget.initialData?['description']?.toString() ?? ''
+  );
+  late final TextEditingController _priceCtrl = TextEditingController(
+      text: widget.initialData?['price']?.toString() ?? ''
+  );
+  late final TextEditingController _plotCtrl = TextEditingController(
+      text: widget.initialData?['plotArea']?.toString() ?? ''
+  );
+  late final TextEditingController _cityCtrl = TextEditingController(
+      text: widget.initialData?['city']?.toString() ?? ''
+  );
+  late final TextEditingController _brandCtrl = TextEditingController(
+      text: widget.initialData?['brand']?.toString() ?? ''
+  );
+  late final TextEditingController _modelCtrl = TextEditingController(
+      text: widget.initialData?['model']?.toString() ?? ''
+  );
+  late final TextEditingController _serialCtrl = TextEditingController(
+      text: widget.initialData?['serial']?.toString() ?? ''
+  );
+  late final TextEditingController _warrantyCtrl = TextEditingController(
+      text: widget.initialData?['warranty']?.toString() ?? ''
+  );
+  late final TextEditingController _fractionsCtrl = TextEditingController(
+      text: widget.initialData?['totalFractions']?.toString() ?? '100'
+  );
 
   @override
   void initState() {
     super.initState();
     _condition = widget.initialData?['condition']?.toString() ?? 'new';
     _plotUnit = widget.initialData?['plotUnit']?.toString() ?? 'marla';
+
     if (widget.initialData?['documents'] != null) {
       final docs = widget.initialData!['documents'] as List<dynamic>;
       _documents = docs.cast<Map<String, dynamic>>();
@@ -569,7 +591,6 @@ class _AssetFormState extends State<AssetForm> {
     }
   }
 
-  // NOTE: Validation Logic moved here to be safer
   Future<Map<String, dynamic>?> _collect() async {
     final price = double.tryParse(_priceCtrl.text.replaceAll(',', ''));
     if (price == null) {
@@ -891,8 +912,6 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
       data.remove('rawImages');
       data.remove('rawDocuments');
 
-      // Update the _handleCreate method inside the db.collection('assets').add block:
-
       await db.collection('assets').add({
         ...data,
         'category': widget.type,
@@ -900,7 +919,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         'blockchainTx': txHash,
         'ipfsMetadataHash': metadataHash,
         'isMinted': true,
-        'verified': true, // ADD THIS: Ensures compatibility with older queries
+        'verified': true,
         'createdAt': FieldValue.serverTimestamp(),
       });
 

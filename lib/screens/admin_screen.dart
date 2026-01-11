@@ -1,9 +1,8 @@
 // lib/screens/admin_screen.dart
-// Admin panel for Digital Goods (Synopsis Section 1.4)
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'auth_screens.dart'; // Ensure this file exists
 
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
@@ -21,7 +20,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   final List<Widget> _pages = [
     const AdminDashboard(),
     const UserManagement(),
-    const AssetModeration(),
+    const AssetModeration(), // Now points to the Stateful version
     const TransactionMonitor(),
   ];
 
@@ -36,7 +35,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
             onPressed: () async {
               await auth.signOut();
               if (context.mounted) {
-                Navigator.pushReplacementNamed(context, '/login');
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      (_) => false,
+                );
               }
             },
           ),
@@ -244,16 +247,20 @@ class UserManagement extends StatelessWidget {
                       await db.collection('users').doc(userId).update({
                         'verified': true,
                       });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('User verified')),
-                      );
+                      if(context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('User verified')),
+                        );
+                      }
                     } else if (value == 'suspend') {
                       await db.collection('users').doc(userId).update({
                         'suspended': true,
                       });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('User suspended')),
-                      );
+                      if(context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('User suspended')),
+                        );
+                      }
                     }
                   },
                   itemBuilder: (context) => [
@@ -270,144 +277,242 @@ class UserManagement extends StatelessWidget {
   }
 }
 
-/// Asset Moderation
-class AssetModeration extends StatelessWidget {
+/// Asset Moderation (Unified Fixed Version)
+class AssetModeration extends StatefulWidget {
   const AssetModeration({super.key});
 
   @override
+  State<AssetModeration> createState() => _AssetModerationState();
+}
+
+class _AssetModerationState extends State<AssetModeration> {
+  bool _showVerified = false; // Toggle to see all assets
+
+  @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: db.collection('assets')
-          .where('verified', isEqualTo: false)
-          .orderBy('createdAt', descending: true)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
+    Query<Map<String, dynamic>> query = db.collection('assets');
 
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    if (!_showVerified) {
+      // Show only pending verification
+      query = query.where('verified', isEqualTo: false);
+    }
 
-        final assets = snapshot.data!.docs;
+    query = query.orderBy('createdAt', descending: true);
 
-        if (assets.isEmpty) {
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+    return Scaffold(
+      body: Column(
+        children: [
+          // Filter Toggle
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
               children: [
-                Icon(Icons.check_circle, size: 64, color: Colors.green),
-                SizedBox(height: 16),
-                Text('All assets reviewed!'),
+                ChoiceChip(
+                  label: const Text('Pending'),
+                  selected: !_showVerified,
+                  onSelected: (_) => setState(() => _showVerified = false),
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text('All Assets'),
+                  selected: _showVerified,
+                  onSelected: (_) => setState(() => _showVerified = true),
+                ),
               ],
             ),
-          );
-        }
+          ),
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: assets.length,
-          itemBuilder: (context, index) {
-            final asset = assets[index].data() as Map<String, dynamic>;
-            final assetId = assets[index].id;
+          Expanded(
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: query.snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
 
-            return Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      asset['title'] ?? 'Untitled',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text('Category: ${asset['category']}'),
-                    Text('Price: PKR ${asset['price']}'),
-                    Text('Owner: ${asset['ownerName'] ?? asset['ownerId']}'),
-                    const SizedBox(height: 12),
-                    Row(
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final assets = snapshot.data!.docs;
+
+                if (assets.isEmpty) {
+                  return const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () async {
-                              await db.collection('assets').doc(assetId).update({
-                                'verified': true,
-                                'verifiedAt': FieldValue.serverTimestamp(),
-                              });
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('✅ Asset approved'),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.check),
-                            label: const Text('Approve'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () async {
-                              final confirmed = await showDialog<bool>(
-                                context: context,
-                                builder: (ctx) => AlertDialog(
-                                  title: const Text('Reject Asset'),
-                                  content: const Text(
-                                    'Are you sure you want to reject this asset?',
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(ctx, false),
-                                      child: const Text('Cancel'),
-                                    ),
-                                    ElevatedButton(
-                                      onPressed: () => Navigator.pop(ctx, true),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.red,
-                                      ),
-                                      child: const Text('Reject'),
-                                    ),
-                                  ],
-                                ),
-                              );
-
-                              if (confirmed == true) {
-                                await db.collection('assets').doc(assetId).delete();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Asset rejected'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
-                            },
-                            icon: const Icon(Icons.close),
-                            label: const Text('Reject'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red,
-                            ),
-                          ),
-                        ),
+                        Icon(Icons.check_circle, size: 64, color: Colors.green),
+                        SizedBox(height: 16),
+                        Text('No assets found for this filter'),
                       ],
                     ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: assets.length,
+                  itemBuilder: (context, index) {
+                    final asset = assets[index].data();
+                    final assetId = assets[index].id;
+                    final isVerified = asset['verified'] == true;
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    asset['title'] ?? 'Untitled',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                if (isVerified)
+                                  const Chip(
+                                    label: Text('✓ Verified', style: TextStyle(color: Colors.white)),
+                                    backgroundColor: Colors.green,
+                                    padding: EdgeInsets.zero,
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text('Category: ${asset['category']}'),
+                            Text('Price: PKR ${asset['price']}'),
+                            Text('Owner: ${asset['ownerName'] ?? asset['ownerId']}'),
+                            if (asset['blockchainTokenId'] != null)
+                              Text('Token ID: #${asset['blockchainTokenId']}'),
+
+                            const SizedBox(height: 12),
+
+                            if (!isVerified) ...[
+                              // Only show approve/reject for unverified
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      onPressed: () => _approveAsset(assetId, asset),
+                                      icon: const Icon(Icons.check),
+                                      label: const Text('Approve'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => _rejectAsset(assetId),
+                                      icon: const Icon(Icons.close),
+                                      label: const Text('Reject'),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: Colors.red,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ] else ...[
+                              // Show revoke option for verified assets
+                              OutlinedButton.icon(
+                                onPressed: () => _revokeVerification(assetId),
+                                icon: const Icon(Icons.remove_circle_outline),
+                                label: const Text('Revoke Verification'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.orange,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  Future<void> _approveAsset(String assetId, Map<String, dynamic> assetData) async {
+    try {
+      await db.collection('assets').doc(assetId).update({
+        'verified': true,
+        'isMinted': true, // Sets minted status for Digital Goods/Blockchain flow
+        'verifiedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Asset approved!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectAsset(String assetId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reject Asset'),
+        content: const Text('Are you sure you want to reject this asset?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Reject'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await db.collection('assets').doc(assetId).delete();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Asset rejected'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _revokeVerification(String assetId) async {
+    await db.collection('assets').doc(assetId).update({
+      'verified': false,
+      'isMinted': false // Optionally revoke mint status if needed
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Verification revoked')),
+      );
+    }
   }
 }
 
