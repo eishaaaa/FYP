@@ -3,7 +3,7 @@ class ContractConfig {
   static const String networkName = 'amoy';
   static const int chainId = 80002;
 
-  // ✅ PUBLIC RPC (Stable)
+
   static const String rpcUrl = 'https://polygon-amoy.drpc.org';
 
   // RAW STRINGS
