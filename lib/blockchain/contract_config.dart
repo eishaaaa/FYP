@@ -6,7 +6,6 @@ class ContractConfig {
 
   static const String rpcUrl = 'https://polygon-amoy.drpc.org';
 
-  // RAW STRINGS
   static const String _rawElectronicsAddr = '0x166163be328C1fe59674dE74Aa7F6291286c9097';
   static const String _rawLandAddr = '0xF157e2e251a3CC33b514339c75Cd13B94c5297A1';
 
