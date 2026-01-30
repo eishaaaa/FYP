@@ -423,15 +423,15 @@ class AssetListView extends StatelessWidget {
     final title = (d["title"] ?? "").toString().toLowerCase();
     final city = (d["city"] ?? "").toString().toLowerCase();
     final brand = (d["brand"] ?? "").toString().toLowerCase();
-    return title.contains(search) || city.contains(search) || brand.contains(search);
+    return title.contains(search) || brand.contains(search);
   }
 
   bool _matchesFilters(Map<String, dynamic> d) {
-    if (filters["city"] != null && filters["city"].isNotEmpty) {
-      if (!(d["city"] ?? "").toString().toLowerCase().contains(filters["city"].toLowerCase())) return false;
-    }
     if (filters["brand"] != null && filters["brand"].isNotEmpty) {
       if ((d["brand"] ?? "").toString().toLowerCase() != filters["brand"].toLowerCase()) return false;
+    }
+    if (filters["city"] != null && filters["city"].isNotEmpty) {
+      if ((d["city"] ?? "").toString().toLowerCase() != filters["city"].toLowerCase()) return false;
     }
     return true;
   }

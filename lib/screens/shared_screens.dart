@@ -420,10 +420,10 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                           _buildDetailRow('Condition', data['condition'] ?? '—'),
                           if (data['serial'] != null)
                             _buildDetailRow('Serial', data['serial']),
-                          if (data['warranty'] != null)
+                          if (data['warranty'] != null && data['warranty'].isNotEmpty)
                             _buildDetailRow(
                               'Warranty',
-                              '${data['warranty']} months',
+                              data['warranty'], // e.g. 2/2027
                             ),
                         ],
                       ],
