@@ -10,6 +10,7 @@ import 'screens/auth_screens.dart';
 import 'screens/user_screens.dart';
 import 'screens/supplier_screens.dart';
 import 'screens/admin_screen.dart';
+import 'services/push_notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,40 +33,39 @@ class _DigitalGoodsAppState extends State<DigitalGoodsApp> {
   @override
   void initState() {
     super.initState();
-    _loadTheme();
+    _initializeApp();
   }
 
-  Future<void> _loadTheme() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
+  Future<void> _initializeApp() async {
+    final user = FirebaseAuth.instance.currentUser;
 
-      if (user == null) {
-        setState(() {
-          _darkMode = false;
-          _loading = false;
-        });
-        return;
-      }
+    if (user != null) {
+      final pushService = PushNotificationService();
+      pushService.initializeForUser(user.uid);
+      pushService.listenForegroundNotifications();
+      pushService.onNotificationOpened();
 
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
 
-      if (doc.exists) {
-        final data = doc.data();
-        if (data != null && data.containsKey('darkMode')) {
-          setState(() => _darkMode = data['darkMode'] == true);
+        if (doc.exists) {
+          final data = doc.data();
+          if (data != null && data.containsKey('darkMode')) {
+            setState(() => _darkMode = data['darkMode'] == true);
+          }
         }
+      } catch (e) {
+        debugPrint('Error loading theme: $e');
+        setState(() => _darkMode = false);
       }
+    }
 
+    // ALWAYS stop loading
+    if (mounted) {
       setState(() => _loading = false);
-    } catch (e) {
-      debugPrint('Error loading theme: $e');
-      setState(() {
-        _darkMode = false;
-        _loading = false;
-      });
     }
   }
 

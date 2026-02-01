@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'transfer_screen.dart';
 import '../blockchain/blockchain_service.dart';
+import '../services/push_notification_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -88,7 +90,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
 
-
   Future<void> _markMessagesSeen() async {
     final msgs = await _db
         .collection('chats')
@@ -137,9 +138,7 @@ class _ChatScreenState extends State<ChatScreen> {
         final chatData = snapshot.data!.data() as Map<String, dynamic>;
         final assetId = chatData['assetId'];
         final assetTypeStr = chatData['assetType'];
-        final tokenId = chatData['blockchainTokenId'];
         final sellerUid = chatData['sellerUid'];
-        final buyerUid = widget.otherUserId;
 
         // Only show button if asset exists and current user is the seller
         if (assetId == null || sellerUid != myUid) return const SizedBox();
@@ -156,49 +155,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 minimumSize: const Size(double.infinity, 48),
               ),
               onPressed: () async {
-                // 1️⃣ Fetch buyer wallet from Firestore
-                final buyerDoc = await _db.collection('users').doc(widget.otherUserId).get();
-                final buyerWallet = buyerDoc.data()?['walletAddress'];
-
-                // 2️⃣ Fetch seller wallet from blockchain connection
-                final blockchain = BlockchainServiceEnhanced();
-                await blockchain.init();
-                final sellerWallet = blockchain.connectedAddress;
-
-                // 3️⃣ Check wallets before proceeding
-                if (buyerWallet == null) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Buyer wallet not found in database')),
-                  );
-                  return;
-                }
-                if (sellerWallet == null) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please connect your wallet first')),
-                  );
-                  return;
-                }
-
-                // Navigate to TransferScreen
-                if (!context.mounted) return;
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => TransferScreen(
-                      assetId: assetId,
-                      assetType: assetTypeStr == 'electronics'
-                          ? AssetType.electronics
-                          : AssetType.land,
-                      tokenId: assetTypeStr == 'electronics' ? tokenId : null,
-                      propertyId: assetTypeStr == 'land' ? tokenId : null,
-                      buyerUid: buyerUid,
-                      buyerWallet: buyerWallet,
-                      sellerUid: sellerUid,
-                      sellerWallet: sellerWallet,
-                    ),
-                  ),
+                await _handleProceedToTransfer(
+                  context: context,
+                  assetId: assetId,
+                  assetTypeStr: assetTypeStr,
+                  sellerUid: sellerUid,
+                  buyerUid: widget.otherUserId,
                 );
               },
             ),
@@ -207,7 +169,57 @@ class _ChatScreenState extends State<ChatScreen> {
       },
     );
   }
+  Future<void> _handleProceedToTransfer({
+    required BuildContext context,
+    required String assetId,
+    required String assetTypeStr,
+    required String sellerUid,
+    required String buyerUid,
+  }) async {
+    final db = FirebaseFirestore.instance;
+    final pushService = PushNotificationService();
 
+    // 1️⃣ Fetch transaction
+    final transactionQuery = await db
+        .collection('transaction')
+        .where('assetId', isEqualTo: assetId)
+        .where('sellerUid', isEqualTo: sellerUid)
+        .limit(1)
+        .get();
+
+    if (transactionQuery.docs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Transaction not found')),
+      );
+      return;
+    }
+
+    final transactionDoc = transactionQuery.docs.first;
+    final transactionId = transactionDoc.id;
+    final data = transactionDoc.data();
+
+    // 2️⃣ Update status → pending
+    await db.collection('transaction').doc(transactionId).update({
+      'status': 'pending',
+    });
+
+    // 3️⃣ Send notification to buyer
+    final buyerDoc = await db.collection('users').doc(buyerUid).get();
+    final buyerToken = buyerDoc.data()?['fcmToken'];
+
+    if (buyerToken != null) {
+      await pushService.sendPushMessage(
+        token: buyerToken,
+        title: 'Checkout Request',
+        body: 'Supplier wants to proceed with checkout',
+        data: {'transactionId': transactionId},
+      );
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Checkout request sent to buyer')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
