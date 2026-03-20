@@ -17,6 +17,7 @@ import 'qr_generator_screen.dart';
 import 'qr_scanner_enhanced.dart';
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
+import 'wallet_screen.dart';
 
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
@@ -244,6 +245,38 @@ class SupplierHome extends StatelessWidget {
               Tab(text: 'Assets'),
             ],
           ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.account_balance_wallet),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
+            ),
+            StreamBuilder<QuerySnapshot>(
+              // Filter by receiverId and only where isRead is false
+              stream: FirebaseFirestore.instance
+                  .collection('notifications')
+                  .where('receiverId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+                  .where('isRead', isEqualTo: false)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                int unreadCount = snapshot.data?.docs.length ?? 0;
+
+                return Badge(
+                  label: Text(unreadCount.toString()),
+                  isLabelVisible: unreadCount > 0, // Only show badge if count > 0
+                  offset: const Offset(-4, 4),
+                  child: IconButton(
+                    icon: const Icon(Icons.notifications_none_rounded),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ],
         ),
         body: TabBarView(
           children: [

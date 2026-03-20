@@ -1,6 +1,7 @@
+// ═══════════════════════════════════════════════════════════
 // 1. SIMPLE WALLET SERVICE (Standard Modal + Signing Support)
 // Place in: lib/blockchain/simple_wallet_service.dart
-
+// ═══════════════════════════════════════════════════════════
 
 import 'dart:async';
 import 'package:flutter/material.dart';

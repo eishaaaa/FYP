@@ -7,18 +7,17 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
-import 'package:uuid/uuid.dart';
+import 'package:uuid/uuid.dart'; // Added for ID generation
 import 'auth_screens.dart';
 import 'chat_screen.dart';
 import 'review_screen.dart';
 import 'reviews_list.dart';
 import 'qr_generator_screen.dart';
 import 'land_fractions_screen.dart';
-import 'transfer_screen.dart';
-import 'transfer_history_screen.dart';
+import 'transfer_screen.dart'; // Added: Transfer functionality
+import 'transfer_history_screen.dart'; // Added: History functionality
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
-
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
 
@@ -149,6 +148,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
   late Future<Map<String, dynamic?>> _loadFuture;
   Map<String, dynamic>? _blockchainData;
   Map<String, dynamic>? _ipfsData;
+  bool _verifyingBlockchain = false;
 
   Future<Map<String, dynamic?>> _load() async {
     final assetSnap = await db.collection('assets').doc(widget.assetId).get();
@@ -175,30 +175,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
       }
     }
 
-    // NEW: If supplier, find the active transaction to get buyer details
-    Map<String, dynamic>? activeTx;
-    if (role.toLowerCase().contains('supplier') && auth.currentUser != null) {
-      // Look for transactions for this asset where status is approved or accepted
-      final txQuery = await db
-          .collection('transactions') // ENSURE THIS MATCHES TransferScreen
-          .where('assetId', isEqualTo: widget.assetId)
-          .where('sellerUid', isEqualTo: auth.currentUser!.uid)
-          .where('status', whereIn: ['approved', 'accepted'])
-          .limit(1)
-          .get();
-
-      if (txQuery.docs.isNotEmpty) {
-        activeTx = txQuery.docs.first.data();
-        activeTx!['transactionId'] = txQuery.docs.first.id;
-      }
-    }
-
-    return {
-      'assetSnap': assetSnap,
-      'role': role,
-      'ownerName': ownerName,
-      'activeTx': activeTx, // Return the active transaction
-    };
+    return {'assetSnap': assetSnap, 'role': role, 'ownerName': ownerName};
   }
 
   Future<void> _loadBlockchainData(String category, int tokenId) async {
@@ -270,7 +247,6 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
           final assetSnap = snapshot.data!['assetSnap'] as DocumentSnapshot;
           final role = snapshot.data!['role'] as String;
           final ownerName = snapshot.data!['ownerName'] as String;
-          final activeTx = snapshot.data!['activeTx'] as Map<String, dynamic>?;
 
           if (!assetSnap.exists) {
             return const Center(child: Text('Asset not found'));
@@ -284,7 +260,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
               .update({'views': FieldValue.increment(1)})
               .catchError((_) {});
 
-          return _buildAssetDetails(context, data, role, ownerName, activeTx);
+          return _buildAssetDetails(context, data, role, ownerName);
         },
       ),
     );
@@ -295,7 +271,6 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
       Map<String, dynamic> data,
       String role,
       String ownerName,
-      Map<String, dynamic>? activeTx,
       ) {
     final images = (data['images'] as List?)?.cast<String>() ?? [];
     final hasBlockchainId = data['blockchainTokenId'] != null;
@@ -469,7 +444,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                 if (!role.contains('supplier')) ...[
                   _buildUserActions(context, data),
                 ] else ...[
-                  _buildSupplierActions(context, data, role, activeTx),
+                  _buildSupplierActions(context, data, role),
                 ],
 
                 const SizedBox(height: 24),
@@ -733,12 +708,12 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
     );
   }
 
-  Widget _buildSupplierActions(
-      BuildContext context,
-      Map<String, dynamic> data,
-      String role,
-      Map<String, dynamic>? activeTx,
-      ) {
+  Widget _buildSupplierActions(BuildContext context, Map<String, dynamic> data, String role) {
+    final currentUserUid = FirebaseAuth.instance.currentUser!.uid;
+    final sellerUid = currentUserUid;
+
+    final sellerWallet =
+        BlockchainServiceEnhanced().connectedAddress;
     return Column(
       children: [
         Row(
@@ -781,13 +756,11 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: (activeTx == null)
-                  ? null // Disable if no active transaction/buyer
-                  : () async {
+              onPressed: () async {
                 int? maxAmount;
+
                 if (data['category'] == 'land') {
                   final bs = BlockchainServiceEnhanced();
-                  await bs.init();
                   if (bs.isConnected) {
                     maxAmount = await bs.getUserFractions(
                       bs.connectedAddress!,
@@ -796,33 +769,41 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                   }
                 }
 
+                if (sellerWallet == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please connect your wallet')),
+                  );
+                  return;
+                }
+
                 if (context.mounted) {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) {
-                        // Use data from the ACTIVE TRANSACTION found in _load()
-                        final transactionId = activeTx!['transactionId'];
-                        final buyerUid = activeTx['buyerUid'];
-                        final sellerUid = auth.currentUser!.uid;
+                        final buyerWallet = data['buyerWallet'] ?? '';
+                        final sellerUid = data['sellerUid'] ?? FirebaseAuth.instance.currentUser!.uid;
+                        final sellerWallet = BlockchainServiceEnhanced().connectedAddress ?? '';
 
                         if (data['category'] == 'electronics') {
                           return TransferScreen(
                             assetId: widget.assetId,
                             assetType: AssetType.electronics,
-                            transactionId: transactionId, // Passing correct Transaction ID
-                            buyerUid: buyerUid,
+                            buyerUid: data['buyerUid'], // make sure this exists in your data
+                            buyerWallet: buyerWallet,
                             sellerUid: sellerUid,
+                            sellerWallet: sellerWallet,
                             tokenId: data['blockchainTokenId'],
                           );
                         } else {
                           return TransferScreen(
                             assetId: widget.assetId,
                             assetType: AssetType.land,
-                            transactionId: transactionId, // Passing correct Transaction ID
-                            buyerUid: buyerUid,
+                            buyerUid: data['buyerUid'],
+                            buyerWallet: buyerWallet,
                             sellerUid: sellerUid,
-                            propertyId: data['blockchainTokenId'],
+                            sellerWallet: sellerWallet,
+                            propertyId: data['propertyId'],
                             fractionAmount: maxAmount,
                           );
                         }
@@ -838,7 +819,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                 }
               },
               icon: const Icon(Icons.send),
-              label: Text(activeTx == null ? 'Waiting for Buyer Approval' : 'Transfer Ownership'),
+              label: const Text('Transfer Ownership'),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
             ),
           ),
@@ -989,7 +970,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
 
     // For ELECTRONICS or full land purchase: Create transaction request
     final existing = await db
-        .collection('transactions') // ENSURE PLURAL
+        .collection('transactions')
         .where('assetId', isEqualTo: assetId)
         .where('buyerUid', isEqualTo: user.uid)
         .where('status', whereIn: ['pending', 'approved', 'completed'])
