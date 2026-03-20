@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'shared_screens.dart';
 import 'chat_list_screen.dart';
-import 'portfolio_screen.dart';
+import 'wallet_screen.dart';
 import 'qr_scanner_enhanced.dart';
 import '../blockchain/blockchain_service.dart';
 
@@ -58,14 +58,35 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Digital Goods Marketplace"),
+        title: const Text("Marketplace"),
         actions: [
           IconButton(
             icon: const Icon(Icons.account_balance_wallet),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const PortfolioScreen()),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
+          ),
+          StreamBuilder<QuerySnapshot>(
+            // Filter by receiverId and only where isRead is false
+            stream: FirebaseFirestore.instance
+                .collection('notifications')
+                .where('receiverId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+                .where('isRead', isEqualTo: false)
+                .snapshots(),
+            builder: (context, snapshot) {
+              int unreadCount = snapshot.data?.docs.length ?? 0;
+
+              return Badge(
+                label: Text(unreadCount.toString()),
+                isLabelVisible: unreadCount > 0, // Only show badge if count > 0
+                offset: const Offset(-4, 4),
+                child: IconButton(
+                  icon: const Icon(Icons.notifications_none_rounded),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                    );
+                  },
+                ),
               );
             },
           ),
@@ -409,10 +430,14 @@ class AssetListView extends StatelessWidget {
         .where("isMinted", isEqualTo: true);
 
     if (filters["minPrice"] != null) {
-      q = q.where("price", isGreaterThanOrEqualTo: filters["minPrice"]);
+      q = q.where("price", isGreaterThanOrEqualTo: (filters["minPrice"] as num).toInt());
     }
+
     if (filters["maxPrice"] != null) {
-      q = q.where("price", isLessThanOrEqualTo: filters["maxPrice"]);
+      q = q.where(
+        "price",
+        isLessThanOrEqualTo: (filters["maxPrice"] as num).toInt(),
+      );
     }
 
     return q.orderBy("price").orderBy("createdAt", descending: true);
@@ -427,11 +452,61 @@ class AssetListView extends StatelessWidget {
   }
 
   bool _matchesFilters(Map<String, dynamic> d) {
-    if (filters["brand"] != null && filters["brand"].isNotEmpty) {
-      if ((d["brand"] ?? "").toString().toLowerCase() != filters["brand"].toLowerCase()) return false;
+
+    // Brand filter (electronics)
+    if (filters["brand"] != null && filters["brand"].toString().isNotEmpty) {
+      if ((d["brand"] ?? "").toString().toLowerCase() !=
+          filters["brand"].toString().toLowerCase()) {
+        return false;
+      }
     }
-    if (filters["city"] != null && filters["city"].isNotEmpty) {
-      if ((d["city"] ?? "").toString().toLowerCase() != filters["city"].toLowerCase()) return false;
+
+    // City / Location filter (land)
+    if (filters["city"] != null && filters["city"].toString().isNotEmpty) {
+      if ((d["city"] ?? "").toString().toLowerCase() !=
+          filters["city"].toString().toLowerCase()) {
+        return false;
+      }
+    }
+
+    // 🔹 Electronics Specifications
+    if (category == "electronics") {
+
+      if (filters["ram"] != null && filters["ram"].toString().isNotEmpty) {
+        if ((d["ram"] ?? "").toString() != filters["ram"].toString()) {
+          return false;
+        }
+      }
+
+      if (filters["storage"] != null && filters["storage"].toString().isNotEmpty) {
+        if ((d["storage"] ?? "").toString() != filters["storage"].toString()) {
+          return false;
+        }
+      }
+
+      if (filters["condition"] != null && filters["condition"].toString().isNotEmpty) {
+        if ((d["condition"] ?? "").toString().toLowerCase() !=
+            filters["condition"].toString().toLowerCase()) {
+          return false;
+        }
+      }
+    }
+
+    // 🔹 Land Specifications
+    if (category == "land") {
+
+      if (filters["area"] != null && filters["area"].toString().isNotEmpty) {
+        if ((d["area"] ?? "").toString() != filters["area"].toString()) {
+          return false;
+        }
+      }
+
+      if (filters["landType"] != null && filters["landType"].toString().isNotEmpty) {
+        if ((d["landType"] ?? "").toString().toLowerCase() !=
+            filters["landType"].toString().toLowerCase()) {
+          return false;
+        }
+      }
     }
     return true;
   }
@@ -545,67 +620,271 @@ class FilterSheet extends StatefulWidget {
   final ScrollController controller;
   final Map<String, dynamic> existing;
 
-  const FilterSheet({super.key, required this.category, required this.controller, required this.existing});
+  const FilterSheet({
+    super.key,
+    required this.category,
+    required this.controller,
+    required this.existing,
+  });
 
   @override
   State<FilterSheet> createState() => _FilterSheetState();
 }
 
 class _FilterSheetState extends State<FilterSheet> {
-  late TextEditingController _city;
-  late TextEditingController _brand;
-  late TextEditingController _minPrice;
-  late TextEditingController _maxPrice;
+
+  double minPrice = 0;
+  double maxPrice = 10000000;
+
+  TextEditingController _minPrice = TextEditingController();
+  TextEditingController _maxPrice = TextEditingController();
+
+  String? selectedCity = "None";
+  String? selectedArea = "None";
+
+  final List<String> cities = [
+    "None",
+    "Lahore",
+    "Karachi",
+    "Islamabad",
+    "Rawalpindi",
+  ];
+
+  final List<String> areas = [
+    "None",
+    "5 Marla",
+    "10 Marla",
+    "1 Kanal",
+  ];
 
   @override
   void initState() {
     super.initState();
-    _city = TextEditingController(text: widget.existing["city"] ?? "");
-    _brand = TextEditingController(text: widget.existing["brand"] ?? "");
-    _minPrice = TextEditingController(text: widget.existing["minPrice"]?.toString() ?? "");
-    _maxPrice = TextEditingController(text: widget.existing["maxPrice"]?.toString() ?? "");
+    _minPrice.text = "0";
+    _maxPrice.text = "0";
+    selectedCity = widget.existing["city"] ?? "None";
+    selectedArea = widget.existing["area"] ?? "None";;
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: ListView(
         controller: widget.controller,
         children: [
-          const Text("Filters", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 20),
-          Row(
+
+          const Text(
+            "FILTERS",
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+            ),
+          ),
+
+          const SizedBox(height: 25),
+
+          /// ================= PRICE DROPDOWN =================
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: const EdgeInsets.only(bottom: 10),
+            title: const Text(
+              "By Price",
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
+            ),
             children: [
-              Expanded(child: TextField(controller: _minPrice, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Min Price", border: OutlineInputBorder()))),
-              const SizedBox(width: 12),
-              Expanded(child: TextField(controller: _maxPrice, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Max Price", border: OutlineInputBorder()))),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _minPrice,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: "Min",
+                        prefixText: "Rs ",
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 14,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: Colors.grey.shade400),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: Colors.black87,
+                            width: 1.4,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _maxPrice,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: "Max",
+                        prefixText: "Rs ",
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 14,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: Colors.grey.shade400),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: Colors.black87,
+                            width: 1.4,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
-          const SizedBox(height: 12),
-          TextField(controller: _city, decoration: const InputDecoration(labelText: "City", border: OutlineInputBorder())),
-          if (widget.category == "electronics") ...[
-            const SizedBox(height: 10),
-            TextField(controller: _brand, decoration: const InputDecoration(labelText: "Brand", border: OutlineInputBorder())),
-          ],
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: () {
-              final min = double.tryParse(_minPrice.text);
-              final max = double.tryParse(_maxPrice.text);
-              Navigator.pop(context, {
-                "city": _city.text.trim(),
-                "brand": _brand.text.trim(),
-                if (min != null) "minPrice": min,
-                if (max != null) "maxPrice": max,
-              });
-            },
-            child: const Text("Apply Filters"),
-          )
+
+          /// ================= CITY DROPDOWN =================
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: const Text(
+              "By City",
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            children: [
+              DropdownButtonFormField<String>(
+                value: selectedCity,
+                decoration: InputDecoration(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: Colors.grey.shade400),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(
+                      color: Colors.black87,
+                      width: 1.4,
+                    ),
+                  ),
+                ),
+                items: cities.map((city) {
+                  return DropdownMenuItem(
+                    value: city,
+                    child: Text(city),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() => selectedCity = value);
+                },
+              ),
+              const SizedBox(height: 15),
+            ],
+          ),
+
+          /// ================= AREA DROPDOWN (LAND ONLY) =================
+          if (widget.category == "land")
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text(
+                "By Area",
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              children: [
+                DropdownButtonFormField<String>(
+                  value: selectedArea,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: Colors.grey.shade400),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(
+                        color: Colors.black87,
+                        width: 1.4,
+                      ),
+                    ),
+                  ),
+                  items: areas.map((area) {
+                    return DropdownMenuItem(
+                      value: area,
+                      child: Text(area),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() => selectedArea = value);
+                  },
+                ),
+                const SizedBox(height: 15),
+              ],
+            ),
+
+          const SizedBox(height: 35),
+
+          /// ================= APPLY BUTTON =================
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () {
+                final min = double.tryParse(_minPrice.text);
+                final max = double.tryParse(_maxPrice.text);
+
+                Navigator.pop(context, {
+                  if (min != null) "minPrice": min,
+                  if (max != null) "maxPrice": max,
+                  if (selectedCity != null && selectedCity != "None")
+                    "city": selectedCity,
+                  if (selectedArea != null && selectedArea != "None")
+                    "area": selectedArea,
+                });
+              },
+              child: const Text(
+                "View Results",
+                style: TextStyle(fontSize: 16),
+              ),
+            ),
+          ),
         ],
       ),
     );
