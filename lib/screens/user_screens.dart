@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'shared_screens.dart';
 import 'chat_list_screen.dart';
-import 'portfolio_screen.dart';
+import 'wallet_screen.dart';
 import 'qr_scanner_enhanced.dart';
 import '../blockchain/blockchain_service.dart';
 
@@ -58,14 +58,35 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Digital Goods Marketplace"),
+        title: const Text("Marketplace"),
         actions: [
           IconButton(
             icon: const Icon(Icons.account_balance_wallet),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const PortfolioScreen()),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
+          ),
+          StreamBuilder<QuerySnapshot>(
+            // Filter by receiverId and only where isRead is false
+            stream: FirebaseFirestore.instance
+                .collection('notifications')
+                .where('receiverId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+                .where('isRead', isEqualTo: false)
+                .snapshots(),
+            builder: (context, snapshot) {
+              int unreadCount = snapshot.data?.docs.length ?? 0;
+
+              return Badge(
+                label: Text(unreadCount.toString()),
+                isLabelVisible: unreadCount > 0, // Only show badge if count > 0
+                offset: const Offset(-4, 4),
+                child: IconButton(
+                  icon: const Icon(Icons.notifications_none_rounded),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                    );
+                  },
+                ),
               );
             },
           ),
@@ -409,10 +430,7 @@ class AssetListView extends StatelessWidget {
         .where("isMinted", isEqualTo: true);
 
     if (filters["minPrice"] != null) {
-      q = q.where(
-        "price",
-        isGreaterThanOrEqualTo: (filters["minPrice"] as num).toInt(),
-      );
+      q = q.where("price", isGreaterThanOrEqualTo: (filters["minPrice"] as num).toInt());
     }
 
     if (filters["maxPrice"] != null) {
@@ -490,10 +508,8 @@ class AssetListView extends StatelessWidget {
         }
       }
     }
-
     return true;
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -874,4 +890,3 @@ class _FilterSheetState extends State<FilterSheet> {
     );
   }
 }
-
