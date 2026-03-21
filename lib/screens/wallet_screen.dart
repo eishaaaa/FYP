@@ -172,14 +172,40 @@ class _WalletScreenState extends State<WalletScreen> {
       });
     }
   }
+  // ===============================
+  // remove WALLET IN FIREBASE
+  // ===============================
+  Future<void> _removeWallet() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
 
+    await _walletService.disconnect();
+
+    await _firestore.collection("users").doc(user.uid).update({
+      "walletAddress": FieldValue.delete(),
+    });
+
+    setState(() {
+      _address = null;
+      _balance = 0.0;
+    });
+  }
   // ===============================
   // UI
   // ===============================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Wallet")),
+      appBar: AppBar(
+        title: const Text("Wallet"),
+        actions: [
+          if (_address != null)
+            IconButton(
+              icon: const Icon(Icons.more_vert),
+              onPressed: _showWalletOptions,
+            ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _address == null
@@ -334,6 +360,140 @@ class _WalletScreenState extends State<WalletScreen> {
           trailing: Text(tx.time),
         );
       }).toList(),
+    );
+  }
+  // ===============================
+  // wallet options
+  // ===============================
+  void _showWalletOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Wallet Info
+              Row(
+                children: [
+                  const Icon(Icons.account_balance_wallet),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(_shorten(_address!)),
+                  ),
+                  Container(
+                    padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text("Verified",
+                        style: TextStyle(color: Colors.white, fontSize: 12)),
+                  )
+                ],
+              ),
+
+              const SizedBox(height: 20),
+
+              // Switch Account
+              _buildActionButton(
+                text: "Switch Account",
+                color: Colors.blue,
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmAction(
+                    title: "Switch Account?",
+                    onConfirm: _switchAccount,
+                  );
+                },
+              ),
+
+              const SizedBox(height: 10),
+
+              // Disconnect
+              _buildActionButton(
+                text: "Disconnect Wallet",
+                color: Colors.red,
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmAction(
+                    title: "Disconnect Wallet?",
+                    onConfirm: _disconnect,
+                  );
+                },
+              ),
+
+              const SizedBox(height: 10),
+
+              // Remove Wallet
+              _buildActionButton(
+                text: "Remove Wallet",
+                color: Colors.red,
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmAction(
+                    title: "Remove Wallet permanently?",
+                    onConfirm: _removeWallet,
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+  Widget _buildActionButton({
+    required String text,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: Text(text),
+      ),
+    );
+  }
+  void _confirmAction({
+    required String title,
+    required Future<void> Function() onConfirm,
+  }) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(title),
+          content: const Text("Are you sure you want to continue?"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await onConfirm();
+                setState(() {});
+              },
+              child: const Text("OK"),
+            ),
+          ],
+        );
+      },
     );
   }
   // ===============================

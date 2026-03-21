@@ -54,11 +54,11 @@ class _DigitalGoodsAppState extends State<DigitalGoodsApp> {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user != null) {
-      // Initialize push notifications
+   /*   // Initialize push notifications
       final pushService = PushNotificationService();
       await pushService.initializeForUser(user.uid);
       pushService.listenForegroundNotifications();
-      pushService.onNotificationOpened();
+      pushService.onNotificationOpened();    */
 
       // Setup notification listeners
       _setupNotificationHandlers();
