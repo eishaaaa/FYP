@@ -338,6 +338,42 @@ class BlockchainServiceEnhanced {
     return await _sendTransaction(transaction);
   }
 
+  /// Returns the ID of the most recently minted electronics token (= totalMinted).
+  /// Call this immediately after a confirmed mintElectronics transaction.
+  Future<int?> getLastElectronicsTokenId() async {
+    await init();
+    try {
+      final function = _electronicsContract.function('totalMinted');
+      final result = await _client.call(
+        contract: _electronicsContract,
+        function: function,
+        params: [],
+      );
+      return (result.first as BigInt).toInt();
+    } catch (e) {
+      debugPrint('getLastElectronicsTokenId error: $e');
+      return null;
+    }
+  }
+
+  /// Returns the ID of the most recently created land property (= getTotalProperties).
+  /// Call this immediately after a confirmed createLandProperty transaction.
+  Future<int?> getLastLandPropertyId() async {
+    await init();
+    try {
+      final function = _landContract.function('getTotalProperties');
+      final result = await _client.call(
+        contract: _landContract,
+        function: function,
+        params: [],
+      );
+      return (result.first as BigInt).toInt();
+    } catch (e) {
+      debugPrint('getLastLandPropertyId error: $e');
+      return null;
+    }
+  }
+
   Future<Map<String, dynamic>?> getLandProperty(int propertyId) async {
     await init();
     try {

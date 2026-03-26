@@ -411,7 +411,13 @@ class AssetManagementScreen extends StatelessWidget {
           itemBuilder: (context, i) {
             final doc = docs[i];
             final data = doc.data() as Map<String, dynamic>;
-            final tokenId = data['blockchainTokenId'] as int?;
+            // Safely cast blockchainTokenId: Firestore may return it as num/int.
+            final rawTokenId = data['blockchainTokenId'];
+            final tokenId = rawTokenId != null
+                ? (rawTokenId is int
+                    ? rawTokenId
+                    : int.tryParse(rawTokenId.toString()))
+                : null;
 
             return Card(
               margin: const EdgeInsets.symmetric(vertical: 6),
@@ -915,6 +921,21 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
       // ---------------------------------------------------------
 
       if (txHash == null) throw Exception('Transaction failed or rejected');
+      setState(() => _statusMessage = 'Waiting for blockchain confirmation...');
+
+      // Wait for the transaction to be mined (up to ~60 seconds)
+      await blockchain.waitForConfirmation(txHash, retries: 30);
+
+      // Query the contract to get the newly minted token ID
+      setState(() => _statusMessage = 'Retrieving Token ID...');
+      int? newTokenId;
+      if (widget.type == 'electronics') {
+        newTokenId = await blockchain.getLastElectronicsTokenId();
+      } else {
+        newTokenId = await blockchain.getLastLandPropertyId();
+      }
+      debugPrint('✅ New blockchain Token ID: $newTokenId');
+
       setState(() => _statusMessage = 'Saving to Database...');
 
       data.remove('rawImages');
@@ -925,9 +946,10 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         'category': widget.type,
         'ownerId': auth.currentUser!.uid,
         'blockchainTx': txHash,
+        'blockchainTokenId': newTokenId,   // ← now correctly saved
         'ipfsMetadataHash': metadataHash,
         'isMinted': true,
-        'verified': true,
+        'verified': false,                 // ← pending admin approval
         'createdAt': FieldValue.serverTimestamp(),
       });
 
