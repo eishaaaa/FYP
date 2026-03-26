@@ -92,7 +92,7 @@ class _TransferScreenState extends State<TransferScreen> {
     }
     try {
       // Load transaction
-      final txDoc = await _db.collection('transaction').doc(widget.transactionId).get();
+      final txDoc = await _db.collection('transactions').doc(widget.transactionId).get();
       if (!txDoc.exists) {
         throw Exception('Transaction not found');
       }
@@ -125,7 +125,7 @@ class _TransferScreenState extends State<TransferScreen> {
   Future<void> _handleBuyerDecision(bool accept) async {
     if (accept) {
       // Update status to accepted
-      await _db.collection('transaction').doc(widget.transactionId).update({
+      await _db.collection('transactions').doc(widget.transactionId).update({
         'status': 'accepted',
         'acceptedAt': FieldValue.serverTimestamp(),
       });
@@ -149,8 +149,8 @@ class _TransferScreenState extends State<TransferScreen> {
         _showWalletConnectDialog();
       }
     } else {
-      // Reject
-      await _db.collection('transaction').doc(widget.transactionId).update({
+      // _handleBuyerDecision reject
+      await _db.collection('transactions').doc(widget.transactionId).update({
         'status': 'rejected',
         'rejectedAt': FieldValue.serverTimestamp(),
       });

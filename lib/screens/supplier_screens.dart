@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:uuid/uuid.dart';
+import 'package:intl/intl.dart';
 import 'package:image/image.dart' as img;
 
 // Internal Imports
@@ -18,6 +19,7 @@ import 'qr_scanner_enhanced.dart';
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
 import 'wallet_screen.dart';
+import 'transaction_model.dart';
 
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
@@ -210,7 +212,7 @@ class _SupplierHomeScreenState extends State<SupplierHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('${widget.type.capitalize()} Supplier')),
+    //  appBar: AppBar(title: Text('${widget.type.capitalize()} Supplier')),
       body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
@@ -233,25 +235,42 @@ class SupplierHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
+    return  Scaffold(
         appBar: AppBar(
-          title: const TabBar(
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            tabs: [
-              Tab(text: 'Dashboard'),
-              Tab(text: 'Assets'),
+          toolbarHeight: 80, //
+          automaticallyImplyLeading: false,
+          title: Row(
+            children: [
+              const CircleAvatar(
+                backgroundColor: Colors.white24,
+                child: Icon(Icons.store, color: Colors.white),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${type.capitalize()} Supplier',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const Text(
+                    'My Assets',
+                    style: TextStyle(fontSize: 12, color: Colors.white70),
+                  ),
+                ],
+              ),
             ],
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.account_balance_wallet),
+              icon: const Icon(Icons.account_balance_wallet_outlined, color: Colors.white),
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
             ),
             StreamBuilder<QuerySnapshot>(
-              // Filter by receiverId and only where isRead is false
               stream: FirebaseFirestore.instance
                   .collection('notifications')
                   .where('receiverId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
@@ -259,31 +278,25 @@ class SupplierHome extends StatelessWidget {
                   .snapshots(),
               builder: (context, snapshot) {
                 int unreadCount = snapshot.data?.docs.length ?? 0;
-
                 return Badge(
                   label: Text(unreadCount.toString()),
-                  isLabelVisible: unreadCount > 0, // Only show badge if count > 0
+                  isLabelVisible: unreadCount > 0,
                   offset: const Offset(-4, 4),
                   child: IconButton(
-                    icon: const Icon(Icons.notifications_none_rounded),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-                      );
-                    },
+                    icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                    ),
                   ),
                 );
               },
             ),
+            const SizedBox(width: 4),
           ],
         ),
-        body: TabBarView(
-          children: [
-            SupplierDashboard(uid: auth.currentUser!.uid, type: type),
+        body:
             AssetManagementScreen(type: type),
-          ],
-        ),
         floatingActionButton: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -302,47 +315,10 @@ class SupplierHome extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 }
 
-class SupplierDashboard extends StatelessWidget {
-  final String uid;
-  final String type;
-  const SupplierDashboard({super.key, required this.uid, required this.type});
-
-  Widget _statCard(String title, IconData icon, int value, Color color) {
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: ListTile(
-        leading: CircleAvatar(backgroundColor: color, child: Icon(icon, color: Colors.white)),
-        title: Text(title),
-        trailing: Text('$value', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          StreamBuilder<QuerySnapshot>(
-            stream: db.collection('assets').where('ownerId', isEqualTo: uid).snapshots(),
-            builder: (context, snap) {
-              final count = snap.data?.docs.length ?? 0;
-              return _statCard('Total Assets', Icons.inventory_2, count, Colors.blue);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class AssetManagementScreen extends StatelessWidget {
   final String type;
@@ -934,12 +910,11 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
           ipfsMetadata: 'ipfs://$metadataHash',
         );
       }
-
-      if (txHash == null) throw Exception('Transaction failed or rejected');
-
       // ---------------------------------------------------------
       // STEP 7: SAVE TO DATABASE
       // ---------------------------------------------------------
+
+      if (txHash == null) throw Exception('Transaction failed or rejected');
       setState(() => _statusMessage = 'Saving to Database...');
 
       data.remove('rawImages');
@@ -956,12 +931,19 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
+
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Success! Asset Minted & Uploaded.'),
           backgroundColor: Colors.green
       ));
+      await addTransaction(
+        userId: auth.currentUser!.uid,
+        type: "nft",
+        title: data['title'] ?? "Asset",
+        toAddress: "self",
+      );
       Navigator.pop(context);
 
     } catch (e) {
@@ -976,6 +958,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {

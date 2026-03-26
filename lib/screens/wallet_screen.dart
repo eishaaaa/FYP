@@ -7,13 +7,7 @@ import '../blockchain/wallet_service.dart';
 import '../blockchain/contract_config.dart';
 import '../blockchain/explorer_service.dart';
 import '../screens/transaction_model.dart';
-
-final ExplorerService _explorer = ExplorerService();
-
-List<TransactionModel> _transactions = [];
-int _txCount = 0;
-int _nftCount = 0; // placeholder (real NFT needs contract)
-
+import 'package:url_launcher/url_launcher.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -32,8 +26,13 @@ class _WalletScreenState extends State<WalletScreen> {
   String? _address;
   String? _userName;
   double _balance = 0.0;
-
   bool _loading = false;
+
+  final ExplorerService _explorer = ExplorerService();
+
+  List<TransactionModel> _transactions = [];
+  int _txCount = 0;
+  int _nftCount = 0; // placeholder (real NFT needs contract)
 
   @override
   void initState() {
@@ -41,7 +40,12 @@ class _WalletScreenState extends State<WalletScreen> {
     _client = Web3Client(ContractConfig.rpcUrl, http.Client());
     _checkExistingConnection();
   }
-
+   // pol to usd conversion
+  double _convertPolToUsd(double polAmount) {
+    // Example fixed rate: 1 POL = 1.23 USD
+    const double polToUsdRate = 1.23;
+    return polAmount * polToUsdRate;
+  }
   // ===============================
   // LOAD USER + WALLET FROM FIREBASE
   // ===============================
@@ -59,7 +63,7 @@ class _WalletScreenState extends State<WalletScreen> {
       _userName = data?["name"]; // 🔥 fetch user name
 
       if (_address != null) {
-        await _loadBalance();
+        await _loadAllData();
       }
 
       setState(() {});
@@ -72,20 +76,34 @@ class _WalletScreenState extends State<WalletScreen> {
   Future<void> _connect() async {
     setState(() => _loading = true);
 
-    final address = await _walletService.connect(context);
+    try {
+      final address = await _walletService.connect(context);
 
-    if (address == null) {
-      setState(() => _loading = false);
-      return;
+      if (address == null) {
+        setState(() => _loading = false);
+        return;
+      }
+
+      final user = _auth.currentUser;
+      if (user == null) {
+        setState(() => _loading = false);
+        return;
+      }
+
+      await _saveWalletToFirestore(user.uid, address);
+
+      if (!mounted) return;
+
+      setState(() {
+        _address = address;
+      });
+
+      await _loadAllData();
+    } catch (e) {
+      debugPrint("Connect error: $e");
     }
 
-    final user = _auth.currentUser;
-    if (user == null) return;
-
-    await _saveWalletToFirestore(user.uid, address);
-
-    _address = address;
-    await _loadBalance();
+    if (!mounted) return;
 
     setState(() => _loading = false);
   }
@@ -94,20 +112,56 @@ class _WalletScreenState extends State<WalletScreen> {
   // DISCONNECT
   // ===============================
   Future<void> _disconnect() async {
-    await _walletService.disconnect();
+    setState(() => _loading = true);
 
-    setState(() {
-      _address = null;
-      _balance = 0.0;
-    });
+    try {
+      await _walletService.disconnect();
+
+      setState(() {
+        _address = null;
+        _balance = 0.0;
+        _transactions.clear();
+        _txCount = 0;
+        _nftCount = 0;
+      });
+    } catch (e) {
+      debugPrint("Disconnect error: $e");
+    }
+
+    setState(() => _loading = false);
   }
 
   // ===============================
   // SWITCH ACCOUNT
   // ===============================
   Future<void> _switchAccount() async {
-    await _walletService.disconnect();
-    await _connect();
+    setState(() => _loading = true);
+
+    try {
+      await _walletService.disconnect();
+
+      final newAddress = await _walletService.connect(context);
+
+      if (newAddress == null) {
+        setState(() => _loading = false);
+        return;
+      }
+
+      final user = _auth.currentUser;
+      if (user != null) {
+        await _saveWalletToFirestore(user.uid, newAddress);
+      }
+
+      setState(() {
+        _address = newAddress;
+      });
+
+      await _loadAllData();
+    } catch (e) {
+      debugPrint("Switch error: $e");
+    }
+
+    setState(() => _loading = false);
   }
 
   // ===============================
@@ -137,18 +191,84 @@ class _WalletScreenState extends State<WalletScreen> {
 
     setState(() => _loading = true);
 
-    await _loadBalance(); // ✅ keep original
+    try {
+      await _loadBalance();
 
-    final txs = await _explorer.getTransactions(_address!);
+      // ✅ Fetch from Polygonscan
+      final normalTxs = await _explorer.getTransactions(_address!);
+      final nftTxs = await _explorer.getNFTTransactions(_address!);
 
-    _transactions = txs;
-    _txCount = txs.length;
+      // ✅ Fetch from Firestore
+      final user = _auth.currentUser;
+      List<TransactionModel> firestoreTxs = [];
+
+      if (user != null) {
+        final snap = await _firestore
+            .collection("users")
+            .doc(user.uid)
+            .collection("transactions")
+            .orderBy("time", descending: true)
+            .limit(10)
+            .get();
+
+        firestoreTxs = snap.docs.map((doc) {
+          final d = doc.data();
+          return TransactionModel(
+            type: d["type"] ?? "sent",
+            title: d["title"] ?? "Transaction",
+            to: d["to"] ?? "",
+            value: d["value"]?.toString() ?? "0",
+            gas: d["gas"]?.toString() ?? "0",
+            time: d["time"]?.toString() ?? "0",
+            success: true,
+            hash: d["hash"] ?? "",
+          );
+        }).toList();
+      }
+
+      // ✅ Merge all three sources
+      final allTxs = [...normalTxs, ...nftTxs, ...firestoreTxs];
+
+      // ✅ Deduplicate by hash (in case Polygonscan + Firestore overlap)
+      final seen = <String>{};
+      final dedupedTxs = allTxs.where((tx) {
+        if (tx.hash.isEmpty || seen.contains(tx.hash)) return false;
+        seen.add(tx.hash);
+        return true;
+      }).toList();
+
+      // ✅ Sort by time descending
+      dedupedTxs.sort((a, b) =>
+          int.parse(b.time).compareTo(int.parse(a.time)));
+
+      // ✅ Update state
+      setState(() {
+        _transactions = dedupedTxs.take(15).toList();
+        _txCount = normalTxs.length;
+        _nftCount = nftTxs.length + firestoreTxs.where((tx) => tx.type == "nft").length;
+      });
+
+      if (allTxs.isEmpty) {
+        debugPrint("No transactions found");
+      }
+
+    } catch (e) {
+      debugPrint("Load data error: $e");
+      setState(() {
+        _transactions = [];
+        _txCount = 0;
+        _nftCount = 0;
+      });
+    }
 
     setState(() => _loading = false);
   }
 
-  String _shorten(String addr) =>
-      "${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}";
+  String _shorten(String addr) {
+    if (addr.isEmpty) return "N/A";
+    if (addr.length <= 10) return addr; // return as-is if too short to shorten
+    return "${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}";
+  }
 
   // ===============================
   // SAVE WALLET IN FIREBASE
@@ -176,20 +296,32 @@ class _WalletScreenState extends State<WalletScreen> {
   // remove WALLET IN FIREBASE
   // ===============================
   Future<void> _removeWallet() async {
-    final user = _auth.currentUser;
-    if (user == null) return;
+    setState(() => _loading = true);
 
-    await _walletService.disconnect();
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return;
 
-    await _firestore.collection("users").doc(user.uid).update({
-      "walletAddress": FieldValue.delete(),
-    });
+      await _walletService.disconnect();
 
-    setState(() {
-      _address = null;
-      _balance = 0.0;
-    });
+      await _firestore.collection("users").doc(user.uid).update({
+        "walletAddress": FieldValue.delete(),
+      });
+
+      setState(() {
+        _address = null;
+        _balance = 0.0;
+        _transactions.clear();
+        _txCount = 0;
+        _nftCount = 0;
+      });
+    } catch (e) {
+      debugPrint("Remove error: $e");
+    }
+
+    setState(() => _loading = false);
   }
+
   // ===============================
   // UI
   // ===============================
@@ -244,6 +376,8 @@ class _WalletScreenState extends State<WalletScreen> {
   // BALANCE CARD
   // ===============================
   Widget _buildBalanceCard() {
+    final usdBalance = _convertPolToUsd(_balance);
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -300,8 +434,10 @@ class _WalletScreenState extends State<WalletScreen> {
 
           const SizedBox(height: 6),
 
-          const Text("\$12.34",
-              style: TextStyle(color: Colors.white70)), // optional
+          Text(
+            "\$${usdBalance.toStringAsFixed(2)}",
+            style: const TextStyle(color: Colors.white70),
+          ),
         ],
       ),
     );
@@ -342,26 +478,68 @@ class _WalletScreenState extends State<WalletScreen> {
   // build Transactions
   // ===============================
   Widget _buildTransactions() {
+    if (_transactions.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: Text("No transactions found"),
+        ),
+      );
+    }
+
     return Column(
       children: _transactions.map((tx) {
+        final time = DateTime.fromMillisecondsSinceEpoch(int.parse(tx.time) * 1000);
+        final diff = DateTime.now().difference(time);
+        String formattedTime = diff.inMinutes < 60
+            ? "${diff.inMinutes} min ago"
+            : diff.inHours < 24
+            ? "${diff.inHours} hr ago"
+            : "${diff.inDays} d ago";
+
         return ListTile(
           leading: Icon(
-            tx.type == "sent"
-                ? Icons.arrow_upward
+            tx.type == "sent" ? Icons.arrow_upward
+                : tx.type == "nft" ? Icons.image
+                : tx.type == "contract" ? Icons.code   // ← ADD THIS
                 : Icons.arrow_downward,
-            color: tx.type == "sent" ? Colors.red : Colors.green,
+            color: tx.type == "sent" ? Colors.red
+                : tx.type == "nft" ? Colors.blue
+                : tx.type == "contract" ? Colors.orange  // ← ADD THIS
+                : Colors.green,
           ),
           title: Text(
-            tx.type == "sent"
-                ? "Sent ${tx.value} POL"
-                : "Received",
+            tx.type == "sent" ? "Sent ${tx.value} POL"
+                : tx.type == "nft" ? tx.title
+                : tx.type == "contract" ? "Contract Interaction"  // ← ADD THIS
+                : "Received ${tx.value} POL",
           ),
           subtitle: Text(_shorten(tx.to)),
-          trailing: Text(tx.time),
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(formattedTime, style: const TextStyle(fontSize: 12)),
+              const SizedBox(height: 2),
+              InkWell(
+                onTap: () async {
+                  final url = Uri.parse("https://amoy.polygonscan.com/tx/${tx.hash}");
+
+                  if (await canLaunchUrl(url)) {
+                    await launchUrl(url, mode: LaunchMode.externalApplication);
+                  }
+                },
+                child: const Text(
+                  "View on Explorer",
+                  style: TextStyle(color: Colors.blue, fontSize: 10),
+                ),
+              )
+            ],
+          ),
         );
       }).toList(),
     );
   }
+
   // ===============================
   // wallet options
   // ===============================
@@ -468,6 +646,9 @@ class _WalletScreenState extends State<WalletScreen> {
       ),
     );
   }
+  // ===============================
+  // Confirm Action of wallet settings buttons
+  // ===============================
   void _confirmAction({
     required String title,
     required Future<void> Function() onConfirm,
@@ -487,55 +668,12 @@ class _WalletScreenState extends State<WalletScreen> {
               onPressed: () async {
                 Navigator.pop(context);
                 await onConfirm();
-                setState(() {});
               },
               child: const Text("OK"),
             ),
           ],
         );
       },
-    );
-  }
-  // ===============================
-  // INFO CARD
-  // ===============================
-  Widget _buildInfoCard() {
-    return Card(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.account_balance_wallet),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _shorten(_address!),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _disconnect,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-              ),
-              child: const Text("Disconnect"),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _switchAccount,
-              child: const Text("Switch Account"),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

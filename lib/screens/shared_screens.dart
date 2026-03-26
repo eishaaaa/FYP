@@ -1,6 +1,5 @@
 // lib/screens/shared_screens.dart
 // Complete shared screens with blockchain, IPFS, and all integrations
-
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -16,9 +15,11 @@ import 'qr_generator_screen.dart';
 import 'land_fractions_screen.dart';
 import 'transfer_screen.dart';
 import 'wallet_screen.dart';
+import 'transaction_model.dart';
 import 'transfer_history_screen.dart';
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
+
 
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
@@ -46,6 +47,32 @@ Uint8List? _tryBase64Decode(String? s) {
   } catch (_) {
     return null;
   }
+}
+/// Shared helper to add a transaction to Firestore and update in-memory wallet lists
+Future<void> addTransaction({
+  required String userId,
+  required String type,
+  required String title,
+  required String toAddress,
+  String value = "0",
+  String gas = "0",
+}) async {
+  final txHash = const Uuid().v4();
+  final time = (DateTime.now().millisecondsSinceEpoch ~/ 1000).toString();
+
+  await FirebaseFirestore.instance
+      .collection("users")
+      .doc(userId)
+      .collection("transactions")
+      .add({
+    "type": type,
+    "title": title,
+    "to": toAddress,
+    "value": value,
+    "gas": gas,
+    "hash": txHash,
+    "time": time,
+  });
 }
 
 /// Build asset image from base64 or URL
@@ -807,6 +834,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                         final buyerUid = activeTx['buyerUid'];
                         final sellerUid = auth.currentUser!.uid;
 
+
                         if (data['category'] == 'electronics') {
                           return TransferScreen(
                             assetId: widget.assetId,
@@ -829,8 +857,26 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                         }
                       },
                     ),
-                  ).then((result) {
+                  ).then((result) async {
                     if (result == true) {
+                      final buyerUid = activeTx['buyerUid'];
+                      final sellerUid = auth.currentUser!.uid;
+
+                      await addTransaction(
+                        userId: sellerUid,
+                        type: "received",
+                        title: data['title'] ?? "Asset",
+                        toAddress: buyerUid,
+                        value: data['price']?.toString() ?? "0",
+                      );
+
+                      await addTransaction(
+                        userId: buyerUid,
+                        type: "nft",
+                        title: data['title'] ?? "Asset",
+                        toAddress: sellerUid,
+                      );
+
                       setState(() {
                         _loadFuture = _load();
                       });
@@ -945,6 +991,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
     final category = assetData['category'] ?? '';
     final blockchainTokenId = assetData['blockchainTokenId'] as int?;
 
+
     // For LAND: Show fractional purchase option
     if (category == 'land' && blockchainTokenId != null) {
       final choice = await showDialog<String>(
@@ -1017,6 +1064,14 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
       'blockchainTokenId': blockchainTokenId,
       'createdAt': FieldValue.serverTimestamp(),
     });
+
+    await addTransaction(
+      userId: user.uid,   // use already defined user
+      type: "sent",
+      title: assetData['title'] ?? "Asset",
+      toAddress: assetData['ownerUid'] ?? assetData['ownerId'],
+      value: assetData['price']?.toString() ?? "0",
+    );
 
     // Create chat document
     await db.collection('chats').doc(txId).set({
@@ -1158,9 +1213,10 @@ class MyAssetsScreen extends StatelessWidget {
           );
         } else {
           final q = db
-              .collection('transactions')
-              .where('buyerUid', isEqualTo: user.uid)
-              .where('status', isEqualTo: 'completed');
+              .collection("users")
+              .doc(user.uid)
+              .collection("transactions")
+              .orderBy("time", descending: true);
           return Scaffold(
             appBar: AppBar(
               title: const Text('My Assets'),
@@ -1220,8 +1276,51 @@ class MyAssetsScreen extends StatelessWidget {
 }
 
 /// Transactions Screen
-class TransactionsScreen extends StatelessWidget {
+class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({super.key});
+
+  @override
+  State<TransactionsScreen> createState() => _TransactionsScreenState();
+}
+
+class _TransactionsScreenState extends State<TransactionsScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  final List<String> _tabs = ['Pending', 'Accepted', 'Rejected'];
+  final List<String> _statuses = ['pending', 'approved', 'rejected'];
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _updateStatus(String id, String newStatus) async {
+    await db.collection('transactions').doc(id).update({'status': newStatus});
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'approved': return Colors.green;
+      case 'rejected': return Colors.red;
+      default: return Colors.orange;
+    }
+  }
+
+  IconData _statusIcon(String status) {
+    switch (status) {
+      case 'approved': return Icons.check_circle;
+      case 'rejected': return Icons.cancel;
+      default: return Icons.hourglass_empty;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1235,19 +1334,7 @@ class TransactionsScreen extends StatelessWidget {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
         final role = snap.data ?? 'user';
-
-        late Query<Map<String, dynamic>> q;
-        if (role.toLowerCase().contains('supplier')) {
-          q = db
-              .collection('transactions')
-              .where('sellerUid', isEqualTo: user.uid)
-              .orderBy('createdAt', descending: true);
-        } else {
-          q = db
-              .collection('transactions')
-              .where('buyerUid', isEqualTo: user.uid)
-              .orderBy('createdAt', descending: true);
-        }
+        final isSupplier = role.toLowerCase().contains('supplier');
 
         return Scaffold(
           appBar: AppBar(
@@ -1256,95 +1343,297 @@ class TransactionsScreen extends StatelessWidget {
               icon: const Icon(Icons.arrow_back),
               onPressed: () => Navigator.pop(context),
             ),
+            bottom: TabBar(
+              controller: _tabController,
+              indicatorColor: Colors.white,
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white60,
+              tabs: [
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.hourglass_empty, size: 16),
+                      SizedBox(width: 4),
+                      Text('Pending'),
+                    ],
+                  ),
+                ),
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.check_circle, size: 16),
+                      SizedBox(width: 4),
+                      Text('Accepted'),
+                    ],
+                  ),
+                ),
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.cancel, size: 16),
+                      SizedBox(width: 4),
+                      Text('Rejected'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: q.snapshots(),
-            builder: (context, snap2) {
-              if (snap2.hasError) return Center(child: Text('Error: ${snap2.error}'));
-              if (!snap2.hasData) return const Center(child: CircularProgressIndicator());
-              final docs = snap2.data!.docs;
-              if (docs.isEmpty) return const Center(child: Text('No transactions found'));
+          body: TabBarView(
+            controller: _tabController,
+            children: _statuses.map((status) {
+              final query = db
+                  .collection('transactions')
+                  .where(isSupplier ? 'sellerUid' : 'buyerUid', isEqualTo: user.uid)
+                  .where('status', isEqualTo: status)
+                  .orderBy('createdAt', descending: true);
 
-              return ListView.builder(
-                itemCount: docs.length,
-                itemBuilder: (context, i) {
-                  final t = docs[i].data();
-                  final id = docs[i].id;
+              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: query.snapshots(),
+                builder: (context, snap2) {
+                  if (snap2.hasError) return Center(child: Text('Error: ${snap2.error}'));
+                  if (!snap2.hasData) return const Center(child: CircularProgressIndicator());
+                  final docs = snap2.data!.docs;
 
-                  final ts = t['createdAt'] as Timestamp?;
-                  final time = ts != null ? "${ts.toDate().year}-${ts.toDate().month}-${ts.toDate().day}" : "";
-                  final status = (t['status'] ?? '').toString();
-
-                  final allowChat = !(status == 'pending' || status == 'rejected');
-
-                  return Card(
-                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(12),
-                      title: Text("Asset: ${t['assetId']}"),
-                      subtitle: Text("Status: $status\nDate: $time"),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                  if (docs.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          if (role.toLowerCase().contains('supplier') && status == 'pending') ...[
-                            IconButton(
-                              icon: const Icon(Icons.check, color: Colors.green),
-                              onPressed: () => _updateStatus(id, 'approved'),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.close, color: Colors.red),
-                              onPressed: () => _updateStatus(id, 'rejected'),
-                            ),
-                          ],
-                          if (allowChat)
-                            IconButton(
-                              icon: const Icon(Icons.chat),
-                              onPressed: () async {
-                                final myUid = auth.currentUser!.uid;
-
-                                // decide who is the other user
-                                final otherUid = role.toLowerCase().contains('supplier')
-                                    ? t['buyerUid']
-                                    : t['sellerUid'];
-
-                                final chatId = id; // transaction document id
-
-                                await db.collection('chats').doc(chatId).set({
-                                  'participants': [myUid, otherUid],
-                                  'lastMessage': '',
-                                  'lastMessageTime': FieldValue.serverTimestamp(),
-                                }, SetOptions(merge: true));
-
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ChatScreen(
-                                      chatId: chatId,
-                                      otherUserId: otherUid,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
+                          Icon(_statusIcon(status), size: 60, color: Colors.grey[300]),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No ${status} transactions',
+                            style: TextStyle(color: Colors.grey[500], fontSize: 16),
+                          ),
                         ],
                       ),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: t['assetId'])),
-                      ),
-                    ),
+                    );
+                  }
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: docs.length,
+                    itemBuilder: (context, i) {
+                      final t = docs[i].data();
+                      final id = docs[i].id;
+                      final ts = t['createdAt'] as Timestamp?;
+                      final date = ts != null
+                          ? "${ts.toDate().day}/${ts.toDate().month}/${ts.toDate().year}"
+                          : "—";
+                      final txStatus = (t['status'] ?? '').toString();
+                      final allowChat = txStatus == 'approved' || txStatus == 'accepted';
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: _statusColor(txStatus).withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // ── Top Row: status badge + date ──
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: _statusColor(txStatus).withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(_statusIcon(txStatus),
+                                            size: 14, color: _statusColor(txStatus)),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          txStatus.toUpperCase(),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: _statusColor(txStatus),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Text(date,
+                                      style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                                ],
+                              ),
+
+                              const SizedBox(height: 10),
+
+                              // ── Asset info ──
+                              FutureBuilder<DocumentSnapshot>(
+                                future: db.collection('assets').doc(t['assetId']).get(),
+                                builder: (context, assetSnap) {
+                                  String title = 'Loading...';
+                                  if (assetSnap.hasData && assetSnap.data!.exists) {
+                                    title = (assetSnap.data!.data() as Map<String, dynamic>)['title'] ?? 'Unnamed Asset';
+                                  } else if (assetSnap.hasError) {
+                                    title = 'Asset ID: ${t['assetId'] ?? '—'}';
+                                  }
+                                  return Row(
+                                    children: [
+                                      const Icon(Icons.inventory_2_outlined, size: 16, color: Colors.grey),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          title,
+                                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+
+                              const SizedBox(height: 4),
+
+                              // ── Buyer/Seller info ──
+                              Row(
+                                children: [
+                                  Icon(
+                                    isSupplier ? Icons.person_outline : Icons.store_outlined,
+                                    size: 14,
+                                    color: Colors.grey,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    isSupplier
+                                        ? 'Buyer: ${_shorten(t['buyerUid'] ?? '—')}'
+                                        : 'Seller: ${_shorten(t['sellerUid'] ?? '—')}',
+                                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                                  ),
+                                ],
+                              ),
+
+                              // ── Price if available ──
+                              if (t['price'] != null) ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.attach_money, size: 14, color: Colors.grey),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '${t['price']}',
+                                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                                    ),
+                                  ],
+                                ),
+                              ],
+
+                              const SizedBox(height: 12),
+                              const Divider(height: 1),
+                              const SizedBox(height: 8),
+
+                              // ── Action Buttons ──
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  // View Asset
+                                  TextButton.icon(
+                                    icon: const Icon(Icons.visibility_outlined, size: 16),
+                                    label: const Text('View'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: Colors.blue,
+                                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    ),
+                                    onPressed: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => AssetDetailScreen(assetId: t['assetId']),
+                                      ),
+                                    ),
+                                  ),
+
+                                  // Chat button
+                                  if (allowChat) ...[
+                                    const SizedBox(width: 4),
+                                    TextButton.icon(
+                                      icon: const Icon(Icons.chat_outlined, size: 16),
+                                      label: const Text('Chat'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: Colors.teal,
+                                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      ),
+                                      onPressed: () async {
+                                        final myUid = auth.currentUser!.uid;
+                                        final otherUid = isSupplier
+                                            ? t['buyerUid']
+                                            : t['sellerUid'];
+                                        await db.collection('chats').doc(id).set({
+                                          'participants': [myUid, otherUid],
+                                          'lastMessage': '',
+                                          'lastMessageTime': FieldValue.serverTimestamp(),
+                                        }, SetOptions(merge: true));
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => ChatScreen(
+                                              chatId: id,
+                                              otherUserId: otherUid,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+
+                                  // Supplier approve/reject on pending
+                                  if (isSupplier && txStatus == 'pending') ...[
+                                    const SizedBox(width: 4),
+                                    TextButton.icon(
+                                      icon: const Icon(Icons.check, size: 16),
+                                      label: const Text('Accept'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: Colors.green,
+                                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      ),
+                                      onPressed: () => _updateStatus(id, 'approved'),
+                                    ),
+                                    TextButton.icon(
+                                      icon: const Icon(Icons.close, size: 16),
+                                      label: const Text('Reject'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: Colors.red,
+                                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      ),
+                                      onPressed: () => _updateStatus(id, 'rejected'),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   );
                 },
               );
-            },
+            }).toList(),
           ),
         );
       },
     );
   }
 
-  Future<void> _updateStatus(String id, String newStatus) async {
-    await db.collection('transactions').doc(id).update({'status': newStatus});
+  String _shorten(String id) {
+    if (id.length <= 10) return id;
+    return '${id.substring(0, 6)}...${id.substring(id.length - 4)}';
   }
 }
 
