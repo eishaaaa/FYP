@@ -1830,24 +1830,38 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _loading = false;
   bool _darkMode = false;
+  bool _lastSeenEnabled = true; // ✅ field declaration stays here
 
   @override
   void initState() {
     super.initState();
-    _loadUserSettings();
+    _loadUserSettings(); // ✅ call the loader here
   }
 
+  // ✅ All the await logic goes inside this async method
   Future<void> _loadUserSettings() async {
-    final user = auth.currentUser;
-    if (user == null) return;
-    final doc = await db.collection('users').doc(user.uid).get();
-    if (!doc.exists) return;
-    final data = doc.data()!;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .get();
+
     setState(() {
-      _darkMode = (data['darkMode'] == true);
+      _darkMode = userDoc.data()?['darkMode'] ?? false;
+      _lastSeenEnabled = userDoc.data()?['lastSeenEnabled'] ?? true;
     });
   }
-
+  // Save method:
+  Future<void> _setLastSeen(bool val) async {
+  setState(() => _lastSeenEnabled = val);
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return;
+  await FirebaseFirestore.instance
+      .collection('users').doc(uid)
+      .update({'lastSeenEnabled': val});
+  }
   Future<void> _setDarkMode(bool v) async {
     final user = auth.currentUser;
     if (user == null) return;
@@ -1917,6 +1931,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: const Text('Save preference to your account'),
               value: _darkMode,
               onChanged: (v) => _setDarkMode(v),
+            ),
+            SwitchListTile(
+              title: const Text('Last Seen'),
+              subtitle: const Text('Show others when you were last active'),
+              value: _lastSeenEnabled,
+              onChanged: (v) => _setLastSeen(v),
             ),
             const SizedBox(height: 12),
             ListTile(

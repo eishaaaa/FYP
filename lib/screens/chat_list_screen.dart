@@ -36,10 +36,8 @@ class ChatListScreen extends StatelessWidget {
               final chatData = chat.data() as Map<String, dynamic>? ?? {};
               final participants = List<String>.from(chatData['participants'] ?? []);
 
-              // Skip chat if participants invalid
               if (participants.length < 2) return const SizedBox();
 
-              // Find the other user
               final otherUid = participants.firstWhere(
                     (u) => u != uid,
                 orElse: () => '',
@@ -85,23 +83,8 @@ class ChatListScreen extends StatelessWidget {
                       ),
                     )
                         : null,
-                    onTap: () async {
-                      // Reset unread safely
-                      await FirebaseFirestore.instance
-                          .collection('chats')
-                          .doc(chat.id)
-                          .update({'unread_$uid': 0});
-
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ChatScreen(
-                            chatId: chat.id,
-                            otherUserId: otherUid,
-                          ),
-                        ),
-                      );
-                    },
+                    // ✅ FIX: Use StatefulBuilder or separate handler to check context
+                    onTap: () => _handleChatTap(context, chat.id, uid, otherUid),
                     onLongPress: () => _deleteChat(context, chat.id),
                   );
                 },
@@ -111,6 +94,54 @@ class ChatListScreen extends StatelessWidget {
         },
       ),
     );
+  }
+
+  // ✅ NEW: Separate handler with proper context checking
+  Future<void> _handleChatTap(
+      BuildContext context,
+      String chatId,
+      String uid,
+      String otherUid,
+      ) async {
+    try {
+      // Reset unread
+      await FirebaseFirestore.instance
+          .collection('chats')
+          .doc(chatId)
+          .update({'unread_$uid': 0})
+          .catchError((e) {
+        debugPrint('Unread update error: $e');
+        return null; // Don't crash if update fails
+      });
+
+      // ✅ Check if widget is still mounted before navigating
+      if (!context.mounted) {
+        debugPrint('Context no longer valid, skipping navigation');
+        return;
+      }
+
+      // Now safe to navigate
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChatScreen(
+              chatId: chatId,
+              otherUserId: otherUid,
+            ),
+          ),
+        ).catchError((e) {
+          debugPrint('Navigation error: $e');
+        });
+      }
+    } catch (e) {
+      debugPrint('Chat tap error: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
   }
 
   Widget _chatSkeleton() {
@@ -136,9 +167,17 @@ class ChatListScreen extends StatelessWidget {
   void _deleteChat(BuildContext context, String chatId) async {
     try {
       await FirebaseFirestore.instance.collection('chats').doc(chatId).delete();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Chat deleted')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Failed to delete chat')));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete: $e')),
+        );
+      }
     }
   }
 }
