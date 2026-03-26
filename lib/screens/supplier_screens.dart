@@ -411,7 +411,13 @@ class AssetManagementScreen extends StatelessWidget {
           itemBuilder: (context, i) {
             final doc = docs[i];
             final data = doc.data() as Map<String, dynamic>;
-            final tokenId = data['blockchainTokenId'] as int?;
+            // Safely cast blockchainTokenId: Firestore may return it as num/int.
+            final rawTokenId = data['blockchainTokenId'];
+            final tokenId = rawTokenId != null
+                ? (rawTokenId is int
+                    ? rawTokenId
+                    : int.tryParse(rawTokenId.toString()))
+                : null;
 
             return Card(
               margin: const EdgeInsets.symmetric(vertical: 6),
@@ -915,6 +921,21 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
       // ---------------------------------------------------------
 
       if (txHash == null) throw Exception('Transaction failed or rejected');
+      setState(() => _statusMessage = 'Waiting for blockchain confirmation...');
+
+      // Wait for the transaction to be mined (up to ~60 seconds)
+      await blockchain.waitForConfirmation(txHash, retries: 30);
+
+      // Query the contract to get the newly minted token ID
+      setState(() => _statusMessage = 'Retrieving Token ID...');
+      int? newTokenId;
+      if (widget.type == 'electronics') {
+        newTokenId = await blockchain.getLastElectronicsTokenId();
+      } else {
+        newTokenId = await blockchain.getLastLandPropertyId();
+      }
+      debugPrint('✅ New blockchain Token ID: $newTokenId');
+
       setState(() => _statusMessage = 'Saving to Database...');
 
       data.remove('rawImages');
@@ -925,9 +946,10 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         'category': widget.type,
         'ownerId': auth.currentUser!.uid,
         'blockchainTx': txHash,
+        'blockchainTokenId': newTokenId,   // ← now correctly saved
         'ipfsMetadataHash': metadataHash,
         'isMinted': true,
-        'verified': true,
+        'verified': false,                 // ← pending admin approval
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -1000,37 +1022,656 @@ class EditAssetScreen extends StatefulWidget {
 }
 
 class _EditAssetScreenState extends State<EditAssetScreen> {
-  Map<String, dynamic>? _initial;
+  Map<String, dynamic>? _data;
   bool _loading = true;
+  bool _saving = false;
+
+  // Editable off-chain controllers
+  late TextEditingController _priceCtrl;
+  late TextEditingController _descCtrl;
+  List<Map<String, dynamic>> _documents = [];
+  final List<Uint8List> _newImages = [];
 
   @override
   void initState() {
     super.initState();
+    _priceCtrl = TextEditingController();
+    _descCtrl = TextEditingController();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _priceCtrl.dispose();
+    _descCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
     try {
       final doc = await db.collection('assets').doc(widget.assetId).get();
-      if (doc.exists) setState(() => _initial = doc.data());
+      if (doc.exists) {
+        final d = doc.data()!;
+        setState(() {
+          _data = d;
+          _priceCtrl.text = d['price']?.toString() ?? '';
+          _descCtrl.text = d['description']?.toString() ?? '';
+          if (d['documents'] != null) {
+            _documents = (d['documents'] as List).cast<Map<String, dynamic>>();
+          }
+        });
+      }
     } finally {
       setState(() => _loading = false);
     }
   }
 
-  Future<void> _handleSave(Map<String, dynamic> data) async {
-    data.remove('rawImages');
-    data.remove('rawDocuments');
-    await db.collection('assets').doc(widget.assetId).update(data);
-    if(mounted) Navigator.pop(context);
+  Future<void> _pickNewImages() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickMultiImage(imageQuality: 80);
+    for (final p in picked) {
+      final b = await p.readAsBytes();
+      setState(() => _newImages.add(b));
+    }
+  }
+
+  Future<void> _pickDocuments() async {
+    final res = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
+      allowMultiple: true,
+      withData: true,
+    );
+    if (res != null) {
+      for (final file in res.files) {
+        if (file.bytes != null) {
+          setState(() {
+            _documents.add({
+              'bytes': file.bytes!,
+              'name': file.name,
+              'type': file.extension ?? 'unknown',
+              'size': file.size,
+            });
+          });
+        }
+      }
+    }
+  }
+
+  Future<void> _save() async {
+    final price = double.tryParse(_priceCtrl.text.replaceAll(',', ''));
+    if (price == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invalid price format')),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      // Process any new images
+      final List<String> existingImages =
+          (_data?['images'] as List?)?.cast<String>() ?? [];
+      for (final bytes in _newImages) {
+        existingImages.add(await compressImageToBase64(bytes));
+      }
+
+      // Process documents
+      final processedDocs = <Map<String, dynamic>>[];
+      for (final doc in _documents) {
+        if (doc.containsKey('bytes')) {
+          final processed = await DocumentStorage.storeDocument(
+              doc['bytes'], doc['name'], doc['type']);
+          processedDocs.add(processed);
+        } else {
+          processedDocs.add(doc);
+        }
+      }
+
+      // Only update off-chain fields — never touch blockchain-origin fields
+      await db.collection('assets').doc(widget.assetId).update({
+        'price': price,
+        'description': _descCtrl.text.trim(),
+        'images': existingImages,
+        'documents': processedDocs,
+        'lastEditedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Asset updated successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Widget _lockedField(String label, String? value, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.indigo[50],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 18, color: Colors.indigo[300]),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[500],
+                        fontWeight: FontWeight.w500)),
+                const SizedBox(height: 2),
+                Text(value?.isNotEmpty == true ? value! : '—',
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+          const Icon(Icons.lock_outline, size: 14, color: Colors.grey),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionCard({required String title, required Widget child,
+      Color? titleColor, IconData? icon}) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: Colors.grey[200]!),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              if (icon != null) ...[
+                Icon(icon, size: 16, color: titleColor ?? Colors.indigo),
+                const SizedBox(width: 6),
+              ],
+              Text(title,
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: titleColor ?? Colors.indigo[800])),
+            ]),
+            const SizedBox(height: 14),
+            child,
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Edit Asset')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final d = _data ?? {};
+    final isMinted = d['blockchainTokenId'] != null;
+    final title = d['title']?.toString() ?? 'Asset';
+    final category = (d['category'] ?? widget.type).toString();
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Edit Asset')),
-      body: AssetForm(type: widget.type, initialData: _initial, isEdit: true, onSubmit: _handleSave),
+      backgroundColor: Colors.grey[50],
+      body: CustomScrollView(
+        slivers: [
+          // ── Hero Header ───────────────────────────────────────────────
+          SliverAppBar(
+            expandedHeight: 140,
+            pinned: true,
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.indigo[700]!, Colors.indigo[400]!],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: SafeArea(
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.fromLTRB(20, 48, 20, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        Row(children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.white24,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(category.toUpperCase(),
+                                style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600)),
+                          ),
+                          if (isMinted) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green[400],
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.verified,
+                                      color: Colors.white, size: 10),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                      'Token #${d['blockchainTokenId']}',
+                                      style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ]),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              title: const Text('Edit Asset',
+                  style: TextStyle(color: Colors.white)),
+              titlePadding: const EdgeInsets.only(left: 56, bottom: 16),
+            ),
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+
+          // ── Body ─────────────────────────────────────────────────────
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+
+                // ── Blockchain locked section ─────────────────────────
+                if (isMinted) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [
+                        Colors.amber[50]!,
+                        Colors.orange[50]!,
+                      ]),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.amber[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline,
+                            color: Colors.orange[700], size: 18),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            '🔒 Fields below are recorded on the blockchain and are permanently immutable.',
+                            style:
+                                TextStyle(fontSize: 12, height: 1.4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  _sectionCard(
+                    title: 'Blockchain Record',
+                    icon: Icons.link,
+                    child: Column(
+                      children: widget.type == 'electronics'
+                          ? [
+                              _lockedField('Brand', d['brand']?.toString(),
+                                  Icons.business_outlined),
+                              _lockedField('Model', d['model']?.toString(),
+                                  Icons.phone_android_outlined),
+                              _lockedField('Serial / IMEI',
+                                  d['serial']?.toString(),
+                                  Icons.tag_outlined),
+                              _lockedField('Warranty',
+                                  d['warranty']?.toString(),
+                                  Icons.shield_outlined),
+                              _lockedField('Condition',
+                                  d['condition']?.toString(),
+                                  Icons.star_outline),
+                            ]
+                          : [
+                              _lockedField('Location / Title',
+                                  d['title']?.toString(),
+                                  Icons.location_on_outlined),
+                              _lockedField(
+                                  'City', d['city']?.toString(),
+                                  Icons.location_city_outlined),
+                              _lockedField(
+                                  'Plot Area',
+                                  '${d['plotArea']} ${d['plotUnit'] ?? ''}'
+                                      .trim(),
+                                  Icons.square_foot_outlined),
+                              _lockedField('Total Fractions',
+                                  d['totalFractions']?.toString(),
+                                  Icons.pie_chart_outline),
+                            ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // ── Editable fields ───────────────────────────────────
+                _sectionCard(
+                  title: 'Editable Details',
+                  icon: Icons.edit_outlined,
+                  child: Column(children: [
+                    TextFormField(
+                      controller: _priceCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Price (PKR)',
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                        prefixIcon: const Icon(
+                            Icons.monetization_on_outlined,
+                            color: Colors.indigo),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide:
+                                BorderSide(color: Colors.grey[300]!)),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _descCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Description',
+                        alignLabelWithHint: true,
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                        prefixIcon: const Icon(
+                            Icons.description_outlined,
+                            color: Colors.indigo),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide:
+                                BorderSide(color: Colors.grey[300]!)),
+                      ),
+                      maxLines: 4,
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 16),
+
+                // ── Images ────────────────────────────────────────────
+                _sectionCard(
+                  title: 'Images',
+                  icon: Icons.image_outlined,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Existing images
+                      if ((d['images'] as List?)?.isNotEmpty == true)
+                        SizedBox(
+                          height: 100,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: (d['images'] as List).length,
+                            itemBuilder: (_, i) => Padding(
+                              padding:
+                                  const EdgeInsets.only(right: 8),
+                              child: ClipRRect(
+                                borderRadius:
+                                    BorderRadius.circular(10),
+                                child: Image.memory(
+                                  base64Decode(
+                                      (d['images'] as List)[i]),
+                                  width: 100,
+                                  height: 100,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      // New images with delete
+                      if (_newImages.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        const Text('New images:',
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.grey)),
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          height: 100,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _newImages.length,
+                            itemBuilder: (_, i) => Padding(
+                              padding:
+                                  const EdgeInsets.only(right: 8),
+                              child: Stack(children: [
+                                ClipRRect(
+                                  borderRadius:
+                                      BorderRadius.circular(10),
+                                  child: Image.memory(
+                                      _newImages[i],
+                                      width: 100,
+                                      height: 100,
+                                      fit: BoxFit.cover),
+                                ),
+                                Positioned(
+                                  top: 4,
+                                  right: 4,
+                                  child: GestureDetector(
+                                    onTap: () => setState(
+                                        () => _newImages.removeAt(i)),
+                                    child: Container(
+                                      decoration:
+                                          const BoxDecoration(
+                                        color: Colors.black54,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      padding:
+                                          const EdgeInsets.all(3),
+                                      child: const Icon(Icons.close,
+                                          color: Colors.white,
+                                          size: 14),
+                                    ),
+                                  ),
+                                ),
+                              ]),
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: _pickNewImages,
+                        icon: const Icon(
+                            Icons.add_photo_alternate_outlined),
+                        label: const Text('Add Images'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.indigo,
+                          side: const BorderSide(
+                              color: Colors.indigo),
+                          shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ── Documents ─────────────────────────────────────────
+                _sectionCard(
+                  title: 'Documents',
+                  icon: Icons.folder_outlined,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_documents.isEmpty)
+                        Text('No documents attached.',
+                            style: TextStyle(
+                                color: Colors.grey[500],
+                                fontSize: 13)),
+                      ..._documents.map((doc) => Container(
+                            margin:
+                                const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.indigo[50],
+                              borderRadius:
+                                  BorderRadius.circular(8),
+                            ),
+                            child: Row(children: [
+                              Icon(Icons.insert_drive_file,
+                                  size: 18,
+                                  color: Colors.indigo[400]),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                    doc['name'] ?? 'Document',
+                                    style: const TextStyle(
+                                        fontSize: 13),
+                                    overflow:
+                                        TextOverflow.ellipsis),
+                              ),
+                              GestureDetector(
+                                onTap: () => setState(
+                                    () => _documents.remove(doc)),
+                                child: const Icon(Icons.close,
+                                    size: 16, color: Colors.grey),
+                              ),
+                            ]),
+                          )),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _pickDocuments,
+                        icon: const Icon(Icons.attach_file),
+                        label: const Text('Attach Documents'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.indigo,
+                          side: const BorderSide(
+                              color: Colors.indigo),
+                          shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // ── Save Button ───────────────────────────────────────
+                Container(
+                  height: 54,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: _saving
+                          ? [Colors.grey[400]!, Colors.grey[400]!]
+                          : [Colors.indigo[600]!, Colors.indigo[400]!],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: _saving
+                        ? []
+                        : [
+                            BoxShadow(
+                              color:
+                                  Colors.indigo.withOpacity(0.35),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: _saving ? null : _save,
+                      child: Center(
+                        child: _saving
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: Colors.white))
+                            : const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.save_outlined,
+                                      color: Colors.white,
+                                      size: 20),
+                                  SizedBox(width: 10),
+                                  Text('Save Changes',
+                                      style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight:
+                                              FontWeight.bold)),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+              ]),
+            ),
+          ),
+        ],
+      ),
     );
   }
-}
+
+}

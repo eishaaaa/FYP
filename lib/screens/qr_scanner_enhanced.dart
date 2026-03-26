@@ -1,6 +1,7 @@
 // FILE: lib/screens/qr_scanner_enhanced.dart
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
 // import 'user_screens.dart';
@@ -26,57 +27,84 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
     setState(() => _processing = true);
 
     try {
-      // Robust URI Parsing fixes the "double slash" bug
-      // Expected Format: asset://type/firebase_id/blockchain_id
-      final uri = Uri.parse(code);
-
-      if (uri.scheme != 'asset') {
+      // Robust manual parsing for custom asset:// scheme.
+      // Uri.parse() treats the first segment of asset://type/id/token as the
+      // authority/host, yielding only 2 pathSegments instead of 3.
+      // Fix: strip the prefix and split the remaining path ourselves.
+      const prefix = 'asset://';
+      if (!code.startsWith(prefix)) {
         throw Exception('Invalid QR type. Expected "asset://", got "$code"');
       }
 
-      // pathSegments automatically handles the "//" and splitting
-      // For "asset://land/123/45", segments are ['land', '123', '45']
-      if (uri.pathSegments.length < 3) {
-        throw Exception('Incomplete QR data. Expected 3 segments, got ${uri.pathSegments.length}');
+      final segments = code.substring(prefix.length).split('/');
+      if (segments.length < 3) {
+        throw Exception('Incomplete QR data. Expected 3 segments, got ${segments.length}');
       }
 
-      final type = uri.pathSegments[0];
-      final firebaseId = uri.pathSegments[1];
-      final blockchainIdString = uri.pathSegments[2];
+      final type = segments[0];
+      final firebaseId = segments[1];
+      final blockchainIdString = segments[2];
 
-      // 1. Handle "pending" state gracefully
-      if (blockchainIdString.toLowerCase() == 'pending' || blockchainIdString.toLowerCase() == 'null') {
-        if (!mounted) return;
-        await showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: Row(
-              children: [
-                Icon(Icons.hourglass_empty, color: Colors.orange[700]),
-                const SizedBox(width: 8),
-                const Text("Pending Blockchain"),
+      // 1. Firebase Fallback: QR may have been printed before Admin verification.
+      //    When the QR carries "pending" or "null", do a one-time live Firestore
+      //    fetch to see whether the Admin has since minted a blockchainTokenId.
+      int? resolvedBlockchainId;
+
+      if (blockchainIdString.toLowerCase() == 'pending' ||
+          blockchainIdString.toLowerCase() == 'null') {
+        debugPrint('QR has pending ID – fetching live Firestore doc for $firebaseId ...');
+        try {
+          final docSnapshot = await FirebaseFirestore.instance
+              .collection('assets')
+              .doc(firebaseId)
+              .get();
+
+          if (docSnapshot.exists) {
+            final liveData = docSnapshot.data();
+            final liveTokenId = liveData?['blockchainTokenId'];
+            if (liveTokenId != null) {
+              // Admin has verified the asset since the QR was printed.
+              resolvedBlockchainId = (liveTokenId is int)
+                  ? liveTokenId
+                  : int.tryParse(liveTokenId.toString());
+            }
+          }
+        } catch (e) {
+          debugPrint('Firestore fallback fetch error (non-fatal): $e');
+        }
+
+        // If still no real ID after the live fetch, show the Pending dialog.
+        if (resolvedBlockchainId == null) {
+          if (!mounted) return;
+          await showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: Row(
+                children: [
+                  Icon(Icons.hourglass_empty, color: Colors.orange[700]),
+                  const SizedBox(width: 8),
+                  const Flexible(child: Text("Pending Blockchain")),
+                ],
+              ),
+              content: const Text(
+                "This asset has been uploaded but is still waiting for "
+                "blockchain confirmation (Mining).\n\n"
+                "Please try scanning again in a few minutes.",
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text("OK"),
+                )
               ],
             ),
-            content: const Text(
-              "This asset has been uploaded but is still waiting for blockchain confirmation (Mining).\n\n"
-                  "Please try scanning again in a few minutes.",
-            ),
-            actions: [
-              TextButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    // Optional: Resume scanning immediately or wait
-                  },
-                  child: const Text("OK")
-              )
-            ],
-          ),
-        );
-        return;
+          );
+          return;
+        }
       }
 
-      // 2. Parse ID after verifying it's not pending
-      final blockchainId = int.tryParse(blockchainIdString);
+      // 2. Resolve the final blockchainId (from QR or from Firestore fallback)
+      final blockchainId = resolvedBlockchainId ?? int.tryParse(blockchainIdString);
       if (blockchainId == null) {
         throw Exception('Invalid Blockchain ID format: $blockchainIdString');
       }
