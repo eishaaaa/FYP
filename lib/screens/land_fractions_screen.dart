@@ -201,6 +201,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen> {
 
     final totalFractions = _propertyData!['totalFractions'] as int;
     final availableFractions = totalFractions - _userFractions;
+    final canPurchase = availableFractions > 0;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Purchase Fractions')),
@@ -257,19 +258,32 @@ class _LandFractionsScreenState extends State<LandFractionsScreen> {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-
+            // Add this right after computing availableFractions
+            if (availableFractions <= 0)
+              const Center(
+                child: Text('You already own all available fractions.'),
+              )
+            else
             Row(
               children: [
                 Expanded(
-                  child: Slider(
+                  child: (canPurchase)
+                      ? Slider(
                     value: _selectedFractions.toDouble(),
                     min: 1,
                     max: availableFractions.toDouble(),
-                    divisions: availableFractions - 1,
+                    divisions: availableFractions > 1 ? availableFractions - 1 : null,
                     label: _selectedFractions.toString(),
                     onChanged: (value) {
                       setState(() => _selectedFractions = value.toInt());
                     },
+                  )
+                      :const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'You already own all available fractions.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
                   ),
                 ),
                 SizedBox(
@@ -337,74 +351,82 @@ class _LandFractionsScreenState extends State<LandFractionsScreen> {
 
             const SizedBox(height: 24),
 
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.green[50],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'After Purchase:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Your total fractions:'),
-                      Text(
-                        '${_userFractions + _selectedFractions}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Ownership percentage:'),
-                      Text(
-                        '${((_userFractions + _selectedFractions) / totalFractions * 100).toStringAsFixed(2)}%',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green,
+            if (canPurchase) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.green[50],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('After Purchase:',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Your total fractions:'),
+                        Text('${_userFractions + _selectedFractions}',
+                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Ownership percentage:'),
+                        Text(
+                          '${((_userFractions + _selectedFractions) / totalFractions * 100).toStringAsFixed(2)}%',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, color: Colors.green),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton.icon(
+                  onPressed: _purchaseFractions,
+                  icon: const Icon(Icons.shopping_cart),
+                  label: const Text('Purchase Fractions',
+                      style: TextStyle(fontSize: 18)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
                   ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 32),
-
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton.icon(
-                onPressed: _purchaseFractions,
-                icon: const Icon(Icons.shopping_cart),
-                label: const Text(
-                  'Purchase Fractions',
-                  style: TextStyle(fontSize: 18),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
                 ),
               ),
-            ),
-
-            const SizedBox(height: 12),
-
-            const Text(
-              '⚠️ This transaction will be executed on Polygon blockchain. '
-                  'Make sure you have enough MATIC for gas fees.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-              textAlign: TextAlign.center,
-            ),
+              const SizedBox(height: 12),
+              const Text(
+                '⚠️ This transaction will be executed on Polygon blockchain. '
+                    'Make sure you have enough MATIC for gas fees.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ] else ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.green[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.green),
+                    SizedBox(width: 12),
+                    Text('You own 100% of this property!',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, color: Colors.green)),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),

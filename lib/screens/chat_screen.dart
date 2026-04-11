@@ -6,9 +6,7 @@ import '../blockchain/blockchain_service.dart';
 import '../blockchain/wallet_service.dart';
 import '../services/push_notification_service.dart';
 import 'package:file_picker/file_picker.dart';
-import 'dart:convert';
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../blockchain/ipfs_service.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -75,8 +73,8 @@ class _ChatScreenState extends State<ChatScreen> {
     if (file.bytes == null || file.bytes!.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('File is empty')),
-      );
+          const SnackBar(content: Text('File is empty')),
+        );
       }
       return;
     }
@@ -86,16 +84,16 @@ class _ChatScreenState extends State<ChatScreen> {
     if (file.bytes!.length > maxFileSize) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('File too large (max 100MB)')),
-      );
+          SnackBar(content: Text('File too large (max 100MB)')),
+        );
       }
       return;
     }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Uploading to IPFS...'), duration: Duration(seconds: 60)),
-    );
+        const SnackBar(content: Text('Uploading to IPFS...'), duration: Duration(seconds: 60)),
+      );
     }
 
     try {
@@ -136,18 +134,18 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(
-          content: Text('File sent ✓'),
-          duration: Duration(seconds: 2),
-        ));
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+            content: Text('File sent ✓'),
+            duration: Duration(seconds: 2),
+          ));
       }
 
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text('Upload failed: $e')));
       }
       debugPrint('File send error: $e');
     }
@@ -158,8 +156,8 @@ class _ChatScreenState extends State<ChatScreen> {
       if (ipfsHash.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No file available')),
-        );
+            const SnackBar(content: Text('No file available')),
+          );
         }
         return;
       }
@@ -167,17 +165,17 @@ class _ChatScreenState extends State<ChatScreen> {
       // Show downloading indicator
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-              SizedBox(width: 12),
-              Text('Downloading...'),
-            ],
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                SizedBox(width: 12),
+                Text('Downloading...'),
+              ],
+            ),
+            duration: Duration(seconds: 30),
           ),
-          duration: Duration(seconds: 30),
-        ),
-      );
+        );
       }
 
       // ✅ Fetch from IPFS
@@ -195,8 +193,8 @@ class _ChatScreenState extends State<ChatScreen> {
           if (!status.isGranted) {
             if (mounted) {
               ScaffoldMessenger.of(context)
-              ..hideCurrentSnackBar()
-              ..showSnackBar(const SnackBar(content: Text('Storage permission denied')));
+                ..hideCurrentSnackBar()
+                ..showSnackBar(const SnackBar(content: Text('Storage permission denied')));
             }
             return;
           }
@@ -226,22 +224,22 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(
-          content: Text('✓ Saved to Downloads: $filePath'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 5),
-        ));
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(
+            content: Text('✓ Saved to Downloads: $filePath'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 5),
+          ));
       }
 
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(
-          content: Text('Download failed: $e'),
-          backgroundColor: Colors.red,
-        ));
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(
+            content: Text('Download failed: $e'),
+            backgroundColor: Colors.red,
+          ));
       }
       debugPrint('Download error: $e');
     }
@@ -348,8 +346,8 @@ class _ChatScreenState extends State<ChatScreen> {
     return '${d.day}/${d.month}/${d.year} at $hour:$minute $amPm';
   }
 
-  // ── CHECKOUT FLOW LOGIC ──
 
+  // ── CHECKOUT FLOW LOGIC ──
   Widget _buildCheckoutArea(BuildContext context) {
     return StreamBuilder<DocumentSnapshot>(
       stream: _db.collection('chats').doc(widget.chatId).snapshots(),
@@ -364,6 +362,14 @@ class _ChatScreenState extends State<ChatScreen> {
         if (assetId == null || sellerUid == null) return const SizedBox();
 
         final isSeller = (myUid == sellerUid);
+        // isResale = true when the seller is not the original minter but a buyer
+        // who received the asset via transfer and is now reselling it.
+        // We detect this by checking if the asset's previousOwnerId is set,
+        // which _finalizeOwnership writes on every transfer.
+        final isResale = chatData['isResale'] == true ||
+            (chatData['previousOwnerId'] != null &&
+                (chatData['previousOwnerId'] as String).isNotEmpty);
+        final sellerLabel = isResale ? 'Seller' : 'Supplier';
 
         return StreamBuilder<QuerySnapshot>(
           stream: _db
@@ -396,7 +402,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   Icons.hourglass_empty,
                 );
               } else {
-                return _buildBuyerDecisionCard(transactionId, assetTypeStr, sellerUid);
+                return _buildBuyerDecisionCard(transactionId, assetTypeStr, sellerUid, sellerLabel);
               }
             }
 
@@ -411,12 +417,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   txData,
                 );
               } else {
-                return _buildStatusCard(
-                  'Checkout Accepted',
-                  'Waiting for supplier to transfer ownership.',
-                  Colors.green.shade100,
-                  Icons.check_circle,
-                );
+                return const SizedBox();
               }
             }
 
@@ -446,7 +447,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildBuyerDecisionCard(String txId, String assetType, String sellerUid) {
+  Widget _buildBuyerDecisionCard(String txId, String assetType, String sellerUid, String sellerLabel) {
     return Container(
       margin: const EdgeInsets.all(12),
       padding: const EdgeInsets.all(16),
@@ -464,7 +465,7 @@ class _ChatScreenState extends State<ChatScreen> {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 4),
-          const Text('The supplier wants to checkout this product. Do you accept?'),
+          Text('The $sellerLabel wants to proceed with checkout. Do you accept?'),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -500,47 +501,27 @@ class _ChatScreenState extends State<ChatScreen> {
       ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.green.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.green),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.check, size: 16, color: Colors.green),
-                SizedBox(width: 8),
-                Expanded(child: Text('Buyer accepted. Ready to transfer.')),
-              ],
-            ),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          icon: const Icon(Icons.swap_horiz),
+          label: const Text('Proceed to Transfer'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.orange,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 12),
           ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              icon: const Icon(Icons.swap_horiz),
-              label: const Text('Proceed to Transfer'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              onPressed: () {
-                _navigateToTransferScreen(
-                  context,
-                  assetId,
-                  assetTypeStr,
-                  sellerUid,
-                  transactionId,
-                  txData,
-                );
-              },
-            ),
-          ),
-        ],
+          onPressed: () {
+            _navigateToTransferScreen(
+              context,
+              assetId,
+              assetTypeStr,
+              sellerUid,
+              transactionId,
+              txData,
+            );
+          },
+        ),
       ),
     );
   }
@@ -593,23 +574,31 @@ class _ChatScreenState extends State<ChatScreen> {
           'buyerUid': widget.otherUserId,
           'status': 'pending',
           'createdAt': FieldValue.serverTimestamp(),
+          // ✅ Fetch and save asset title
         });
         txId = docRef.id;
-      }
 
-      _sendNotification(
-        uid: widget.otherUserId,
-        title: 'Checkout Request',
-        body: 'Supplier wants to checkout this product.',
-        txId: txId,
-      );
+//      ✅ Save assetTitle separately after creation
+        final assetSnap = await _db.collection('assets').doc(assetId).get();
+        final assetTitle = assetSnap.data()?['title'] ?? 'Asset';
+        await _db.collection('transactions').doc(txId).update({
+          'assetTitle': assetTitle,
+        });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Request sent to buyer')),
+        _sendNotification(
+          uid: widget.otherUserId,
+          title: 'Checkout Request',
+          body: 'The seller wants to proceed with checkout.',
+          txId: txId,
         );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Request sent to buyer')),
+          );
+        }
       }
-    } catch (e) {
+    }catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
@@ -618,11 +607,13 @@ class _ChatScreenState extends State<ChatScreen> {
       debugPrint('Checkout error: $e');
     }
   }
-
   Future<void> _handleBuyerDecision(String txId, String sellerUid, bool accepted) async {
     try {
       if (accepted) {
-        await _db.collection('transactions').doc(txId).update({'status': 'accepted'});
+        await _db.collection('transactions').doc(txId).update({
+          'status': 'accepted',
+          'acceptedAt': FieldValue.serverTimestamp(),
+        });
 
         _sendNotification(
           uid: sellerUid,
@@ -632,24 +623,80 @@ class _ChatScreenState extends State<ChatScreen> {
         );
 
         if (mounted) {
-          _promptWalletConnection();
+          // ✅ Check if buyer wallet already connected
+          await _checkAndConnectWallet();
         }
       } else {
-        await _db.collection('transactions').doc(txId).update({'status': 'rejected'});
+        await _db.collection('transactions').doc(txId).update({
+          'status': 'rejected',
+          'rejectedAt': FieldValue.serverTimestamp(),
+        });
         _sendNotification(
           uid: sellerUid,
           title: 'Checkout Rejected',
-          body: 'Buyer rejected the checkout process.',
+          body: 'Buyer rejected the checkout.',
           txId: txId,
         );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('You rejected the checkout')),
+          );
+        }
       }
     } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
+  }
+
+  Future<void> _checkAndConnectWallet() async {
+    // ✅ Check if buyer already has a wallet saved
+    final userDoc = await _db.collection('users').doc(myUid).get();
+    final existingWallet = userDoc.data()?['walletAddress'] as String?;
+
+    if (existingWallet != null && existingWallet.isNotEmpty) {
+      // ✅ Already connected — show confirmation and proceed
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.account_balance_wallet, color: Colors.green),
+                SizedBox(width: 8),
+                Text('Wallet Ready'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Your wallet is already connected:'),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${existingWallet.substring(0, 6)}...${existingWallet.substring(existingWallet.length - 4)}',
+                    style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text('Waiting for supplier to proceed with transfer.', style: TextStyle(fontSize: 13)),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+            ],
+          ),
         );
       }
-      debugPrint('Decision error: $e');
+    } else {
+      // ✅ No wallet — prompt to connect
+      await _promptWalletConnection();
     }
   }
 
@@ -659,34 +706,40 @@ class _ChatScreenState extends State<ChatScreen> {
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('Connect Wallet'),
-        content: const Text('To proceed with the purchase, please connect your crypto wallet.'),
+        content: const Text(
+          'To receive the asset, you need to connect your crypto wallet.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Connect')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Connect Wallet'),
+          ),
         ],
       ),
     );
 
-    if (proceed == true) {
+    if (proceed == true && mounted) {
       try {
         final walletService = SimpleWalletService();
         final address = await walletService.connect(context);
 
-        if (address != null) {
+        if (address != null && mounted) {
           await _db.collection('users').doc(myUid).update({'walletAddress': address});
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Connected: ${address.substring(0, 6)}...')),
-            );
-          }
-        }
-      } catch (e) {
-        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Wallet connection failed: $e')),
+            SnackBar(
+              content: Text('✅ Wallet connected: ${address.substring(0, 6)}...'),
+              backgroundColor: Colors.green,
+            ),
           );
         }
-        debugPrint('Wallet error: $e');
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Wallet connection failed: $e')),
+        );
       }
     }
   }
@@ -717,30 +770,71 @@ class _ChatScreenState extends State<ChatScreen> {
       String sellerUid,
       String transactionId,
       Map<String, dynamic> txData,
-      ) {
+      ) async {
     try {
-      _db.collection('assets').doc(assetId).get().then((assetSnap) {
-        if (!assetSnap.exists) return;
-        final assetData = assetSnap.data() as Map<String, dynamic>;
-        final tokenId = assetData['blockchainTokenId'];
+      // ✅ Fetch asset data
+      final assetSnap = await _db.collection('assets').doc(assetId).get();
+      if (!assetSnap.exists) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Asset not found')),
+          );
+        }
+        return;
+      }
 
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => TransferScreen(
-              assetId: assetId,
-              assetType: assetType == 'electronics' ? AssetType.electronics : AssetType.land,
-              transactionId: transactionId,
-              buyerUid: widget.otherUserId,
-              sellerUid: sellerUid,
-              tokenId: assetType == 'electronics' ? tokenId : null,
-              propertyId: assetType == 'land' ? tokenId : null,
-              fractionAmount: null,
-            ),
+      final assetData = assetSnap.data() as Map<String, dynamic>;
+      final tokenId = assetData['blockchainTokenId'] as int?;
+      final price = assetData['price'];  // ✅ for payment
+
+      // ── Resolve land fraction amount ──────────────────────────────────────
+      // For the ORIGINAL supplier totalFractions == their balance (they minted
+      // everything).  For a RESELLER the minted supply is irrelevant — they may
+      // only hold a subset.  Always ask the chain for the seller's real balance.
+      int? resolvedFractionAmount;
+      if (assetType == 'land' && tokenId != null) {
+        try {
+          final bs = BlockchainServiceEnhanced();
+          await bs.init();
+          if (bs.isConnected && bs.connectedAddress != null) {
+            resolvedFractionAmount =
+            await bs.getUserFractions(bs.connectedAddress!, tokenId);
+          }
+        } catch (e) {
+          debugPrint('getUserFractions error (falling back to totalFractions): $e');
+          resolvedFractionAmount = assetData['totalFractions'] as int?;
+        }
+      }
+
+      // ✅ Fetch buyer name to show seller later
+      final buyerSnap = await _db.collection('users').doc(widget.otherUserId).get();
+      final buyerName = buyerSnap.data()?['name'] ?? 'the buyer';
+
+      if (!mounted) return;
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TransferScreen(
+            assetId: assetId,
+            assetType: assetType == 'electronics' ? AssetType.electronics : AssetType.land,
+            transactionId: transactionId,
+            buyerUid: widget.otherUserId,
+            sellerUid: sellerUid,
+            tokenId: assetType == 'electronics' ? tokenId : null,
+            propertyId: assetType == 'land' ? tokenId : null,
+            fractionAmount: assetType == 'land' ? resolvedFractionAmount : null,
+            assetPrice: price?.toString() ?? '0', // ✅ for payment
+            buyerName: buyerName, // ✅ for seller notification
           ),
-        );
-      });
+        ),
+      );
     } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
       debugPrint('Navigation error: $e');
     }
   }

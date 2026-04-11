@@ -14,6 +14,7 @@ import 'reviews_list.dart';
 import 'qr_generator_screen.dart';
 import 'land_fractions_screen.dart';
 import 'transfer_screen.dart';
+// BuyerOwnershipAcceptScreen lives in transfer_screen.dart
 import 'wallet_screen.dart';
 import 'transaction_model.dart';
 import 'transfer_history_screen.dart';
@@ -459,7 +460,52 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        _buildDetailRow('Owner', ownerName),
+                        // ── Live owner row — refreshes when asset is sold ──
+                        StreamBuilder<DocumentSnapshot>(
+                          stream: db.collection('assets').doc(widget.assetId).snapshots(),
+                          builder: (ctx, assetLive) {
+                            // Fallback to the initial ownerName while stream loads
+                            if (!assetLive.hasData || !assetLive.data!.exists) {
+                              return _buildDetailRow('Current Owner', ownerName);
+                            }
+                            final liveData = assetLive.data!.data() as Map<String, dynamic>;
+                            final liveOwnerId = liveData['ownerId'] ?? liveData['ownerUid'];
+                            if (liveOwnerId == null) {
+                              return _buildDetailRow('Current Owner', ownerName);
+                            }
+                            return FutureBuilder<DocumentSnapshot>(
+                              future: db.collection('users').doc(liveOwnerId).get(),
+                              builder: (ctx2, userSnap) {
+                                String displayName = ownerName;
+                                if (userSnap.hasData && userSnap.data!.exists) {
+                                  final ud = userSnap.data!.data() as Map<String, dynamic>;
+                                  displayName = ud['name'] ?? ud['email'] ?? ownerName;
+                                }
+                                final isSold = liveOwnerId != (data['ownerId'] ?? data['ownerUid']);
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildDetailRow('Current Owner', displayName),
+                                    if (isSold)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 4),
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.swap_horiz, size: 14, color: Colors.orange[700]),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              'Ownership recently transferred',
+                                              style: TextStyle(fontSize: 11, color: Colors.orange[700]),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
+                            );
+                          },
+                        ),
                         if (isLand) ...[
                           _buildDetailRow(
                             'Plot Area',
@@ -561,24 +607,44 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
             const SizedBox(height: 12),
             if (_blockchainData != null) ...[
               if (category == 'electronics') ...[
-                _buildDetailRow('Brand', _blockchainData!['brand']),
-                _buildDetailRow('Model', _blockchainData!['model']),
-                _buildDetailRow('Serial', _blockchainData!['serialNumber']),
+                _buildDetailRow('Brand', _blockchainData!['brand'] ?? '—'),
+                _buildDetailRow('Model', _blockchainData!['model'] ?? '—'),
+                _buildDetailRow('Serial No.', _blockchainData!['serialNumber'] ?? '—'),
+                if (_blockchainData!['warrantyStart'] != null &&
+                    _blockchainData!['warrantyStart'].toString().isNotEmpty)
+                  _buildDetailRow(
+                    'Warranty Start',
+                    _blockchainData!['warrantyStart'].toString(),
+                  ),
+                if (_blockchainData!['originalOwner'] != null &&
+                    _blockchainData!['originalOwner'].toString().isNotEmpty &&
+                    _blockchainData!['originalOwner'] != '0x0000000000000000000000000000000000000000')
+                  _buildDetailRow(
+                    'Original Owner',
+                    '${_blockchainData!['originalOwner'].toString().substring(0, 10)}...',
+                  ),
                 _buildDetailRow(
-                  'Verified',
-                  _blockchainData!['isVerified'] ? 'Yes' : 'Pending',
+                  'Status',
+                  _blockchainData!['isVerified'] == true ? '✅ Verified' : '⏳ Pending',
                 ),
               ] else if (category == 'land') ...[
-                _buildDetailRow('Location', _blockchainData!['location']),
-                _buildDetailRow('City', _blockchainData!['city']),
+                _buildDetailRow('Location', _blockchainData!['location'] ?? '—'),
+                _buildDetailRow('City', _blockchainData!['city'] ?? '—'),
                 _buildDetailRow(
                   'Total Fractions',
-                  _blockchainData!['totalFractions'].toString(),
+                  _blockchainData!['totalFractions']?.toString() ?? '—',
                 ),
                 _buildDetailRow(
                   'Price per Fraction',
                   '${_blockchainService.weiToEther(_blockchainData!['pricePerFraction'])} MATIC',
                 ),
+                if (_blockchainData!['originalOwner'] != null &&
+                    _blockchainData!['originalOwner'].toString().isNotEmpty &&
+                    _blockchainData!['originalOwner'] != '0x0000000000000000000000000000000000000000')
+                  _buildDetailRow(
+                    'Original Owner',
+                    '${_blockchainData!['originalOwner'].toString().substring(0, 10)}...',
+                  ),
               ],
               if (_ipfsData != null) ...[
                 const SizedBox(height: 8),
@@ -668,69 +734,21 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
             const SizedBox(width: 8),
             if (data['blockchainTokenId'] != null)
               OutlinedButton.icon(
-                onPressed: () async {
-                  // Verify on blockchain
-                  final blockchainService = BlockchainServiceEnhanced();
-                  await blockchainService.init();
-
-                  if (data['category'] == 'electronics') {
-                    final device = await blockchainService.getDevice(data['blockchainTokenId']);
-                    if (device != null) {
-                      showDialog(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: const Text('Blockchain Verification'),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Brand: ${device['brand']}'),
-                              Text('Model: ${device['model']}'),
-                              Text('Serial: ${device['serialNumber']}'),
-                              Text('Verified: ${device['isVerified'] ? '✓' : '✗'}'),
-                            ],
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx),
-                              child: const Text('Close'),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-                  } else {
-                    final property = await blockchainService.getLandProperty(data['blockchainTokenId']);
-                    if (property != null) {
-                      showDialog(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: const Text('Blockchain Verification'),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Location: ${property['location']}'),
-                              Text('Area: ${property['totalArea']} ${property['areaUnit']}'),
-                              Text('Fractions: ${property['totalFractions']}'),
-                              Text('Verified: ${property['isVerified'] ? '✓' : '✗'}'),
-                            ],
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx),
-                              child: const Text('Close'),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-                  }
-                },
-                icon: const Icon(Icons.verified),
-                label: const Text('Verify'),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => NFTCertificateScreen(
+                      assetId: widget.assetId,
+                      assetData: data,
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.verified_user),
+                label: const Text('Certificate'),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(0, 50),
+                  foregroundColor: Colors.green[700],
+                  side: BorderSide(color: Colors.green[700]!),
                 ),
               ),
           ],
@@ -825,34 +843,43 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                 }
 
                 if (context.mounted) {
+                  // ✅ Fetch buyer name BEFORE pushing route
+                  final buyerDoc = await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(activeTx!['buyerUid'])
+                      .get();
+                  final buyerName = buyerDoc.data()?['name'] ?? 'Buyer';
+                  final assetPrice = data['price']?.toString() ?? '0';
+                  final transactionId = activeTx['transactionId'];
+                  final buyerUid = activeTx['buyerUid'];
+                  final sellerUid = auth.currentUser!.uid;
+
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) {
-                        // Use data from the ACTIVE TRANSACTION found in _load()
-                        final transactionId = activeTx!['transactionId'];
-                        final buyerUid = activeTx['buyerUid'];
-                        final sellerUid = auth.currentUser!.uid;
-
-
                         if (data['category'] == 'electronics') {
                           return TransferScreen(
                             assetId: widget.assetId,
                             assetType: AssetType.electronics,
-                            transactionId: transactionId, // Passing correct Transaction ID
+                            transactionId: transactionId,
                             buyerUid: buyerUid,
                             sellerUid: sellerUid,
                             tokenId: data['blockchainTokenId'],
+                            assetPrice: assetPrice,   // ✅
+                            buyerName: buyerName,     // ✅
                           );
                         } else {
                           return TransferScreen(
                             assetId: widget.assetId,
                             assetType: AssetType.land,
-                            transactionId: transactionId, // Passing correct Transaction ID
+                            transactionId: transactionId,
                             buyerUid: buyerUid,
                             sellerUid: sellerUid,
                             propertyId: data['blockchainTokenId'],
                             fractionAmount: maxAmount,
+                            assetPrice: assetPrice,   // ✅
+                            buyerName: buyerName,     // ✅
                           );
                         }
                       },
@@ -1077,8 +1104,12 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
     await db.collection('chats').doc(txId).set({
       'transactionId': txId,
       'assetId': assetId,
+      'assetType': category,          // ✅ needed by checkout area
       'buyerUid': user.uid,
       'sellerUid': sellerId,
+      'participants': [user.uid, sellerId],  // ✅ needed by chat list
+      'lastMessage': '',
+      'lastMessageTime': FieldValue.serverTimestamp(),
       'createdAt': FieldValue.serverTimestamp(),
     });
 
@@ -1212,12 +1243,16 @@ class MyAssetsScreen extends StatelessWidget {
             ),
           );
         } else {
+          // ── Step 4: Buyer dashboard ──────────────────────────────
+          // Simple query with NO orderBy — avoids requiring a Firestore composite
+          // index. We sort client-side instead.
+          // We check 'ownerId' (set by _finalizeOwnership after transfer).
           final q = db
-              .collection("users")
-              .doc(user.uid)
-              .collection("transactions")
-              .orderBy("time", descending: true);
+              .collection('assets')
+              .where('ownerId', isEqualTo: user.uid);
+
           return Scaffold(
+            backgroundColor: Colors.grey[100],
             appBar: AppBar(
               title: const Text('My Assets'),
               leading: IconButton(
@@ -1228,41 +1263,249 @@ class MyAssetsScreen extends StatelessWidget {
             body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: q.snapshots(),
               builder: (context, snap2) {
-                if (snap2.hasError) return Center(child: Text('Error: ${snap2.error}'));
+                // Show index/permission errors explicitly so they're debuggable
+                if (snap2.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'Error loading assets:\n${snap2.error}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  );
+                }
                 if (!snap2.hasData) return const Center(child: CircularProgressIndicator());
-                final txns = snap2.data!.docs;
-                if (txns.isEmpty) return const Center(child: Text('No purchases yet'));
+
+                // Sort client-side: transferred assets first, then by createdAt
+                final docs = [...snap2.data!.docs];
+                docs.sort((a, b) {
+                  final aT = a.data()['transferredAt'];
+                  final bT = b.data()['transferredAt'];
+                  if (aT is Timestamp && bT is Timestamp) {
+                    return bT.compareTo(aT); // newest first
+                  }
+                  if (aT is Timestamp) return -1;
+                  if (bT is Timestamp) return 1;
+                  return 0;
+                });
+
+                if (docs.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.inventory_2_outlined, size: 72, color: Colors.grey[400]),
+                        const SizedBox(height: 16),
+                        Text('No owned assets yet',
+                            style: TextStyle(fontSize: 16, color: Colors.grey[600])),
+                        const SizedBox(height: 8),
+                        Text('Assets transferred to you will appear here.',
+                            style: TextStyle(fontSize: 13, color: Colors.grey[400])),
+                      ],
+                    ),
+                  );
+                }
+
                 return ListView.builder(
-                  itemCount: txns.length,
+                  padding: const EdgeInsets.all(12),
+                  itemCount: docs.length,
                   itemBuilder: (context, i) {
-                    final txn = txns[i].data();
-                    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                      future: db.collection('assets').doc(txn['assetId']).get(),
-                      builder: (context, assetSnap) {
-                        if (!assetSnap.hasData) return const ListTile(title: Text('Loading...'));
-                        final asset = assetSnap.data!.data() ?? <String, dynamic>{};
-                        final img = (asset['images'] is List && (asset['images'] as List).isNotEmpty)
-                            ? (asset['images'] as List)[0] as String?
-                            : null;
-                        return ListTile(
-                          contentPadding: const EdgeInsets.all(12),
-                          leading: SizedBox(width: 72, height: 72, child: buildAssetImage(img, width: 72, height: 72)),
-                          title: Text(asset['title'] ?? asset['name'] ?? 'Asset'),
-                          subtitle: Text('PKR ${asset['price'] ?? 'N/A'}'),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.picture_as_pdf),
-                            onPressed: () async {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Certificate downloaded')),
-                              );
-                            },
+                    final d = docs[i].data();
+                    final id = docs[i].id;
+                    final category = d['category'] ?? 'electronics';
+                    final isLand = category == 'land';
+                    final img = (d['images'] is List && (d['images'] as List).isNotEmpty)
+                        ? (d['images'] as List)[0] as String?
+                        : null;
+                    final hasNFT = d['blockchainTokenId'] != null;
+                    final txHash = d['txHash'] as String?;
+                    final transferredAt = d['transferredAt'];
+
+                    String transferDate = '';
+                    if (transferredAt is Timestamp) {
+                      final dt = transferredAt.toDate();
+                      final dd = dt.day.toString().padLeft(2, '0');
+                      final mm = dt.month.toString().padLeft(2, '0');
+                      transferDate = '$dd/$mm/${dt.year}';
+                    }
+
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 2,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: id)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // ── Top row: image + title + NFT badge ──
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: SizedBox(
+                                      width: 80, height: 80,
+                                      child: buildAssetImage(img, width: 80, height: 80),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                d['title'] ?? 'Untitled',
+                                                style: const TextStyle(
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                            if (hasNFT)
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.green,
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                                child: const Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(Icons.verified, color: Colors.white, size: 12),
+                                                    SizedBox(width: 3),
+                                                    Text('NFT', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                                                  ],
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: isLand ? Colors.brown[100] : Colors.blue[100],
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            isLand ? '🏡 Land Property' : '📦 Electronics',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: isLand ? Colors.brown[800] : Colors.blue[800],
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'PKR ${d['price'] ?? '—'}',
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.green,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 10),
+                              const Divider(height: 1),
+                              const SizedBox(height: 10),
+
+                              // ── Details section: electronics vs land ──
+                              if (!isLand) ...[
+                                // ELECTRONICS: brand, model, serial, warranty
+                                _assetDetailChip(Icons.business_outlined,
+                                    '${d['brand'] ?? '—'} ${d['model'] ?? ''}'),
+                                if (d['serial'] != null)
+                                  _assetDetailChip(Icons.qr_code, 'S/N: ${d['serial']}'),
+                                if (d['warranty'] != null && d['warranty'].toString().isNotEmpty)
+                                  _assetDetailChip(
+                                    Icons.shield_outlined,
+                                    'Warranty: ${d['warranty']}',
+                                    color: Colors.green[700],
+                                  ),
+                              ] else ...[
+                                // LAND: location, plot area, fractions
+                                _assetDetailChip(Icons.location_on_outlined,
+                                    '${d['location'] ?? ''}, ${d['city'] ?? ''}'),
+                                if (d['plotArea'] != null)
+                                  _assetDetailChip(Icons.straighten,
+                                      'Area: ${d['plotArea']} ${d['plotUnit'] ?? ''}'),
+                              ],
+
+                              // ── Transfer info ──
+                              if (transferDate.isNotEmpty)
+                                _assetDetailChip(Icons.swap_horiz, 'Transferred: $transferDate',
+                                    color: Colors.deepPurple[600]),
+
+                              if (hasNFT) ...[
+                                _assetDetailChip(Icons.token_outlined,
+                                    'Token ID: #${d['blockchainTokenId']}',
+                                    color: Colors.teal[700]),
+                              ],
+
+                              const SizedBox(height: 8),
+
+                              // ── Action buttons ──
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => NFTCertificateScreen(
+                                            assetId: id,
+                                            assetData: d,
+                                          ),
+                                        ),
+                                      ),
+                                      icon: const Icon(Icons.verified_user_outlined, size: 16),
+                                      label: const Text('View Certificate'),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: Colors.green[700],
+                                        side: BorderSide(color: Colors.green[700]!),
+                                        padding: const EdgeInsets.symmetric(vertical: 8),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => AssetDetailScreen(assetId: id),
+                                        ),
+                                      ),
+                                      icon: const Icon(Icons.visibility_outlined, size: 16),
+                                      label: const Text('View Asset'),
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(vertical: 8),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: txn['assetId'])),
-                          ),
-                        );
-                      },
+                        ),
+                      ),
                     );
                   },
                 );
@@ -1273,6 +1516,26 @@ class MyAssetsScreen extends StatelessWidget {
       },
     );
   }
+}
+
+/// Helper chip widget for MyAssetsScreen asset detail rows
+Widget _assetDetailChip(IconData icon, String label, {Color? color}) {
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 4),
+    child: Row(
+      children: [
+        Icon(icon, size: 14, color: color ?? Colors.grey[600]),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 12, color: color ?? Colors.grey[700]),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Transactions Screen
@@ -1574,8 +1837,13 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                                         final otherUid = isSupplier
                                             ? t['buyerUid']
                                             : t['sellerUid'];
+                                        // ✅ Use merge:true AND include assetId + sellerUid so checkout area works
                                         await db.collection('chats').doc(id).set({
                                           'participants': [myUid, otherUid],
+                                          'assetId': t['assetId'],           // ✅ required for checkout button
+                                          'assetType': t['category'] ?? 'electronics', // ✅ required for checkout button
+                                          'sellerUid': isSupplier ? myUid : otherUid,  // ✅ required for checkout button
+                                          'buyerUid': isSupplier ? otherUid : myUid,
                                           'lastMessage': '',
                                           'lastMessageTime': FieldValue.serverTimestamp(),
                                         }, SetOptions(merge: true));
@@ -1612,6 +1880,64 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                                         padding: const EdgeInsets.symmetric(horizontal: 8),
                                       ),
                                       onPressed: () => _updateStatus(id, 'rejected'),
+                                    ),
+                                  ],
+
+                                  // Buyer: connect wallet or view incoming transfer
+                                  if (!isSupplier && (txStatus == 'approved' || txStatus == 'pending')) ...[
+                                    const SizedBox(width: 4),
+                                    TextButton.icon(
+                                      icon: const Icon(Icons.account_balance_wallet, size: 16),
+                                      label: const Text('My Wallet'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: Colors.deepPurple,
+                                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      ),
+                                      onPressed: () {
+                                        final category = t['category'] ?? 'electronics';
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => BuyerOwnershipAcceptScreen(
+                                              assetId: t['assetId'] ?? '',
+                                              transactionId: id,
+                                              sellerName: _shorten(t['sellerUid'] ?? '—'),
+                                              assetType: category == 'land'
+                                                  ? AssetType.land
+                                                  : AssetType.electronics,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+
+                                  // Buyer: view completed ownership transfer
+                                  if (!isSupplier && txStatus == 'completed') ...[
+                                    const SizedBox(width: 4),
+                                    TextButton.icon(
+                                      icon: const Icon(Icons.move_to_inbox, size: 16),
+                                      label: const Text('Ownership'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: Colors.teal,
+                                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      ),
+                                      onPressed: () {
+                                        final category = t['category'] ?? 'electronics';
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => BuyerOwnershipAcceptScreen(
+                                              assetId: t['assetId'] ?? '',
+                                              transactionId: id,
+                                              sellerName: _shorten(t['sellerUid'] ?? '—'),
+                                              assetType: category == 'land'
+                                                  ? AssetType.land
+                                                  : AssetType.electronics,
+                                            ),
+                                          ),
+                                        );
+                                      },
                                     ),
                                   ],
                                 ],
@@ -1855,12 +2181,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
   // Save method:
   Future<void> _setLastSeen(bool val) async {
-  setState(() => _lastSeenEnabled = val);
-  final uid = FirebaseAuth.instance.currentUser?.uid;
-  if (uid == null) return;
-  await FirebaseFirestore.instance
-      .collection('users').doc(uid)
-      .update({'lastSeenEnabled': val});
+    setState(() => _lastSeenEnabled = val);
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    await FirebaseFirestore.instance
+        .collection('users').doc(uid)
+        .update({'lastSeenEnabled': val});
   }
   Future<void> _setDarkMode(bool v) async {
     final user = auth.currentUser;
@@ -2151,6 +2477,491 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         );
       },
+    );
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// NFT Certificate Screen – Step 2: View NFT Certificate (Verification Module)
+// Shows model details, warranty start, original owner, resale history, and
+// stolen-status check so buyers can confirm authenticity before purchasing.
+// ─────────────────────────────────────────────────────────────────────────────
+class NFTCertificateScreen extends StatefulWidget {
+  final String assetId;
+  final Map<String, dynamic> assetData;
+
+  const NFTCertificateScreen({
+    super.key,
+    required this.assetId,
+    required this.assetData,
+  });
+
+  @override
+  State<NFTCertificateScreen> createState() => _NFTCertificateScreenState();
+}
+
+class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
+  final _blockchainService = BlockchainServiceEnhanced();
+
+  bool _loading = true;
+  String? _error;
+
+  // Blockchain data
+  Map<String, dynamic>? _chainData;
+
+  // Verification checks
+  int _priorTransferCount = 0;     // # of completed ownership transfers
+  bool _isReportedStolen = false;  // stolen flag from Firestore
+  String _originalOwnerWallet = '';
+  String _originalOwnerName = 'Unknown';
+  String _warrantyStart = '—';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCertificateData();
+  }
+
+  Future<void> _loadCertificateData() async {
+    try {
+      // ── 1. Blockchain data ──────────────────────────────────────────────
+      final tokenId = widget.assetData['blockchainTokenId'] as int?;
+      final category = widget.assetData['category'] ?? 'electronics';
+
+      if (tokenId != null) {
+        await _blockchainService.init();
+        if (category == 'electronics') {
+          _chainData = await _blockchainService.getDevice(tokenId);
+        } else {
+          _chainData = await _blockchainService.getLandProperty(tokenId);
+        }
+      }
+
+      // ── 2. Original owner wallet from blockchain ────────────────────────
+      if (_chainData != null) {
+        final raw = _chainData!['originalOwner']?.toString() ?? '';
+        if (raw.isNotEmpty &&
+            raw != '0x0000000000000000000000000000000000000000') {
+          _originalOwnerWallet = raw;
+        }
+
+        // warrantyStart may be epoch seconds (int) or string like "2/2027"
+        final ws = _chainData!['warrantyStart'];
+        if (ws != null) {
+          if (ws is int && ws > 0) {
+            final dt = DateTime.fromMillisecondsSinceEpoch(ws * 1000);
+            _warrantyStart =
+            '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+          } else if (ws is String && ws.isNotEmpty) {
+            _warrantyStart = ws;
+          }
+        }
+
+        // Fallback: use Firestore warranty field
+        if (_warrantyStart == '—') {
+          final fw = widget.assetData['warranty']?.toString() ?? '';
+          if (fw.isNotEmpty) _warrantyStart = fw;
+        }
+      }
+
+      // ── 3. Resolve original owner name from Firestore ──────────────────
+      // The original ownerId / ownerUid stored in the asset document is the
+      // supplier who minted it, which IS the original owner for electronics.
+      final ownerId =
+          widget.assetData['ownerId'] ?? widget.assetData['ownerUid'];
+      if (ownerId != null) {
+        try {
+          final ownerSnap =
+          await db.collection('users').doc(ownerId as String).get();
+          if (ownerSnap.exists) {
+            _originalOwnerName = ownerSnap.data()?['name'] ??
+                ownerSnap.data()?['email'] ??
+                'Unknown';
+          }
+        } catch (_) {}
+      }
+
+      // ── 4. Resale / transfer history ───────────────────────────────────
+      // Count transactions for this asset that reached 'completed' /
+      // 'transferred' status – each one is a prior ownership change.
+      try {
+        final txSnap = await db
+            .collection('transactions')
+            .where('assetId', isEqualTo: widget.assetId)
+            .where('status', whereIn: ['completed', 'transferred', 'done'])
+            .get();
+        _priorTransferCount = txSnap.docs.length;
+      } catch (_) {
+        // Ignore – treat as 0 prior transfers
+      }
+
+      // ── 5. Stolen status ───────────────────────────────────────────────
+      try {
+        final assetSnap =
+        await db.collection('assets').doc(widget.assetId).get();
+        if (assetSnap.exists) {
+          final d = assetSnap.data()!;
+          _isReportedStolen = d['isStolen'] == true ||
+              d['reportedStolen'] == true ||
+              d['stolenReported'] == true;
+        }
+      } catch (_) {}
+
+      if (mounted) setState(() => _loading = false);
+    } catch (e) {
+      if (mounted) setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final category = widget.assetData['category'] ?? 'electronics';
+    final isElectronics = category == 'electronics';
+
+    return Scaffold(
+      backgroundColor: Colors.grey[100],
+      appBar: AppBar(
+        title: const Text('NFT Certificate'),
+        backgroundColor: Colors.green[700],
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline,
+                  size: 64, color: Colors.red),
+              const SizedBox(height: 16),
+              Text('Failed to load certificate: $_error',
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _loading = true;
+                    _error = null;
+                  });
+                  _loadCertificateData();
+                },
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      )
+          : SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            _buildCertificateHeader(),
+            const SizedBox(height: 16),
+            _buildModelDetailsCard(isElectronics),
+            const SizedBox(height: 12),
+            _buildVerificationChecksCard(),
+            const SizedBox(height: 12),
+            _buildBuyerConfirmationBanner(),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Header ─────────────────────────────────────────────────────────────────
+  Widget _buildCertificateHeader() {
+    final isVerified = _chainData?['isVerified'] == true;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isVerified
+              ? [Colors.green[700]!, Colors.green[400]!]
+              : [Colors.orange[700]!, Colors.orange[400]!],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            isVerified ? Icons.verified_user : Icons.pending,
+            size: 56,
+            color: Colors.white,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            isVerified
+                ? 'Blockchain Verified Certificate'
+                : 'Verification Pending',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Token ID: ${widget.assetData['blockchainTokenId'] ?? '—'}  •  Polygon Amoy',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Model Details Card ──────────────────────────────────────────────────────
+  Widget _buildModelDetailsCard(bool isElectronics) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _certSectionTitle(
+              icon: Icons.info_outline,
+              label: isElectronics ? 'Device Details' : 'Property Details',
+            ),
+            const Divider(height: 20),
+            if (isElectronics) ...[
+              _certRow('Brand',
+                  _chainData?['brand'] ?? widget.assetData['brand'] ?? '—'),
+              _certRow('Model',
+                  _chainData?['model'] ?? widget.assetData['model'] ?? '—'),
+              _certRow(
+                  'Serial Number',
+                  _chainData?['serialNumber'] ??
+                      widget.assetData['serial'] ??
+                      '—'),
+              _certRow('Condition', widget.assetData['condition'] ?? '—'),
+              _certRow('Warranty Start / Expiry', _warrantyStart),
+            ] else ...[
+              _certRow(
+                  'Location',
+                  _chainData?['location'] ??
+                      widget.assetData['location'] ??
+                      '—'),
+              _certRow(
+                  'City',
+                  _chainData?['city'] ??
+                      widget.assetData['city'] ??
+                      '—'),
+              _certRow(
+                  'Plot Area',
+                  '${widget.assetData['plotArea'] ?? '—'} ${widget.assetData['plotUnit'] ?? ''}'),
+              _certRow('Total Fractions',
+                  _chainData?['totalFractions']?.toString() ?? '—'),
+            ],
+            const Divider(height: 20),
+            _certSectionTitle(
+              icon: Icons.person_outline,
+              label: 'Original Owner',
+            ),
+            const SizedBox(height: 8),
+            _certRow('Name', _originalOwnerName),
+            if (_originalOwnerWallet.isNotEmpty)
+              _certRow(
+                'Wallet',
+                '${_originalOwnerWallet.substring(0, 12)}...${_originalOwnerWallet.substring(_originalOwnerWallet.length - 6)}',
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Verification Checks Card ────────────────────────────────────────────────
+  Widget _buildVerificationChecksCard() {
+    final notResold = _priorTransferCount == 0;
+    final notStolen = !_isReportedStolen;
+    final isVerified = _chainData?['isVerified'] == true;
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _certSectionTitle(
+              icon: Icons.checklist,
+              label: 'Authenticity Checks',
+            ),
+            const Divider(height: 20),
+            _checkRow(
+              label: 'Blockchain Verified',
+              passed: isVerified,
+              passText: 'Confirmed on Polygon Amoy',
+              failText: 'Verification pending',
+            ),
+            const SizedBox(height: 10),
+            _checkRow(
+              label: 'Resale History',
+              passed: notResold,
+              passText: 'Never previously resold',
+              failText: 'Resold $_priorTransferCount time${_priorTransferCount == 1 ? '' : 's'} before',
+            ),
+            const SizedBox(height: 10),
+            _checkRow(
+              label: 'Stolen Report',
+              passed: notStolen,
+              passText: 'No stolen reports found',
+              failText: '⚠️ This unit has been reported stolen!',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Buyer Confirmation Banner ───────────────────────────────────────────────
+  Widget _buildBuyerConfirmationBanner() {
+    final allClear = !_isReportedStolen && _priorTransferCount == 0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: allClear ? Colors.green[50] : Colors.red[50],
+        border: Border.all(
+          color: allClear ? Colors.green : Colors.red,
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            allClear ? Icons.thumb_up_alt_outlined : Icons.warning_amber,
+            color: allClear ? Colors.green[700] : Colors.red[700],
+            size: 28,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  allClear
+                      ? 'This unit is safe to purchase'
+                      : 'Caution before purchasing',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: allClear ? Colors.green[800] : Colors.red[800],
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  allClear
+                      ? 'This asset has not been previously resold and has no stolen reports. The certificate above is recorded immutably on the blockchain.'
+                      : 'One or more checks above did not pass. Please review the details carefully before proceeding with any purchase.',
+                  style: TextStyle(
+                    color: allClear ? Colors.green[900] : Colors.red[900],
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+  Widget _certSectionTitle({required IconData icon, required String label}) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: Colors.green[700]),
+        const SizedBox(width: 8),
+        Text(label,
+            style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                color: Colors.green[800])),
+      ],
+    );
+  }
+
+  Widget _certRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 140,
+            child: Text(
+              '$label:',
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _checkRow({
+    required String label,
+    required bool passed,
+    required String passText,
+    required String failText,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: passed ? Colors.green[100] : Colors.red[100],
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            passed ? Icons.check : Icons.close,
+            size: 16,
+            color: passed ? Colors.green[700] : Colors.red[700],
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 14)),
+              const SizedBox(height: 2),
+              Text(
+                passed ? passText : failText,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: passed ? Colors.green[700] : Colors.red[700],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

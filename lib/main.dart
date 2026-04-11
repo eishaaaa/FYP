@@ -211,20 +211,32 @@ class _DigitalGoodsAppState extends State<DigitalGoodsApp> {
   /// Navigate to transfer screen
   Future<void> _navigateToTransferScreen(BuildContext context, String transactionId) async {
     try {
-      // Fetch transaction details
+      // ✅ Fixed collection name: 'transactions' not 'transaction'
       final txDoc = await FirebaseFirestore.instance
-          .collection('transaction')
+          .collection('transactions')
           .doc(transactionId)
           .get();
 
-      if (!txDoc.exists) {
-        throw Exception('Transaction not found');
-      }
+      if (!txDoc.exists) throw Exception('Transaction not found');
 
       final txData = txDoc.data()!;
       final assetType = txData['assetType'] == 'electronics'
           ? AssetType.electronics
           : AssetType.land;
+
+      // ✅ Fetch asset price
+      final assetDoc = await FirebaseFirestore.instance
+          .collection('assets')
+          .doc(txData['assetId'])
+          .get();
+      final assetPrice = assetDoc.data()?['price']?.toString() ?? '0';
+
+      // ✅ Fetch buyer name
+      final buyerDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(txData['buyerUid'])
+          .get();
+      final buyerName = buyerDoc.data()?['name'] ?? 'Buyer';
 
       if (context.mounted) {
         Navigator.push(
@@ -239,12 +251,14 @@ class _DigitalGoodsAppState extends State<DigitalGoodsApp> {
               tokenId: txData['blockchainTokenId'],
               propertyId: txData['blockchainTokenId'],
               fractionAmount: txData['fractionAmount'],
+              assetPrice: assetPrice,  // ✅ added
+              buyerName: buyerName,    // ✅ added
             ),
           ),
         );
       }
     } catch (e) {
-      print('Error navigating to transfer screen: $e');
+      debugPrint('Error navigating to transfer screen: $e');
     }
   }
 

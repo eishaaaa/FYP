@@ -1,4 +1,5 @@
 // lib/screens/user_screens.dart
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -206,10 +207,84 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
   final BlockchainServiceEnhanced _blockchain = BlockchainServiceEnhanced();
   bool _loading = false;
 
-  Future<void> _ensureWalletConnected() async {
-    if (!_blockchain.isConnected) {
-      await _blockchain.connectWallet(context);
+  // ── Owned-asset state ────────────────────────────────────────
+  // Subscriptions are created once in initState and cancelled in dispose.
+  // We keep the latest snapshot from each query and merge on every update.
+  List<QueryDocumentSnapshot> _ownedAssets = [];
+  bool  _assetsLoading = true;
+  String? _assetsError;
+
+  QuerySnapshot? _snap1; // ownerId  query
+  QuerySnapshot? _snap2; // ownerUid query
+  StreamSubscription? _sub1;
+  StreamSubscription? _sub2;
+
+  @override
+  void initState() {
+    super.initState();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) _subscribeToAssets(uid);
+  }
+
+  void _subscribeToAssets(String uid) {
+    // Query 1 — ownerId  (written by _finalizeOwnership on every transfer)
+    _sub1 = db
+        .collection('assets')
+        .where('ownerId', isEqualTo: uid)
+        .snapshots()
+        .listen((snap) {
+      _snap1 = snap;
+      _mergeAndSetState();
+    }, onError: (e) {
+      if (mounted) setState(() { _assetsError = e.toString(); _assetsLoading = false; });
+    });
+
+    // Query 2 — ownerUid (used by some supplier upload flows)
+    _sub2 = db
+        .collection('assets')
+        .where('ownerUid', isEqualTo: uid)
+        .snapshots()
+        .listen((snap) {
+      _snap2 = snap;
+      _mergeAndSetState();
+    }, onError: (e) {
+      if (mounted) setState(() { _assetsError = e.toString(); _assetsLoading = false; });
+    });
+  }
+
+  void _mergeAndSetState() {
+    // Emit as soon as EITHER query resolves — don't wait for both.
+    final seen = <String>{};
+    final merged = <QueryDocumentSnapshot>[];
+    for (final snap in [_snap1, _snap2]) {
+      if (snap == null) continue;
+      for (final doc in snap.docs) {
+        if (seen.add(doc.id)) merged.add(doc);
+      }
     }
+    if (mounted) {
+      setState(() {
+        _ownedAssets  = merged;
+        _assetsLoading = false;
+        _assetsError  = null;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _sub1?.cancel();
+    _sub2?.cancel();
+    super.dispose();
+  }
+
+  String _formatDate(DateTime dt) {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
+  }
+
+  Future<void> _ensureWalletConnected() async {
+    if (!_blockchain.isConnected) await _blockchain.connectWallet(context);
   }
 
   Future<void> _claimRent(int propertyId) async {
@@ -217,21 +292,12 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
     try {
       await _ensureWalletConnected();
       final tx = await _blockchain.claimLandRent(propertyId);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Transaction Sent! Waiting for confirmation...'),
-        ));
-      }
-
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Transaction Sent! Waiting for confirmation...')));
       if (tx != null) {
         await _blockchain.waitForConfirmation(tx);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Rent Claimed Successfully!'),
-            backgroundColor: Colors.green,
-          ));
-        }
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Rent Claimed Successfully!'), backgroundColor: Colors.green));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
@@ -246,11 +312,8 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Submit Blockchain Review"),
-        content: TextField(
-          controller: txtCtrl,
-          decoration: const InputDecoration(hintText: "Enter your review..."),
-          maxLines: 3,
-        ),
+        content: TextField(controller: txtCtrl,
+            decoration: const InputDecoration(hintText: "Enter your review..."), maxLines: 3),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
           ElevatedButton(
@@ -259,23 +322,15 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
               Navigator.pop(ctx);
               try {
                 await _ensureWalletConnected();
-                final tx = await _blockchain.submitElectronicsReview(
-                    tokenId: tokenId,
-                    reviewText: txtCtrl.text
-                );
-
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text("Review Transaction Sent!"),
-                    backgroundColor: Colors.green,
-                  ));
-                }
+                await _blockchain.submitElectronicsReview(tokenId: tokenId, reviewText: txtCtrl.text);
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Review Transaction Sent!"), backgroundColor: Colors.green));
               } catch (e) {
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
               }
             },
             child: const Text("Submit"),
-          )
+          ),
         ],
       ),
     );
@@ -286,123 +341,250 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Center(child: Text("Login required"));
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: db.collection('orders').where('buyerId', isEqualTo: user.uid).snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        final orders = snapshot.data!.docs;
+    // ── Loading ──────────────────────────────────────────────
+    if (_assetsLoading) return const Center(child: CircularProgressIndicator());
 
-        if (orders.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey),
-                const SizedBox(height: 16),
-                const Text("No assets owned yet"),
-                TextButton(
-                  onPressed: () {
-                    // This is just a visual hint, real nav is via tabs
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Go to Home tab to buy assets")));
-                  },
-                  child: const Text("Browse Marketplace"),
-                )
-              ],
+    // ── Error ────────────────────────────────────────────────
+    if (_assetsError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 12),
+              Text('Could not load assets:\n$_assetsError',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.red, fontSize: 13)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ── Empty ────────────────────────────────────────────────
+    if (_ownedAssets.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text("No assets owned yet"),
+            TextButton(
+              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Go to Home tab to buy assets"))),
+              child: const Text("Browse Marketplace"),
             ),
-          );
+          ],
+        ),
+      );
+    }
+
+    // ── Asset list ───────────────────────────────────────────
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: _ownedAssets.length,
+      itemBuilder: (context, index) {
+        final assetDoc = _ownedAssets[index];
+        final asset    = assetDoc.data() as Map<String, dynamic>;
+        final assetId  = assetDoc.id;
+
+        final tokenId          = asset['blockchainTokenId'] as int?;
+        final title            = (asset['title'] as String?) ?? 'Unknown Asset';
+        final imgList          = asset['images'] as List?;
+
+        // Safe: first element might be a String, a Map, or anything else
+        String? firstImg;
+        if (imgList != null && imgList.isNotEmpty) {
+          final raw = imgList.first;
+          if (raw is String) firstImg = raw;
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: orders.length,
-          itemBuilder: (context, index) {
-            final order = orders[index].data() as Map<String, dynamic>;
-            final assetId = order['assetId'];
-            final category = order['category'] ?? 'land';
+        final resolvedCategory = (asset['category'] as String?) ?? 'land';
+        final transferredAt    = asset['transferredAt'] as Timestamp?;
+        final warrantyActivatedAt = resolvedCategory == 'electronics' ? transferredAt : null;
+        final fractionAmount   = asset['fractionAmount'] as int?;
 
-            return FutureBuilder<DocumentSnapshot>(
-              future: db.collection('assets').doc(assetId).get(),
-              builder: (ctx, assetSnap) {
-                if (!assetSnap.hasData) return const SizedBox();
-                if (!assetSnap.data!.exists) return const SizedBox();
+        // Wrap each card in an ErrorWidget boundary so one bad item
+        // never crashes the whole list.
+        return _SafeCard(
+          key: ValueKey(assetId),
+          child: Card(
+            elevation: 3,
+            margin: const EdgeInsets.only(bottom: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: assetId))),
+              child: Column(
+                children: [
+                  // ── Header ──────────────────────────────────────
+                  ListTile(
+                    contentPadding: const EdgeInsets.all(10),
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: buildAssetImage(firstImg, width: 60, height: 60),
+                    ),
+                    title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(
+                      resolvedCategory == 'land' ? 'Fractional Land Ownership' : 'Electronic Device',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                    trailing: tokenId != null
+                        ? Chip(
+                      avatar: const Icon(Icons.verified, size: 14, color: Colors.white),
+                      label: const Text('NFT', style: TextStyle(color: Colors.white, fontSize: 11)),
+                      backgroundColor: Colors.green[700],
+                      visualDensity: VisualDensity.compact,
+                    )
+                        : const Chip(label: Text('Pending'), visualDensity: VisualDensity.compact),
+                  ),
 
-                final asset = assetSnap.data!.data() as Map<String, dynamic>;
-                final tokenId = asset['blockchainTokenId'] as int?;
-                final title = asset['title'] ?? 'Unknown Asset';
-                final imgList = asset['images'] as List?;
-                final firstImg = (imgList != null && imgList.isNotEmpty) ? imgList.first : null;
+                  const Divider(height: 1),
 
-                return Card(
-                  elevation: 3,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  child: Column(
-                    children: [
-                      // Header with Image
-                      ListTile(
-                        contentPadding: const EdgeInsets.all(8),
-                        leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: firstImg != null
-                              ? Image.memory(base64Decode(firstImg), width: 60, height: 60, fit: BoxFit.cover)
-                              : Container(width: 60, height: 60, color: Colors.grey[200], child: const Icon(Icons.image)),
-                        ),
-                        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(category == 'land' ? 'Fractional Ownership' : 'Electronic Device'),
-                        trailing: tokenId != null
-                            ? const Chip(label: Text('NFT'), backgroundColor: Colors.greenAccent, visualDensity: VisualDensity.compact)
-                            : const Chip(label: Text('Pending'), visualDensity: VisualDensity.compact),
+                  // ── Category panel ───────────────────────────────
+                  if (resolvedCategory == 'land') ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                      child: Row(
+                        children: [
+                          Icon(Icons.pie_chart, size: 16, color: Colors.teal[700]),
+                          const SizedBox(width: 6),
+                          Text(
+                            fractionAmount != null ? 'Fractions Owned: $fractionAmount' : 'Fractional Owner',
+                            style: TextStyle(color: Colors.teal[800], fontWeight: FontWeight.w600, fontSize: 13),
+                          ),
+                        ],
                       ),
-
-                      const Divider(height: 1),
-
-                      // Actions Area
-                      if (tokenId != null && category == 'land')
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              FutureBuilder<BigInt>(
+                    ),
+                    if (tokenId != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // Flexible prevents unconstrained-width layout error
+                            Flexible(
+                              child: FutureBuilder<BigInt>(
                                 future: _blockchain.getUnclaimedRent(user.uid, tokenId),
                                 builder: (c, s) {
-                                  if (s.hasError) return const Text('Rent: Err');
+                                  if (s.hasError) return const Text('Rent: —', style: TextStyle(fontSize: 12));
                                   final rent = s.data ?? BigInt.zero;
-                                  return Text('Unclaimed: ${_blockchain.weiToEther(rent)} MATIC',
-                                      style: TextStyle(color: Colors.blue[800], fontWeight: FontWeight.bold));
+                                  return Text(
+                                    'Unclaimed: ${_blockchain.weiToEther(rent)} MATIC',
+                                    style: TextStyle(color: Colors.blue[800], fontWeight: FontWeight.bold, fontSize: 12),
+                                    overflow: TextOverflow.ellipsis,
+                                  );
                                 },
                               ),
-                              ElevatedButton.icon(
-                                icon: _loading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.monetization_on, size: 16),
-                                label: const Text("Claim Rent"),
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                                onPressed: _loading ? null : () => _claimRent(tokenId),
-                              )
+                            ),
+                            const SizedBox(width: 8),
+                            // Button must NOT use Size.fromHeight inside a Row
+                            ElevatedButton.icon(
+                              icon: _loading
+                                  ? const SizedBox(width: 14, height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Icon(Icons.monetization_on, size: 15),
+                              label: const Text('Claim Rent', style: TextStyle(fontSize: 12)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                // Explicit non-infinite minimumSize overrides any theme Size.fromHeight()
+                                minimumSize: const Size(0, 36),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: _loading ? null : () => _claimRent(tokenId),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ] else ...[
+                    if (warrantyActivatedAt != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue[200]!),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.verified_user, size: 16, color: Colors.blue[700]),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Warranty Activated',
+                                        style: TextStyle(fontWeight: FontWeight.bold,
+                                            color: Colors.blue[800], fontSize: 12)),
+                                    Text(_formatDate(warrantyActivatedAt.toDate()),
+                                        style: TextStyle(color: Colors.blue[700], fontSize: 11)),
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         ),
-
-                      if (tokenId != null && category == 'electronics')
-                        Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              icon: const Icon(Icons.rate_review, size: 18),
-                              label: const Text("Write Immutable Review"),
-                              onPressed: () => _submitReview(tokenId),
-                            ),
+                      ),
+                    if (tokenId != null)
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.rate_review, size: 16),
+                            label: const Text('Write Immutable Review', style: TextStyle(fontSize: 13)),
+                            onPressed: () => _submitReview(tokenId),
                           ),
-                        )
-                    ],
-                  ),
-                );
-              },
-            );
-          },
-        );
+                        ),
+                      ),
+                  ],
+
+                  const SizedBox(height: 4),
+                ],
+              ),
+            ),
+          ), // end Card
+        ); // end _SafeCard
       },
     );
+  }
+}
+
+// ── Error-boundary wrapper — prevents one bad card from crashing the list ──
+class _SafeCard extends StatelessWidget {
+  final Widget child;
+  const _SafeCard({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    try {
+      return child;
+    } catch (e) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              const Icon(Icons.broken_image, color: Colors.grey),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text('Could not display asset',
+                    style: TextStyle(color: Colors.grey[600])),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
   }
 }
 
@@ -567,7 +749,10 @@ class AssetGridCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final imgList = data["images"] as List?;
-    final firstImg = (imgList != null && imgList.isNotEmpty) ? imgList[0] : null;
+    String? firstImg;
+    if (imgList != null && imgList.isNotEmpty && imgList[0] is String) {
+      firstImg = imgList[0] as String;
+    }
 
     return GestureDetector(
       onTap: () => Navigator.push(
@@ -582,9 +767,7 @@ class AssetGridCard extends StatelessWidget {
             Expanded(
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                child: firstImg != null
-                    ? Image.memory(base64Decode(firstImg), width: double.infinity, fit: BoxFit.cover)
-                    : Container(color: Colors.grey[200], child: const Center(child: Icon(Icons.image))),
+                child: buildAssetImage(firstImg, width: double.infinity, height: double.infinity),
               ),
             ),
             Padding(

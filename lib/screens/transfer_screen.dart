@@ -1,40 +1,47 @@
 // lib/screens/transfer_screen.dart
+// Step 3 – Ownership Transfer (Ownership Module)
+// ─ Seller side : initiates NFT transfer from their connected wallet
+// ─ Buyer  side : BuyerOwnershipAcceptScreen shows incoming transfer & confirms
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../blockchain/transfer_service.dart';
-import '../blockchain/wallet_service.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
 import '../blockchain/blockchain_service.dart';
-import '../services/push_notification_service.dart';
 
 enum AssetType { electronics, land }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SELLER TRANSFER SCREEN
+// Navigated to from AssetDetailScreen (supplier side) when an approved buyer
+// exists. Walks through a 4-step stepper then executes the blockchain transfer.
+// ─────────────────────────────────────────────────────────────────────────────
 class TransferScreen extends StatefulWidget {
-  final AssetType assetType;
   final String assetId;
+  final AssetType assetType;
   final String transactionId;
-
-  // Blockchain identifiers
-  final int? tokenId;        // ERC-721
-  final int? propertyId;     // ERC-1155
-  final int? fractionAmount;
-
-  // Buyer info
   final String buyerUid;
-
-  // Seller info
   final String sellerUid;
+  final int? tokenId;         // electronics ERC-721 token id
+  final int? propertyId;      // land ERC-1155 property id
+  final int? fractionAmount;  // land fractions to transfer
+  final String assetPrice;
+  final String buyerName;
 
   const TransferScreen({
     super.key,
-    required this.assetType,
     required this.assetId,
+    required this.assetType,
     required this.transactionId,
     required this.buyerUid,
     required this.sellerUid,
     this.tokenId,
     this.propertyId,
     this.fractionAmount,
+    required this.assetPrice,
+    required this.buyerName,
   });
 
   @override
@@ -42,613 +49,313 @@ class TransferScreen extends StatefulWidget {
 }
 
 class _TransferScreenState extends State<TransferScreen> {
-  final TransferService _transferService = TransferService();
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final PushNotificationService _pushService = PushNotificationService();
+  final _db = FirebaseFirestore.instance;
+  final _bs = BlockchainServiceEnhanced();
 
-  bool _loading = true;
-  bool _processing = false;
-  String? _error;
-  String? _statusMessage;
+  // ── Stepper state ───────────────────────────────────────────
+  int _currentStep = 0;
 
-  String? _buyerWallet;
-  String? _sellerWallet;
-  String _transactionStatus = 'pending';
-  Map<String, dynamic>? _assetData;
+  // ── Data ────────────────────────────────────────────────────
+  String? _buyerWalletAddress;
+  String? _assetTitle;
+  bool _legalConfirmed = false;   // land-only gate
+  bool _walletConnected = false;
+
+  // ── Transfer state ──────────────────────────────────────────
+  bool _transferring = false;
+  String _statusMessage = '';
+  String? _txHash;
+  bool _success = false;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
-    _listenToTransactionStatus();
+    _loadPrerequisites();
   }
 
-  /// Listen to transaction status changes in real-time
-  void _listenToTransactionStatus() {
-    _db.collection('transactions').doc(widget.transactionId).snapshots().listen(
-          (doc) {
-        if (!doc.exists) return;
-
-        final data = doc.data();
-        if (data == null) return;
-
-        if (mounted) {
-          setState(() {
-            _transactionStatus = data['status'] ?? 'pending';
-          });
-        }
-      },
-    );
-  }
-
-  /// Load all necessary data
-  Future<void> _loadData() async {
-    final currentUid = FirebaseAuth.instance.currentUser!.uid;
-
-    if (currentUid != widget.buyerUid) {
-      // 🚫 Seller should never load this screen
-      Navigator.pop(context);
-      return;
-    }
+  // ── Load buyer wallet + asset title ────────────────────────
+  Future<void> _loadPrerequisites() async {
     try {
-      // Load transaction
-      final txDoc = await _db.collection('transactions').doc(widget.transactionId).get();
-      if (!txDoc.exists) {
-        throw Exception('Transaction not found');
+      final results = await Future.wait([
+        _db.collection('users').doc(widget.buyerUid).get(),
+        _db.collection('assets').doc(widget.assetId).get(),
+      ]);
+
+      final buyerDoc  = results[0] as DocumentSnapshot<Map<String, dynamic>>;
+      final assetDoc  = results[1] as DocumentSnapshot<Map<String, dynamic>>;
+
+      if (mounted) {
+        setState(() {
+          _buyerWalletAddress = buyerDoc.data()?['walletAddress'] as String?;
+          _assetTitle         = assetDoc.data()?['title'] as String? ?? 'Asset';
+        });
       }
-
-      // Load asset
-      final assetDoc = await _db.collection('assets').doc(widget.assetId).get();
-      if (!assetDoc.exists) {
-        throw Exception('Asset not found');
-      }
-
-      // Load buyer & seller wallets
-      final buyerDoc = await _db.collection('users').doc(widget.buyerUid).get();
-      final sellerDoc = await _db.collection('users').doc(widget.sellerUid).get();
-
-      setState(() {
-        _assetData = assetDoc.data();
-        _buyerWallet = buyerDoc.data()?['walletAddress'];
-        _sellerWallet = sellerDoc.data()?['walletAddress'];
-        _loading = false;
-      });
     } catch (e) {
-      setState(() {
-        _error = 'Failed to load data: $e';
-        _loading = false;
-      });
+      debugPrint('_loadPrerequisites error: $e');
     }
   }
 
-  /// BUYER SIDE: Accept or Reject Checkout
-  Future<void> _handleBuyerDecision(bool accept) async {
-    if (accept) {
-      // Update status to accepted
-      await _db.collection('transactions').doc(widget.transactionId).update({
-        'status': 'accepted',
-        'acceptedAt': FieldValue.serverTimestamp(),
-      });
-
-      // Notify supplier
-      final sellerDoc = await _db.collection('users').doc(widget.sellerUid).get();
-      final sellerToken = sellerDoc.data()?['fcmToken'];
-
-      if (sellerToken != null) {
-        await _pushService.sendInAppNotification(
-          receiverUid: widget.sellerUid,
-          title: 'Checkout Accepted',
-          body: 'Buyer accepted the checkout for "${_assetData?['title']}"',
-          type: 'checkout_accepted',
-          relatedId: widget.transactionId,
-        );
-      }
-
-      // Show wallet connect popup
-      if (mounted) {
-        _showWalletConnectDialog();
-      }
-    } else {
-      // _handleBuyerDecision reject
-      await _db.collection('transactions').doc(widget.transactionId).update({
-        'status': 'rejected',
-        'rejectedAt': FieldValue.serverTimestamp(),
-      });
-
-      // Notify supplier
-      final sellerDoc = await _db.collection('users').doc(widget.sellerUid).get();
-      final sellerToken = sellerDoc.data()?['fcmToken'];
-
-      if (sellerToken != null) {
-        await _pushService.sendInAppNotification(
-          receiverUid: widget.sellerUid,
-          title: 'Checkout rejected',
-          body: 'Buyer rejected the checkout for "${_assetData?['title']}"',
-          type: 'checkout_rejected',
-          relatedId: widget.transactionId,
-        );
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Checkout rejected'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        Navigator.pop(context);
-      }
-    }
-  }
-
-  /// Show wallet connection dialog for buyer
-  void _showWalletConnectDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Connect Your Wallet'),
-        content: const Text(
-          'To proceed with this transfer, you need to connect your wallet first.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.pop(context);
-            },
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _connectBuyerWallet();
-            },
-            child: const Text('Connect Wallet'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Connect buyer's wallet
-  Future<void> _connectBuyerWallet() async {
+  // ── Step 1 : Connect seller wallet ──────────────────────────
+  Future<void> _connectWallet() async {
     try {
-      setState(() {
-        _statusMessage = 'Opening wallet...';
-        _error = null;
-      });
-
-      final walletService = SimpleWalletService();
-      final address = await walletService.connect(context);
-
-      if (!mounted) return;
-
-      if (address == null) {
-        throw Exception('Wallet connection failed');
+      await _bs.init();
+      if (_bs.isConnected) {
+        setState(() => _walletConnected = true);
+        return;
       }
-
-      // Save wallet address
-      await _db.collection('users').doc(widget.buyerUid).update({
-        'walletAddress': address,
-      });
-
-      setState(() {
-        _buyerWallet = address;
-        _statusMessage = '✅ Wallet connected successfully!';
-      });
-
-      // Show success and instructions
-      if (mounted) {
+      final addr = await _bs.connectWallet(context);
+      if (addr != null && mounted) {
+        setState(() => _walletConnected = true);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Wallet connected! Now click "Proceed to Transfer"'),
+          SnackBar(
+            content: Text('Wallet connected: ${addr.substring(0, 10)}...'),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
           ),
         );
       }
     } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _statusMessage = null;
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Wallet error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
-  /// Execute the blockchain transfer
+  // ── Step 4 : Execute blockchain transfer ────────────────────
   Future<void> _executeTransfer() async {
-    if (_buyerWallet == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please connect your wallet first')),
-      );
+    if (_buyerWalletAddress == null || _buyerWalletAddress!.isEmpty) {
+      setState(() => _errorMessage = 'Buyer has not connected a wallet yet. Ask them to connect their wallet in the app first.');
       return;
     }
 
     setState(() {
-      _processing = true;
-      _error = null;
-      _statusMessage = 'Preparing transfer...';
+      _transferring    = true;
+      _errorMessage    = null;
+      _statusMessage   = 'Preparing transaction…';
     });
 
     try {
-      // 1️⃣ Validate transfer
-      setState(() => _statusMessage = 'Validating transfer...');
+      await _bs.init();
 
-      final validationError = await _transferService.validateTransfer(
-        assetId: widget.assetId,
-        receiverAddress: _buyerWallet!,
-        assetType: widget.assetType == AssetType.electronics ? 'electronics' : 'land',
-        amount: widget.fractionAmount,
-      );
-
-      if (validationError != null) {
-        throw Exception(validationError);
-      }
-
-      // 2️⃣ Execute smart contract transfer
-      setState(() => _statusMessage = 'Please confirm in your wallet...');
-
-      TransferResult result;
+      // ── 4a. Send blockchain transaction ──
+      String? txHash;
 
       if (widget.assetType == AssetType.electronics) {
-        result = await _transferService.transferElectronics(
-          assetId: widget.assetId,
-          tokenId: widget.tokenId!,
-          receiverAddress: _buyerWallet!,
+        final id = widget.tokenId;
+        if (id == null) throw Exception('Missing tokenId for electronics transfer');
+
+        setState(() => _statusMessage = 'Sending NFT transfer to blockchain…\nPlease approve in your wallet.');
+        txHash = await _bs.transferElectronic(
+          toAddress: _buyerWalletAddress!,
+          tokenId: id,
         );
       } else {
-        result = await _transferService.transferLandFractions(
-          assetId: widget.assetId,
-          propertyId: widget.propertyId!,
-          receiverAddress: _buyerWallet!,
-          amount: widget.fractionAmount!,
+        final pid    = widget.propertyId;
+        final amount = widget.fractionAmount ?? 1;
+        if (pid == null) throw Exception('Missing propertyId for land transfer');
+
+        setState(() => _statusMessage = 'Sending land fraction transfer…\nPlease approve in your wallet.');
+        txHash = await _bs.transferLandFraction(
+          toAddress: _buyerWalletAddress!,
+          propertyId: pid,
+          amount: amount,
         );
       }
 
-      if (!mounted) return;
-
-      if (result.isSuccess) {
-        // 3️⃣ Update transaction status
-        await _db.collection('transaction').doc(widget.transactionId).update({
-          'status': 'completed',
-          'completedAt': FieldValue.serverTimestamp(),
-          'txHash': result.txHash,
-        });
-
-        // 4️⃣ Send notifications
-        await _sendCompletionNotifications(result.txHash!);
-
-        // 5️⃣ Show success
-        if (mounted) {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              title: const Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.green, size: 32),
-                  SizedBox(width: 12),
-                  Text('Transfer Complete!'),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('The ownership has been successfully transferred.'),
-                  const SizedBox(height: 12),
-                  Text(
-                    'TX Hash: ${result.txHash!.substring(0, 10)}...',
-                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                  ),
-                ],
-              ),
-              actions: [
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    Navigator.pop(context, true);
-                  },
-                  child: const Text('Done'),
-                ),
-              ],
-            ),
-          );
+      // GUARD: MetaMask rejection comes back as a result string not an exception.
+      // A real tx hash is 0x + 64 hex chars (66 total). Anything else = rejected/error.
+      if (txHash == null) throw Exception('Transaction was not submitted. Check your wallet.');
+      final isValidHash = txHash.startsWith('0x') &&
+          txHash.length == 66 &&
+          RegExp(r'^0x[0-9a-fA-F]{64}$').hasMatch(txHash);
+      if (!isValidHash) {
+        if (txHash.contains('rejected') || txHash.contains('5000')) {
+          throw Exception('Transaction rejected in MetaMask. Please try again and tap Confirm.');
         }
-      } else {
-        throw Exception(result.errorMessage ?? 'Transfer failed');
+        throw Exception('Unexpected wallet response: $txHash');
+      }
+
+      setState(() {
+        _txHash        = txHash;
+        _statusMessage = 'Transaction submitted ✅\nWaiting for blockchain confirmation…\n\n$txHash';
+      });
+
+      // ── 4b. Poll for confirmation ──
+      final confirmed = await _pollConfirmation(txHash);
+      if (!confirmed) throw Exception('Transaction not confirmed after timeout. Check Polygonscan for hash:\n$txHash');
+
+      setState(() => _statusMessage = 'Confirmed on-chain ✅\nUpdating ownership records…');
+
+      // ── 4c. Update Firestore ownership ──
+      await _finalizeOwnership();
+
+      setState(() {
+        _success       = true;
+        _transferring  = false;
+        _statusMessage = 'Ownership transferred successfully!';
+      });
+
+      // Pop back with success signal so AssetDetailScreen can refresh
+      if (mounted) {
+        await Future.delayed(const Duration(seconds: 2));
+        Navigator.pop(context, true);
       }
     } catch (e) {
       setState(() {
-        _processing = false;
-        _error = e.toString();
-        _statusMessage = null;
+        _transferring  = false;
+        _errorMessage  = e.toString().replaceFirst('Exception: ', '');
       });
+    }
+  }
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Transfer failed: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+  // ── Poll tx receipt via public Amoy RPC (no API key needed) ─
+  Future<bool> _pollConfirmation(String txHash, {int retries = 40}) async {
+    const rpcUrl = 'https://rpc-amoy.polygon.technology';
+    for (int i = 0; i < retries; i++) {
+      try {
+        final resp = await http.post(
+          Uri.parse(rpcUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'jsonrpc': '2.0',
+            'method': 'eth_getTransactionReceipt',
+            'params': [txHash],
+            'id': 1,
+          }),
+        ).timeout(const Duration(seconds: 10));
+
+        final body = jsonDecode(resp.body) as Map<String, dynamic>;
+        final result = body['result'];
+        if (result != null && result is Map) {
+          final status = result['status'] as String?;
+          if (status == '0x1') return true;
+          if (status == '0x0') throw Exception('Transaction reverted on-chain. Check contract permissions.');
+        }
+      } catch (e) {
+        if (e.toString().contains('reverted')) rethrow;
+        // Network hiccup – continue polling
       }
+      setState(() => _statusMessage =
+      'Waiting for confirmation… (attempt ${i + 1}/$retries)\n\nTx: $_txHash');
+      await Future.delayed(const Duration(seconds: 3));
     }
+    return false;
   }
 
-  /// Send completion notifications to both parties
-  Future<void> _sendCompletionNotifications(String txHash) async {
-    final assetTitle = _assetData?['title'] ?? 'Asset';
+  // ── Update Firestore after on-chain success ─────────────────
+  Future<void> _finalizeOwnership() async {
+    debugPrint('✅ _finalizeOwnership: setting ownerId → ${widget.buyerUid} on asset ${widget.assetId}');
+    final batch = _db.batch();
 
-    // Notify buyer
-    final buyerDoc = await _db.collection('users').doc(widget.buyerUid).get();
-    final buyerToken = buyerDoc.data()?['fcmToken'];
-    if (buyerToken != null) {
-      await _pushService.sendInAppNotification(
-        receiverUid: widget.buyerUid,
-        title: 'Transfer Complete',
-        body: 'You are now the new owner of "$assetTitle"',
-        type: 'transfer_complete',
-        relatedId: widget.transactionId,
-        payload: {
-          'txHash': txHash,
-          'assetTitle': assetTitle,
-        },
-      );
+    // 1. Transfer asset ownership — write BOTH ownerId and ownerUid so
+    //    MyAssetsScreen query (which checks ownerId) always finds the asset.
+    final assetRef = _db.collection('assets').doc(widget.assetId);
+    batch.update(assetRef, {
+      'ownerId'          : widget.buyerUid,
+      'ownerUid'         : widget.buyerUid,
+      'previousOwnerId'  : widget.sellerUid,
+      'transferredAt'    : FieldValue.serverTimestamp(),
+      'txHash'           : _txHash,
+    });
+
+    // 2. Mark transaction as completed
+    final txRef = _db.collection('transactions').doc(widget.transactionId);
+    batch.update(txRef, {
+      'status'           : 'completed',
+      'completedAt'      : FieldValue.serverTimestamp(),
+      'blockchainTxHash' : _txHash,
+    });
+
+    // 3. Create order record for buyer — powers MyAssetsScreen
+    final orderRef = _db.collection('orders').doc();
+    batch.set(orderRef, {
+      'buyerId'       : widget.buyerUid,
+      'sellerUid'     : widget.sellerUid,
+      'assetId'       : widget.assetId,
+      'category'      : widget.assetType == AssetType.electronics ? 'electronics' : 'land',
+      'assetPrice'    : widget.assetPrice,
+      'txHash'        : _txHash,
+      'transferredAt' : FieldValue.serverTimestamp(),
+      // Electronics-specific: warranty activation timestamp
+      if (widget.assetType == AssetType.electronics && widget.tokenId != null) ...{
+        'tokenId'             : widget.tokenId,
+        'warrantyActivatedAt' : FieldValue.serverTimestamp(),
+      },
+      // Land-specific: fraction details
+      if (widget.assetType == AssetType.land) ...{
+        'propertyId'     : widget.propertyId,
+        'fractionAmount' : widget.fractionAmount ?? 1,
+      },
+    });
+
+    // 4. Payment: debit buyer, credit seller
+    final price = double.tryParse(widget.assetPrice) ?? 0;
+    if (price > 0) {
+      final buyerRef  = _db.collection('users').doc(widget.buyerUid);
+      final sellerRef = _db.collection('users').doc(widget.sellerUid);
+      batch.update(buyerRef,  {'walletBalance': FieldValue.increment(-price)});
+      batch.update(sellerRef, {'walletBalance': FieldValue.increment(price)});
+
+      // 5. Payment record
+      final payRef = _db.collection('payments').doc();
+      batch.set(payRef, {
+        'assetId'    : widget.assetId,
+        'buyerUid'   : widget.buyerUid,
+        'sellerUid'  : widget.sellerUid,
+        'amount'     : price,
+        'txHash'     : _txHash,
+        'createdAt'  : FieldValue.serverTimestamp(),
+      });
     }
 
-
-    // Notify seller
-    final sellerDoc = await _db.collection('users').doc(widget.sellerUid).get();
-    final sellerToken = sellerDoc.data()?['fcmToken'];
-    if (sellerToken != null) {
-      await PushNotificationService().sendInAppNotification(
-        receiverUid: widget.sellerUid,
-        title: 'Product Sold',
-        body: 'Your product "$assetTitle" has been transferred',
-        type: 'product_sold',
-        relatedId: widget.transactionId,
-        payload: {
-          'txHash': txHash,
-          'assetTitle': assetTitle,
-        },
-      );
-    }
+    await batch.commit();
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // BUILD
+  // ─────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Transfer')),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    final isSupplier = widget.sellerUid == _db.app.options.projectId; // Check if current user is supplier
-    final isPending = _transactionStatus == 'pending';
-    final isAccepted = _transactionStatus == 'accepted';
-    final isCompleted = _transactionStatus == 'completed';
+    final isLand = widget.assetType == AssetType.land;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Confirm Transfer'),
+        title: Text(isLand ? 'Transfer Land Ownership' : 'Transfer Electronics Ownership'),
+        backgroundColor: Colors.deepPurple,
+        foregroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+      body: _success ? _buildSuccessView() : _buildStepperView(isLand),
+    );
+  }
+
+  // ── Success view ────────────────────────────────────────────
+  Widget _buildSuccessView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Asset Info Card
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _assetData?['title'] ?? 'Asset',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _infoRow('Type', widget.assetType == AssetType.electronics
-                        ? 'Electronics (ERC-721)'
-                        : 'Land (ERC-1155)'),
-                    if (widget.assetType == AssetType.land)
-                      _infoRow('Fractions', widget.fractionAmount.toString()),
-                    _infoRow('Price', 'PKR ${_assetData?['price']}'),
-                  ],
-                ),
-              ),
+            const Icon(Icons.check_circle, color: Colors.green, size: 80),
+            const SizedBox(height: 20),
+            const Text(
+              'Ownership Transferred!',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
-
-            const SizedBox(height: 16),
-
-            // Status Card
-            Card(
-              color: isCompleted
-                  ? Colors.green[50]
-                  : isAccepted
-                  ? Colors.blue[50]
-                  : Colors.orange[50],
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Icon(
-                      isCompleted
-                          ? Icons.check_circle
-                          : isAccepted
-                          ? Icons.pending
-                          : Icons.hourglass_empty,
-                      color: isCompleted
-                          ? Colors.green
-                          : isAccepted
-                          ? Colors.blue
-                          : Colors.orange,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Status: ${_transactionStatus.toUpperCase()}',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          if (_statusMessage != null)
-                            Text(_statusMessage!, style: const TextStyle(fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            const SizedBox(height: 12),
+            Text(
+              '${widget.buyerName} is now the official owner of $_assetTitle.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 15, color: Colors.grey),
             ),
-
-            const SizedBox(height: 16),
-
-            // Wallet Info
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Wallet Information',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                    const Divider(),
-                    _infoRow(
-                      'Seller Wallet',
-                      _sellerWallet != null
-                          ? _transferService.shortenAddress(_sellerWallet!)
-                          : 'Not connected',
-                    ),
-                    _infoRow(
-                      'Buyer Wallet',
-                      _buyerWallet != null
-                          ? _transferService.shortenAddress(_buyerWallet!)
-                          : 'Not connected',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            if (_error != null) ...[
+            if (_txHash != null) ...[
               const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.error, color: Colors.red),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(_error!, style: const TextStyle(color: Colors.red))),
-                  ],
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 24),
-
-            // Action Buttons
-            if (isPending && !isSupplier) ...[
-              // Buyer Decision Buttons
-              const Text(
-                'The supplier wants to proceed with checkout. Do you accept?',
-                style: TextStyle(fontSize: 14),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _handleBuyerDecision(false),
-                      icon: const Icon(Icons.close),
-                      label: const Text('Reject'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        minimumSize: const Size.fromHeight(50),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _handleBuyerDecision(true),
-                      icon: const Icon(Icons.check),
-                      label: const Text('Accept'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        minimumSize: const Size.fromHeight(50),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ] else if (isAccepted && !isSupplier) ...[
-              // Connect Wallet & Transfer Buttons
-              if (_buyerWallet == null)
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _connectBuyerWallet,
-                    icon: const Icon(Icons.account_balance_wallet),
-                    label: const Text('Connect Wallet'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(50),
-                    ),
-                  ),
-                )
-              else
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _processing ? null : _executeTransfer,
-                    icon: _processing
-                        ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                        : const Icon(Icons.send),
-                    label: Text(_processing ? 'Processing...' : 'Proceed to Transfer'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      minimumSize: const Size.fromHeight(50),
-                    ),
-                  ),
-                ),
-            ] else if (isCompleted) ...[
-              const Center(
-                child: Column(
-                  children: [
-                    Icon(Icons.check_circle, size: 64, color: Colors.green),
-                    SizedBox(height: 16),
-                    Text(
-                      'Transfer Completed!',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green,
-                      ),
-                    ),
-                  ],
-                ),
+              SelectableText(
+                'Tx: $_txHash',
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+                textAlign: TextAlign.center,
               ),
             ],
           ],
@@ -657,24 +364,748 @@ class _TransferScreenState extends State<TransferScreen> {
     );
   }
 
-  Widget _infoRow(String label, String value) {
+  // ── Stepper ─────────────────────────────────────────────────
+  Widget _buildStepperView(bool isLand) {
+    return Stepper(
+      currentStep: _currentStep,
+      onStepContinue: _onStepContinue,
+      onStepCancel: _currentStep > 0 ? () => setState(() => _currentStep--) : null,
+      controlsBuilder: _buildStepControls,
+      steps: [
+        _stepReview(isLand),
+        _stepBuyerWallet(),
+        _stepConnectSeller(),
+        if (isLand) _stepLegalConfirmation(),
+        _stepExecute(isLand),
+      ],
+    );
+  }
+
+  void _onStepContinue() {
+    final isLand = widget.assetType == AssetType.land;
+    final totalSteps = isLand ? 5 : 4;
+
+    if (_currentStep == 2 && !_walletConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please connect your wallet first.')),
+      );
+      return;
+    }
+    if (isLand && _currentStep == 3 && !_legalConfirmed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please confirm legal paperwork before proceeding.')),
+      );
+      return;
+    }
+
+    if (_currentStep < totalSteps - 1) {
+      setState(() => _currentStep++);
+    } else {
+      _executeTransfer();
+    }
+  }
+
+  Widget _buildStepControls(BuildContext context, ControlsDetails details) {
+    final isLand     = widget.assetType == AssetType.land;
+    final totalSteps = isLand ? 5 : 4;
+    final isLastStep = _currentStep == totalSteps - 1;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_errorMessage != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                border: Border.all(color: Colors.red),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                _errorMessage!,
+                style: TextStyle(color: Colors.red[800], fontSize: 13),
+              ),
+            ),
+          if (_transferring)
+            Column(
+              children: [
+                const LinearProgressIndicator(),
+                const SizedBox(height: 12),
+                Text(
+                  _statusMessage,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+              ],
+            )
+          else ...[
+            ElevatedButton(
+              onPressed: details.onStepContinue,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isLastStep ? Colors.deepPurple : null,
+                minimumSize: const Size.fromHeight(48),
+              ),
+              child: Text(isLastStep ? '🔗 Execute Blockchain Transfer' : 'Continue'),
+            ),
+            if (_currentStep > 0) ...[
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: details.onStepCancel,
+                child: const Text('Back'),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── Step 0: Review summary ──────────────────────────────────
+  Step _stepReview(bool isLand) {
+    return Step(
+      title: const Text('Transfer Summary'),
+      subtitle: const Text('Review before proceeding'),
+      isActive: _currentStep >= 0,
+      content: Card(
+        color: Colors.deepPurple[50],
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _infoRow(Icons.inventory_2_outlined, 'Asset', _assetTitle ?? '…'),
+              _infoRow(Icons.person_outline, 'Buyer', widget.buyerName),
+              _infoRow(Icons.payments_outlined, 'Amount', 'PKR ${widget.assetPrice}'),
+              if (isLand && widget.fractionAmount != null)
+                _infoRow(Icons.pie_chart_outline, 'Fractions', '${widget.fractionAmount}'),
+              _infoRow(
+                Icons.token_outlined,
+                isLand ? 'Property ID' : 'Token ID',
+                '${isLand ? widget.propertyId : widget.tokenId}',
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.amber, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isLand
+                            ? 'This will transfer land fractions on-chain. The buyer will become the official NFT + land owner.'
+                            : 'This will transfer the electronics NFT on-chain. The buyer will own both the device and its NFT.',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Step 1: Check buyer wallet ──────────────────────────────
+  Step _stepBuyerWallet() {
+    final hasWallet = _buyerWalletAddress != null && _buyerWalletAddress!.isNotEmpty;
+    return Step(
+      title: const Text("Buyer's Wallet"),
+      subtitle: Text(hasWallet ? 'Wallet registered ✅' : 'Not yet connected ⚠️'),
+      isActive: _currentStep >= 1,
+      content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              '$label:',
-              style: const TextStyle(color: Colors.grey),
+          if (hasWallet) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.green[700], size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${widget.buyerName} has a registered wallet.',
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green[800]),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  SelectableText(
+                    _buyerWalletAddress!,
+                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'The NFT will be sent directly to this address.',
+                    style: TextStyle(fontSize: 12, color: Colors.green[700]),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.warning_amber, color: Colors.red[700], size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${widget.buyerName} has not connected a wallet.',
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red[800]),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'The buyer must connect their MetaMask wallet in the app before you can transfer ownership.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _loadPrerequisites,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Refresh'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── Step 2: Connect seller wallet ───────────────────────────
+  Step _stepConnectSeller() {
+    return Step(
+      title: const Text('Connect Your Wallet'),
+      subtitle: Text(_walletConnected
+          ? 'Connected: ${_bs.connectedAddress?.substring(0, 12) ?? ''}…'
+          : 'Not connected'),
+      isActive: _currentStep >= 2,
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Connect the wallet that currently holds the NFT. This wallet will sign the transfer transaction.',
+            style: TextStyle(color: Colors.grey[700], fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          if (_walletConnected)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.account_balance_wallet, color: Colors.green[700]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _bs.connectedAddress ?? '',
+                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ElevatedButton.icon(
+              onPressed: _connectWallet,
+              icon: const Icon(Icons.account_balance_wallet),
+              label: const Text('Connect Wallet'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(48),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ── Step 3 (land only): Legal paperwork ─────────────────────
+  Step _stepLegalConfirmation() {
+    return Step(
+      title: const Text('Legal Confirmation'),
+      subtitle: const Text('Required for land transfers'),
+      isActive: _currentStep >= 3,
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.gavel, color: Colors.blue, size: 18),
+                    SizedBox(width: 8),
+                    Text('Land Registry Requirements',
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                  ],
+                ),
+                SizedBox(height: 8),
+                Text(
+                  '• All legal sale documents have been signed by both parties.\n'
+                      '• The sale deed / transfer deed has been executed.\n'
+                      '• Stamp duty and registration fees have been paid.\n'
+                      '• Land registry has been notified of the pending transfer.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ],
             ),
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.w500),
+          const SizedBox(height: 12),
+          CheckboxListTile(
+            value: _legalConfirmed,
+            onChanged: (v) => setState(() => _legalConfirmed = v ?? false),
+            title: const Text(
+              'I confirm all legal paperwork has been completed and the land registry transfer is linked to this blockchain transaction.',
+              style: TextStyle(fontSize: 13),
             ),
+            controlAffinity: ListTileControlAffinity.leading,
+            activeColor: Colors.deepPurple,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Step 3/4: Execute transfer ──────────────────────────────
+  Step _stepExecute(bool isLand) {
+    return Step(
+      title: const Text('Execute Transfer'),
+      subtitle: const Text('Sign & send on blockchain'),
+      isActive: _currentStep >= (isLand ? 4 : 3),
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            isLand
+                ? 'Clicking the button below will:\n'
+                '1. Open your wallet to sign the ERC-1155 safeTransferFrom transaction\n'
+                '2. Transfer ${widget.fractionAmount ?? 1} fraction(s) of Property #${widget.propertyId} to ${widget.buyerName}\n'
+                '3. Update ownership in the app once confirmed on Polygon Amoy'
+                : 'Clicking the button below will:\n'
+                '1. Open your wallet to sign the ERC-721 safeTransferFrom transaction\n'
+                '2. Transfer Token #${widget.tokenId} to ${widget.buyerName}\n'
+                '3. Update ownership in the app once confirmed on Polygon Amoy',
+            style: TextStyle(color: Colors.grey[700], fontSize: 13, height: 1.6),
+          ),
+          const SizedBox(height: 12),
+          if (_txHash != null) ...[
+            const Divider(),
+            Row(
+              children: [
+                const Icon(Icons.link, size: 16, color: Colors.grey),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: SelectableText(
+                    _txHash!,
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── Small info row helper ───────────────────────────────────
+  Widget _infoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: Colors.deepPurple),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 90,
+            child: Text('$label:', style: const TextStyle(color: Colors.grey)),
+          ),
+          Expanded(
+            child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BUYER OWNERSHIP ACCEPT SCREEN
+// Shown to the BUYER from their TransactionsScreen when transfer status is
+// 'completed'. Lets them connect their wallet and confirms they received the NFT.
+// Navigate to this from TransactionsScreen when txStatus == 'completed'.
+// ─────────────────────────────────────────────────────────────────────────────
+class BuyerOwnershipAcceptScreen extends StatefulWidget {
+  final String assetId;
+  final String transactionId;
+  final String sellerName;
+  final AssetType assetType;
+
+  const BuyerOwnershipAcceptScreen({
+    super.key,
+    required this.assetId,
+    required this.transactionId,
+    required this.sellerName,
+    required this.assetType,
+  });
+
+  @override
+  State<BuyerOwnershipAcceptScreen> createState() => _BuyerOwnershipAcceptScreenState();
+}
+
+class _BuyerOwnershipAcceptScreenState extends State<BuyerOwnershipAcceptScreen> {
+  final _db  = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
+  final _bs  = BlockchainServiceEnhanced();
+
+  Map<String, dynamic>? _assetData;
+  Map<String, dynamic>? _txData;
+  bool _walletConnected = false;
+  bool _walletSaved     = false;
+  bool _loading         = true;
+  String? _connectedAddress;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final results = await Future.wait([
+        _db.collection('assets').doc(widget.assetId).get(),
+        _db.collection('transactions').doc(widget.transactionId).get(),
+      ]);
+      setState(() {
+        _assetData = (results[0] as DocumentSnapshot<Map<String, dynamic>>).data();
+        _txData    = (results[1] as DocumentSnapshot<Map<String, dynamic>>).data();
+        _loading   = false;
+      });
+    } catch (e) {
+      setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  // Buyer connects their wallet so their address is stored in Firestore
+  Future<void> _connectAndSaveWallet() async {
+    try {
+      await _bs.init();
+      String? addr = _bs.connectedAddress;
+
+      if (addr == null || addr.isEmpty) {
+        addr = await _bs.connectWallet(context);
+      }
+
+      if (addr == null || addr.isEmpty) return;
+
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) return;
+
+      // Persist wallet address so seller's TransferScreen can find it
+      await _db.collection('users').doc(uid).update({'walletAddress': addr});
+
+      if (mounted) {
+        setState(() {
+          _walletConnected  = true;
+          _walletSaved      = true;
+          _connectedAddress = addr;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Wallet connected & saved: ${addr.substring(0, 12)}…'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isLand = widget.assetType == AssetType.land;
+    final txCompleted = _txData?['status'] == 'completed';
+    final txHash = _txData?['blockchainTxHash'] as String?;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Incoming Transfer'),
+        backgroundColor: Colors.teal,
+        foregroundColor: Colors.white,
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(child: Text('Error: $_error'))
+          : SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Header card ────────────────────────
+            _buildHeaderCard(isLand, txCompleted),
+            const SizedBox(height: 16),
+
+            // ── Asset details ──────────────────────
+            _buildAssetCard(),
+            const SizedBox(height: 16),
+
+            // ── Blockchain confirmation ────────────
+            if (txCompleted && txHash != null)
+              _buildConfirmationCard(txHash),
+
+            if (txCompleted && txHash != null)
+              const SizedBox(height: 16),
+
+            // ── Wallet section ─────────────────────
+            _buildWalletSection(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeaderCard(bool isLand, bool txCompleted) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: txCompleted
+              ? [Colors.teal[700]!, Colors.teal[400]!]
+              : [Colors.orange[700]!, Colors.orange[400]!],
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            txCompleted ? Icons.move_to_inbox : Icons.hourglass_top,
+            color: Colors.white, size: 52,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            txCompleted
+                ? isLand
+                ? '🏡 Land Ownership Transferred!'
+                : '📦 Device Ownership Transferred!'
+                : 'Transfer Pending…',
+            style: const TextStyle(
+              color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'From: ${widget.sellerName}',
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAssetCard() {
+    final title   = _assetData?['title'] ?? 'Asset';
+    final price   = _txData?['assetPrice'] ?? _assetData?['price'] ?? '—';
+    final tokenId = _assetData?['blockchainTokenId'];
+
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Asset Details',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            const Divider(),
+            _buyerInfoRow('Asset', title),
+            _buyerInfoRow('Price', 'PKR $price'),
+            if (tokenId != null) _buyerInfoRow('Token ID', '#$tokenId'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConfirmationCard(String txHash) {
+    return Card(
+      color: Colors.green[50],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.green[300]!),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.verified, color: Colors.green[700]),
+                const SizedBox(width: 8),
+                Text('Confirmed on Blockchain',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green[800],
+                    )),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'The NFT has been transferred on Polygon Amoy. You are now the on-chain owner.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            SelectableText(
+              'Tx: $txHash',
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWalletSection() {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.account_balance_wallet),
+                const SizedBox(width: 8),
+                const Text('Your Wallet',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Connect your MetaMask wallet so the seller can send the NFT directly to your address. '
+                  'Your address is stored securely in your profile.',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            if (_walletConnected && _connectedAddress != null) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.check_circle, color: Colors.green[700], size: 18),
+                        const SizedBox(width: 8),
+                        const Text('Wallet connected & saved',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      _connectedAddress!,
+                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'The seller can now initiate the blockchain transfer to this address.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+              ElevatedButton.icon(
+                onPressed: _connectAndSaveWallet,
+                icon: const Icon(Icons.account_balance_wallet),
+                label: const Text('Connect & Save Wallet Address'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.teal,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(48),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '⚠️ The seller cannot transfer the NFT until your wallet address is registered.',
+                style: TextStyle(fontSize: 12, color: Colors.orange),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buyerInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text('$label:', style: const TextStyle(color: Colors.grey)),
+          ),
+          Expanded(
+            child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
           ),
         ],
       ),

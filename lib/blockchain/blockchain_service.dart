@@ -264,7 +264,17 @@ class BlockchainServiceEnhanced {
     required int tokenId,
   }) async {
     await init();
-    final function = _electronicsContract.function('safeTransferFrom');
+
+    // FIX: ERC-721 ABI has TWO safeTransferFrom overloads:
+    //   (address, address, uint256)        <- 3 params, we want this
+    //   (address, address, uint256, bytes) <- 4 params, causes "Too many elements"
+    // Pick the 3-parameter version explicitly.
+    final overloads = _electronicsContract.findFunctionsByName('safeTransferFrom');
+    final function = overloads.firstWhere(
+          (f) => f.parameters.length == 3,
+      orElse: () => overloads.first,
+    );
+
     final transaction = Transaction.callContract(
       contract: _electronicsContract,
       function: function,
@@ -464,7 +474,13 @@ class BlockchainServiceEnhanced {
     required int amount,
   }) async {
     await init();
-    final function = _landContract.function('safeTransferFrom');
+    // FIX: ERC-1155 safeTransferFrom takes 5 params (from, to, id, amount, bytes).
+    // Use findFunctionsByName to avoid "Too many elements" if ABI has overloads.
+    final overloads = _landContract.findFunctionsByName('safeTransferFrom');
+    final function = overloads.firstWhere(
+          (f) => f.parameters.length == 5,
+      orElse: () => overloads.first,
+    );
     final transaction = Transaction.callContract(
       contract: _landContract,
       function: function,

@@ -1,16 +1,19 @@
+// lib/blockchain/explorer_service.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../screens/transaction_model.dart';
 
 class ExplorerService {
   // ✅ Amoy Testnet Endpoint
-  static const String baseUrl =
-      "https://api-amoy.polygonscan.com/api";
+  static const String baseUrl = "https://api-amoy.polygonscan.com/api";
 
+  // Polygonscan API key here
+  static const String _apiKey = "IWEN41KGG1YAV457I4HD34GFXCTQ7RNQSJ";
+  static const String polygonscanApiKey = String.fromEnvironment('IWEN41KGG1YAV457I4HD34GFXCTQ7RNQSJ');
   Future<List<TransactionModel>> getTransactions(String address) async {
     try {
       final url =
-          "$baseUrl?module=account&action=txlist&address=$address&sort=desc";
+          "$baseUrl?module=account&action=txlist&address=$address&sort=desc&apikey=$_apiKey";
 
       final response = await http
           .get(Uri.parse(url))
@@ -24,7 +27,7 @@ class ExplorerService {
       final data = json.decode(response.body);
 
       if (data["status"] != "1") {
-        print("No transactions or API issue");
+        print("No transactions or API issue: ${data["message"]}");
         return [];
       }
 
@@ -45,8 +48,8 @@ class ExplorerService {
 
         // ✅ Value conversion
         final valueWei = BigInt.parse(tx["value"]);
-        final value = (valueWei / BigInt.from(10).pow(18))
-            .toStringAsFixed(4);
+        final value =
+        (valueWei / BigInt.from(10).pow(18)).toStringAsFixed(4);
 
         // ✅ Gas fee (gas * gasPrice)
         final gas = BigInt.parse(tx["gas"]);
@@ -70,10 +73,11 @@ class ExplorerService {
       return [];
     }
   }
+
   Future<List<TransactionModel>> getNFTTransactions(String address) async {
     try {
       final url =
-          "$baseUrl?module=account&action=tokennfttx&address=$address&sort=desc";
+          "$baseUrl?module=account&action=tokennfttx&address=$address&sort=desc&apikey=$_apiKey";
 
       final response = await http
           .get(Uri.parse(url))
@@ -83,7 +87,10 @@ class ExplorerService {
 
       final data = json.decode(response.body);
 
-      if (data["status"] != "1") return [];
+      if (data["status"] != "1") {
+        print("No NFT transactions or API issue: ${data["message"]}");
+        return [];
+      }
 
       final List list = data["result"];
 
