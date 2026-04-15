@@ -1,7 +1,4 @@
 // lib/screens/transfer_screen.dart
-// Step 3 – Ownership Transfer (Ownership Module)
-// ─ Seller side : initiates NFT transfer from their connected wallet
-// ─ Buyer  side : BuyerOwnershipAcceptScreen shows incoming transfer & confirms
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -13,11 +10,6 @@ import '../blockchain/blockchain_service.dart';
 
 enum AssetType { electronics, land }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SELLER TRANSFER SCREEN
-// Navigated to from AssetDetailScreen (supplier side) when an approved buyer
-// exists. Walks through a 4-step stepper then executes the blockchain transfer.
-// ─────────────────────────────────────────────────────────────────────────────
 class TransferScreen extends StatefulWidget {
   final String assetId;
   final AssetType assetType;
@@ -99,7 +91,6 @@ class _TransferScreenState extends State<TransferScreen> {
   // ── Step 1 : Connect seller wallet ──────────────────────────
   Future<void> _connectWallet() async {
     try {
-      await _bs.init();
       if (_bs.isConnected) {
         setState(() => _walletConnected = true);
         return;
@@ -137,8 +128,6 @@ class _TransferScreenState extends State<TransferScreen> {
     });
 
     try {
-      await _bs.init();
-
       // ── 4a. Send blockchain transaction ──
       String? txHash;
 
@@ -164,19 +153,54 @@ class _TransferScreenState extends State<TransferScreen> {
         );
       }
 
-      // GUARD: MetaMask rejection comes back as a result string not an exception.
-      // A real tx hash is 0x + 64 hex chars (66 total). Anything else = rejected/error.
-      if (txHash == null) throw Exception('Transaction was not submitted. Check your wallet.');
+      if (txHash == null) {
+        throw Exception('Transaction was not submitted. Check your wallet.');
+      }
+
+      // Trim stray whitespace/newlines that can cause the length==66 check to fail
+      txHash = txHash.trim();
+      debugPrint('🔍 blockchain returned (trimmed): "$txHash" len=${txHash.length}');
+
       final isValidHash = txHash.startsWith('0x') &&
           txHash.length == 66 &&
           RegExp(r'^0x[0-9a-fA-F]{64}$').hasMatch(txHash);
-      if (!isValidHash) {
-        if (txHash.contains('rejected') || txHash.contains('5000')) {
-          throw Exception('Transaction rejected in MetaMask. Please try again and tap Confirm.');
-        }
-        throw Exception('Unexpected wallet response: $txHash');
-      }
 
+      if (!isValidHash) {
+        final lower = txHash.toLowerCase();
+
+        // Only treat as explicit user rejection when MetaMask's own code is
+        // present AND there is no sign of a contract/gas level error.
+        final isExplicitUserRejection =
+            (lower.contains('user rejected') || lower.contains('user denied')) &&
+                !lower.contains('gas') &&
+                !lower.contains('revert') &&
+                !lower.contains('execution');
+
+        if (isExplicitUserRejection || lower.contains('4001')) {
+          throw Exception(
+              'You cancelled the transaction in MetaMask.\n'
+                  'Tap "Execute Blockchain Transfer" again and tap Confirm.');
+        }
+        if (lower.contains('5000')) {
+          throw Exception(
+              'MetaMask session error (5000). Disconnect your wallet, '
+                  'reconnect, and make sure MetaMask is on the Polygon Amoy network.');
+        }
+        if (lower.contains('insufficient') || lower.contains('gas')) {
+          throw Exception(
+              'Not enough MATIC for gas fees. Add MATIC to your wallet on '
+                  'Polygon Amoy and try again.');
+        }
+        if (lower.contains('revert') || lower.contains('execution reverted')) {
+          throw Exception(
+              'Contract reverted the transaction. Make sure this wallet '
+                  'holds the NFT/fractions being transferred.\n\nRaw: $txHash');
+        }
+        // Catch-all: expose the raw string so you can see exactly what came back
+        throw Exception(
+            'Unexpected wallet response — raw value:\n\n$txHash\n\n'
+                'Check MetaMask is on Polygon Amoy and this wallet holds the asset.');
+      }
       setState(() {
         _txHash        = txHash;
         _statusMessage = 'Transaction submitted ✅\nWaiting for blockchain confirmation…\n\n$txHash';
@@ -541,9 +565,11 @@ class _TransferScreenState extends State<TransferScreen> {
                     children: [
                       Icon(Icons.check_circle, color: Colors.green[700], size: 18),
                       const SizedBox(width: 8),
-                      Text(
-                        '${widget.buyerName} has a registered wallet.',
-                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green[800]),
+                      Expanded(
+                        child: Text(
+                          '${widget.buyerName} has a registered wallet.',
+                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green[800]),
+                        ),
                       ),
                     ],
                   ),
@@ -833,7 +859,6 @@ class _BuyerOwnershipAcceptScreenState extends State<BuyerOwnershipAcceptScreen>
   // Buyer connects their wallet so their address is stored in Firestore
   Future<void> _connectAndSaveWallet() async {
     try {
-      await _bs.init();
       String? addr = _bs.connectedAddress;
 
       if (addr == null || addr.isEmpty) {

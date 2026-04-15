@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'transfer_screen.dart';
 import '../blockchain/blockchain_service.dart';
-import '../blockchain/wallet_service.dart';
 import '../services/push_notification_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
@@ -347,7 +346,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
 
-  // ── CHECKOUT FLOW LOGIC ──
+  // ── TRANSFER FLOW ──
   Widget _buildCheckoutArea(BuildContext context) {
     return StreamBuilder<DocumentSnapshot>(
       stream: _db.collection('chats').doc(widget.chatId).snapshots(),
@@ -362,15 +361,9 @@ class _ChatScreenState extends State<ChatScreen> {
         if (assetId == null || sellerUid == null) return const SizedBox();
 
         final isSeller = (myUid == sellerUid);
-        // isResale = true when the seller is not the original minter but a buyer
-        // who received the asset via transfer and is now reselling it.
-        // We detect this by checking if the asset's previousOwnerId is set,
-        // which _finalizeOwnership writes on every transfer.
-        final isResale = chatData['isResale'] == true ||
-            (chatData['previousOwnerId'] != null &&
-                (chatData['previousOwnerId'] as String).isNotEmpty);
-        final sellerLabel = isResale ? 'Seller' : 'Supplier';
+        if (!isSeller) return const SizedBox();
 
+        // ── Watch the transactions collection so transactionId is ready on press ──
         return StreamBuilder<QuerySnapshot>(
           stream: _db
               .collection('transactions')
@@ -380,114 +373,26 @@ class _ChatScreenState extends State<ChatScreen> {
               .limit(1)
               .snapshots(),
           builder: (context, txSnap) {
-            if (!txSnap.hasData || txSnap.data!.docs.isEmpty) {
-              if (isSeller) {
-                return _buildStartCheckoutButton(assetId, assetTypeStr, sellerUid);
-              } else {
-                return const SizedBox();
-              }
-            }
+            final txDoc = txSnap.hasData && txSnap.data!.docs.isNotEmpty
+                ? txSnap.data!.docs.first
+                : null;
 
-            final txDoc = txSnap.data!.docs.first;
-            final txData = txDoc.data() as Map<String, dynamic>;
-            final status = txData['status'] as String? ?? 'pending';
-            final transactionId = txDoc.id;
+            final transactionId = txDoc?.id;
+            final txData = txDoc != null
+                ? txDoc.data() as Map<String, dynamic>
+                : <String, dynamic>{};
 
-            if (status == 'pending') {
-              if (isSeller) {
-                return _buildStatusCard(
-                  'Waiting for Buyer...',
-                  'Request sent. Waiting for buyer to accept.',
-                  Colors.orange.shade100,
-                  Icons.hourglass_empty,
-                );
-              } else {
-                return _buildBuyerDecisionCard(transactionId, assetTypeStr, sellerUid, sellerLabel);
-              }
-            }
-
-            if (status == 'accepted' || status == 'approved') {
-              if (isSeller) {
-                return _buildSellerTransferButton(
-                  context,
-                  assetId,
-                  assetTypeStr,
-                  sellerUid,
-                  transactionId,
-                  txData,
-                );
-              } else {
-                return const SizedBox();
-              }
-            }
-
-            return const SizedBox();
+            return _buildSellerTransferButton(
+              context,
+              assetId,
+              assetTypeStr,
+              sellerUid,
+              transactionId,
+              txData,
+            );
           },
         );
       },
-    );
-  }
-
-  Widget _buildStartCheckoutButton(String assetId, String assetType, String sellerUid) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          icon: const Icon(Icons.shopping_cart_checkout),
-          label: const Text('Proceed to Checkout'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-          ),
-          onPressed: () => _initiateCheckout(assetId, assetType, sellerUid),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBuyerDecisionCard(String txId, String assetType, String sellerUid, String sellerLabel) {
-    return Container(
-      margin: const EdgeInsets.all(12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.orange),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Checkout Request',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 4),
-          Text('The $sellerLabel wants to proceed with checkout. Do you accept?'),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => _handleBuyerDecision(txId, sellerUid, false),
-                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                  child: const Text('Reject'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => _handleBuyerDecision(txId, sellerUid, true),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                  child: const Text('Accept'),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 
@@ -496,7 +401,7 @@ class _ChatScreenState extends State<ChatScreen> {
       String assetId,
       String assetTypeStr,
       String sellerUid,
-      String transactionId,
+      String? transactionId,
       Map<String, dynamic> txData,
       ) {
     return Padding(
@@ -511,238 +416,56 @@ class _ChatScreenState extends State<ChatScreen> {
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(vertical: 12),
           ),
-          onPressed: () {
-            _navigateToTransferScreen(
-              context,
-              assetId,
-              assetTypeStr,
-              sellerUid,
-              transactionId,
-              txData,
-            );
+          onPressed: () async {
+            try {
+              String resolvedTxId;
+              Map<String, dynamic> resolvedTxData;
+
+              if (transactionId != null) {
+                // ✅ Transaction already exists from stream — use it directly
+                resolvedTxId = transactionId;
+                resolvedTxData = txData;
+              } else {
+                // ✅ No transaction yet — create one
+                final assetSnap = await _db.collection('assets').doc(assetId).get();
+                final assetTitle = assetSnap.data()?['title'] ?? 'Asset';
+                final docRef = await _db.collection('transactions').add({
+                  'assetId': assetId,
+                  'assetType': assetTypeStr,
+                  'sellerUid': sellerUid,
+                  'buyerUid': widget.otherUserId,
+                  'status': 'accepted',
+                  'assetTitle': assetTitle,
+                  'createdAt': FieldValue.serverTimestamp(),
+                });
+                resolvedTxId = docRef.id;
+                resolvedTxData = {};
+              }
+
+              if (mounted) {
+                _navigateToTransferScreen(
+                  context,
+                  assetId,
+                  assetTypeStr,
+                  sellerUid,
+                  resolvedTxId,
+                  resolvedTxData,
+                );
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error: $e')),
+                );
+              }
+              debugPrint('Transfer button error: $e');
+            }
           },
         ),
       ),
     );
   }
 
-  Widget _buildStatusCard(String title, String subtitle, Color bgColor, IconData icon) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.black54),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                Text(subtitle, style: const TextStyle(fontSize: 12)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── LOGIC METHODS ──
-
-  Future<void> _initiateCheckout(String assetId, String assetType, String sellerUid) async {
-    try {
-      final q = await _db.collection('transactions')
-          .where('assetId', isEqualTo: assetId)
-          .where('sellerUid', isEqualTo: sellerUid)
-          .where('status', isNotEqualTo: 'rejected')
-          .limit(1).get();
-
-      String txId;
-      if (q.docs.isNotEmpty) {
-        txId = q.docs.first.id;
-        await _db.collection('transactions').doc(txId).update({'status': 'pending'});
-      } else {
-        final docRef = await _db.collection('transactions').add({
-          'assetId': assetId,
-          'assetType': assetType,
-          'sellerUid': sellerUid,
-          'buyerUid': widget.otherUserId,
-          'status': 'pending',
-          'createdAt': FieldValue.serverTimestamp(),
-          // ✅ Fetch and save asset title
-        });
-        txId = docRef.id;
-
-//      ✅ Save assetTitle separately after creation
-        final assetSnap = await _db.collection('assets').doc(assetId).get();
-        final assetTitle = assetSnap.data()?['title'] ?? 'Asset';
-        await _db.collection('transactions').doc(txId).update({
-          'assetTitle': assetTitle,
-        });
-
-        _sendNotification(
-          uid: widget.otherUserId,
-          title: 'Checkout Request',
-          body: 'The seller wants to proceed with checkout.',
-          txId: txId,
-        );
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Request sent to buyer')),
-          );
-        }
-      }
-    }catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-      debugPrint('Checkout error: $e');
-    }
-  }
-  Future<void> _handleBuyerDecision(String txId, String sellerUid, bool accepted) async {
-    try {
-      if (accepted) {
-        await _db.collection('transactions').doc(txId).update({
-          'status': 'accepted',
-          'acceptedAt': FieldValue.serverTimestamp(),
-        });
-
-        _sendNotification(
-          uid: sellerUid,
-          title: 'Checkout Accepted',
-          body: 'Buyer accepted. Please proceed to transfer.',
-          txId: txId,
-        );
-
-        if (mounted) {
-          // ✅ Check if buyer wallet already connected
-          await _checkAndConnectWallet();
-        }
-      } else {
-        await _db.collection('transactions').doc(txId).update({
-          'status': 'rejected',
-          'rejectedAt': FieldValue.serverTimestamp(),
-        });
-        _sendNotification(
-          uid: sellerUid,
-          title: 'Checkout Rejected',
-          body: 'Buyer rejected the checkout.',
-          txId: txId,
-        );
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('You rejected the checkout')),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
-    }
-  }
-
-  Future<void> _checkAndConnectWallet() async {
-    // ✅ Check if buyer already has a wallet saved
-    final userDoc = await _db.collection('users').doc(myUid).get();
-    final existingWallet = userDoc.data()?['walletAddress'] as String?;
-
-    if (existingWallet != null && existingWallet.isNotEmpty) {
-      // ✅ Already connected — show confirmation and proceed
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.account_balance_wallet, color: Colors.green),
-                SizedBox(width: 8),
-                Text('Wallet Ready'),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Your wallet is already connected:'),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '${existingWallet.substring(0, 6)}...${existingWallet.substring(existingWallet.length - 4)}',
-                    style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text('Waiting for supplier to proceed with transfer.', style: TextStyle(fontSize: 13)),
-              ],
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
-            ],
-          ),
-        );
-      }
-    } else {
-      // ✅ No wallet — prompt to connect
-      await _promptWalletConnection();
-    }
-  }
-
-  Future<void> _promptWalletConnection() async {
-    final proceed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Connect Wallet'),
-        content: const Text(
-          'To receive the asset, you need to connect your crypto wallet.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Connect Wallet'),
-          ),
-        ],
-      ),
-    );
-
-    if (proceed == true && mounted) {
-      try {
-        final walletService = SimpleWalletService();
-        final address = await walletService.connect(context);
-
-        if (address != null && mounted) {
-          await _db.collection('users').doc(myUid).update({'walletAddress': address});
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('✅ Wallet connected: ${address.substring(0, 6)}...'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Wallet connection failed: $e')),
-        );
-      }
-    }
-  }
 
   Future<void> _sendNotification({
     required String uid,
