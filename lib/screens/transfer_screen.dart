@@ -277,11 +277,15 @@ class _TransferScreenState extends State<TransferScreen> {
     //    MyAssetsScreen query (which checks ownerId) always finds the asset.
     final assetRef = _db.collection('assets').doc(widget.assetId);
     batch.update(assetRef, {
-      'ownerId'          : widget.buyerUid,
-      'ownerUid'         : widget.buyerUid,
-      'previousOwnerId'  : widget.sellerUid,
-      'transferredAt'    : FieldValue.serverTimestamp(),
-      'txHash'           : _txHash,
+      'ownerId'            : widget.buyerUid,
+      'ownerUid'           : widget.buyerUid,
+      'previousOwnerId'    : widget.sellerUid,
+      'transferredAt'      : FieldValue.serverTimestamp(),
+      'txHash'             : _txHash,
+      // Pull the asset off the marketplace immediately after purchase.
+      // The new owner must explicitly re-list via ResaleListingSheet
+      // before it reappears for other users.
+      'isListedForResale'  : false,
     });
 
     // 2. Mark transaction as completed

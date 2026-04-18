@@ -14,12 +14,12 @@ import 'reviews_list.dart';
 import 'qr_generator_screen.dart';
 import 'land_fractions_screen.dart';
 import 'transfer_screen.dart';
-// BuyerOwnershipAcceptScreen lives in transfer_screen.dart
-import 'wallet_screen.dart';
-import 'transaction_model.dart';
 import 'transfer_history_screen.dart';
+import '../services/resale_service.dart';
+import 'resale_listing_sheet.dart';
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
+import 'stolen_report_screen.dart';
 
 
 final db = FirebaseFirestore.instance;
@@ -1189,13 +1189,6 @@ class MyAssetsScreen extends StatelessWidget {
               .where('ownerId', isEqualTo: user.uid)
               .orderBy('createdAt', descending: true);
           return Scaffold(
-            appBar: AppBar(
-              title: const Text('My Published Assets'),
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ),
             body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: q.snapshots(),
               builder: (context, snap2) {
@@ -1253,13 +1246,6 @@ class MyAssetsScreen extends StatelessWidget {
 
           return Scaffold(
             backgroundColor: Colors.grey[100],
-            appBar: AppBar(
-              title: const Text('My Assets'),
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ),
             body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: q.snapshots(),
               builder: (context, snap2) {
@@ -2350,7 +2336,8 @@ class TermsScreen extends StatelessWidget {
 
 /// Profile Screen
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final VoidCallback? onBack;
+  const ProfileScreen({super.key, this.onBack});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -2399,7 +2386,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: const Text('Profile'),
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                if (widget.onBack != null) {
+                  widget.onBack!();
+                } else {
+                  Navigator.pop(context);
+                }
+              },
             ),
           ),
           body: SingleChildScrollView(
@@ -2427,12 +2420,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-                  ),
-                  icon: const Icon(Icons.notifications),
-                  label: const Text('Notifications'),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const StolenReportScreen()),
+                    );
+                  },
+                  icon: const Icon(Icons.report_problem_outlined),
+                  label: const Text('Stolen Report'),
                 ),
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
@@ -2501,6 +2496,7 @@ class NFTCertificateScreen extends StatefulWidget {
 
 class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
   final _blockchainService = BlockchainServiceEnhanced();
+  final _resaleSvc = ResaleService();
 
   bool _loading = true;
   String? _error;
@@ -2509,11 +2505,16 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
   Map<String, dynamic>? _chainData;
 
   // Verification checks
-  int _priorTransferCount = 0;     // # of completed ownership transfers
-  bool _isReportedStolen = false;  // stolen flag from Firestore
+  int _priorTransferCount = 0;
+  bool _isReportedStolen = false;
   String _originalOwnerWallet = '';
   String _originalOwnerName = 'Unknown';
   String _warrantyStart = '—';
+
+  // Resale / ownership
+  bool _isCurrentOwner = false;
+  bool _isListedForResale = false;
+  List<Map<String, dynamic>> _transferHistory = [];
 
   @override
   void initState() {
@@ -2603,15 +2604,90 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
           _isReportedStolen = d['isStolen'] == true ||
               d['reportedStolen'] == true ||
               d['stolenReported'] == true;
+          _isListedForResale = d['isListedForResale'] == true;
         }
       } catch (_) {}
 
+      // ── 6. Check whether the current user owns this asset ──────────────
+      try {
+        _isCurrentOwner = await _resaleSvc.isOwnedByCurrentUser(widget.assetId);
+      } catch (_) {}
+
+      // ── 7b. Fallback: build history from completed transactions ────────
+      if (_transferHistory.isEmpty) {
+        try {
+          final txSnap = await db
+              .collection('transactions')
+              .where('assetId', isEqualTo: widget.assetId)
+              .where('status', whereIn: ['completed', 'transferred', 'done'])
+              .get();
+
+          final List<Map<String, dynamic>> built = [];
+
+          // Fetch asset price once (no price field in transaction doc)
+          String assetPrice = '';
+          try {
+            final assetSnap = await db.collection('assets').doc(widget.assetId).get();
+            if (assetSnap.exists) {
+              final p = assetSnap.data()?['price'];
+              if (p != null) assetPrice = 'PKR $p';
+            }
+          } catch (_) {}
+
+          for (final doc in txSnap.docs) {
+            final t = doc.data();
+
+            // Resolve seller name
+            String sellerName = '';
+            final sellerUid = t['sellerUid'] as String?;
+            if (sellerUid != null && sellerUid.isNotEmpty) {
+              try {
+                final snap = await db.collection('users').doc(sellerUid).get();
+                if (snap.exists) {
+                  sellerName = snap.data()?['name'] ?? snap.data()?['email'] ?? sellerUid;
+                }
+              } catch (_) { sellerName = sellerUid; }
+            }
+
+            // Resolve buyer name
+            String buyerName = '';
+            final buyerUid = t['buyerUid'] as String?;
+            if (buyerUid != null && buyerUid.isNotEmpty) {
+              try {
+                final snap = await db.collection('users').doc(buyerUid).get();
+                if (snap.exists) {
+                  buyerName = snap.data()?['name'] ?? snap.data()?['email'] ?? buyerUid;
+                }
+              } catch (_) { buyerName = buyerUid; }
+            }
+
+            built.add({
+              'from'        : sellerName,
+              'to'          : buyerName,
+              'assetType'   : t['category'] ?? 'electronics',
+              'txHash'      : t['blockchainTxHash'] ?? '',   // ← correct field name
+              'status'      : 'confirmed',
+              'transferType': 'resale',
+              'pricePaid'   : assetPrice,                    // ← from assets doc
+              'timestamp'   : t['completedAt'],              // ← correct field name
+              'amount'      : 1,
+            });
+          }
+
+          _transferHistory = built;
+        } catch (e) {
+          debugPrint('Transaction fallback load error: $e');
+        }
+      }
+
       if (mounted) setState(() => _loading = false);
     } catch (e) {
-      if (mounted) setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -2667,7 +2743,13 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
             const SizedBox(height: 12),
             _buildVerificationChecksCard(),
             const SizedBox(height: 12),
+            // ── Transfer / ownership history ─────────────────────────
+            _buildTransferHistoryCard(),
+            const SizedBox(height: 12),
             _buildBuyerConfirmationBanner(),
+            const SizedBox(height: 16),
+            // ── Resale actions (shown only to current owner) ─────────
+            if (_isCurrentOwner) _buildResaleActionsCard(),
             const SizedBox(height: 24),
           ],
         ),
@@ -2877,6 +2959,277 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Transfer / Ownership History Card ──────────────────────────────────────
+  Widget _buildTransferHistoryCard() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header row with link to full screen
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _certSectionTitle(
+                  icon : Icons.history,
+                  label: 'Transfer History',
+                ),
+                TextButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TransferHistoryScreen(assetId: widget.assetId),
+                    ),
+                  ),
+                  icon : const Icon(Icons.open_in_new, size: 14),
+                  label: const Text('View All', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding      : EdgeInsets.zero,
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+
+            if (_transferHistory.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 16, color: Colors.grey[400]),
+                    const SizedBox(width: 8),
+                    Text(
+                      'No transfers recorded on-chain yet.',
+                      style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                    ),
+                  ],
+                ),
+              )
+            else
+            // Show the timeline — most recent first, cap at 4 entries
+              ...() {
+                final entries = _transferHistory.reversed.take(4).toList();
+                return List.generate(entries.length, (i) {
+                  final t = entries[i];
+                  final isLast = i == entries.length - 1;
+                  return _buildHistoryTimelineItem(t, isLast: isLast);
+                });
+              }(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryTimelineItem(Map<String, dynamic> t, {bool isLast = false}) {
+    final type      = (t['transferType'] as String?) ?? 'original';
+    final from      = (t['from'] as String?) ?? '';
+    final to        = (t['to'] as String?) ?? '';
+    final pricePaid = (t['pricePaid'] as String?) ?? '';
+    final ts        = t['timestamp'] as Timestamp?;
+    final dateStr   = ts != null ? _fmtTs(ts) : (t['date'] as String? ?? '');
+
+    final isResale  = type == 'resale';
+    final dotColor  = isResale ? Colors.orange[700]! : Colors.green[700]!;
+    final typeLabel = isResale ? 'Resale' : 'Original Transfer';
+    final typeColor = isResale ? Colors.orange[700]! : Colors.green[700]!;
+    final typeBg    = isResale ? Colors.orange[50]!  : Colors.green[50]!;
+
+    // Only shorten if it looks like a wallet address (starts with 0x)
+    String _display(String val) {
+      if (val.startsWith('0x') && val.length > 12) {
+        return '${val.substring(0, 8)}…${val.substring(val.length - 5)}';
+      }
+      return val; // show name as-is
+    }
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Timeline column
+          Column(
+            children: [
+              Container(
+                width: 12, height: 12,
+                decoration: BoxDecoration(
+                  color : dotColor,
+                  shape : BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: [BoxShadow(color: dotColor.withOpacity(0.4), blurRadius: 4)],
+                ),
+              ),
+              if (!isLast)
+                Expanded(
+                  child: Container(width: 2, color: Colors.grey[200]),
+                ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          // Content
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color       : typeBg,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(typeLabel,
+                            style: TextStyle(
+                                fontSize: 10, fontWeight: FontWeight.bold, color: typeColor)),
+                      ),
+                      const Spacer(),
+                      Text(dateStr,
+                          style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  if (from.isNotEmpty)
+                    _historyRow(Icons.arrow_upward, 'From', _display(from), Colors.red),
+                  const SizedBox(height: 3),
+                  if (to.isNotEmpty)
+                    _historyRow(Icons.arrow_downward, 'To', _display(to), Colors.green),
+                  if (pricePaid.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    _historyRow(Icons.payments_outlined, 'Price', pricePaid, Colors.blue),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _historyRow(IconData icon, String label, String value, Color iconColor) {
+    return Row(
+      children: [
+        Icon(icon, size: 12, color: iconColor),
+        const SizedBox(width: 4),
+        Text('$label: ',
+            style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        Expanded(
+          child: Text(value,
+              style: const TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w500),
+              overflow: TextOverflow.ellipsis),
+        ),
+      ],
+    );
+  }
+
+  static String _fmtTs(Timestamp ts) {
+    final d = ts.toDate();
+    const m = ['Jan','Feb','Mar','Apr','May','Jun',
+      'Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${d.day} ${m[d.month - 1]} ${d.year}';
+  }
+
+  // ── Resale Actions Card (owner only) ────────────────────────────────────────
+  Widget _buildResaleActionsCard() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: _isListedForResale ? Colors.orange[300]! : Colors.green[300]!,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _certSectionTitle(
+              icon : Icons.sell_outlined,
+              label: 'Resale Options',
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _isListedForResale
+                  ? 'This asset is currently listed on the marketplace.'
+                  : 'You own this asset. List it for resale when you\'re ready.',
+              style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 14),
+            if (_isListedForResale) ...[
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    await _resaleSvc.removeListing(widget.assetId);
+                    if (mounted) {
+                      setState(() => _isListedForResale = false);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Listing removed. Asset hidden from marketplace.'),
+                        ),
+                      );
+                    }
+                  },
+                  icon : const Icon(Icons.remove_circle_outline),
+                  label: const Text('Remove from Marketplace'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor : Colors.red[700],
+                    side            : BorderSide(color: Colors.red[300]!),
+                    minimumSize     : const Size.fromHeight(46),
+                    shape           : RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            ] else ...[
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    final listed = await ResaleListingSheet.show(
+                      context,
+                      assetId  : widget.assetId,
+                      assetData: widget.assetData,
+                    );
+                    if (listed && mounted) {
+                      setState(() => _isListedForResale = true);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content        : Text('Asset listed for resale!'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
+                  },
+                  icon : const Icon(Icons.sell_outlined),
+                  label: const Text('List for Resale'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green[700],
+                    foregroundColor: Colors.white,
+                    minimumSize    : const Size.fromHeight(46),
+                    shape          : RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

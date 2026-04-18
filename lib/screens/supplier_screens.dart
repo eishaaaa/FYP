@@ -212,7 +212,7 @@ class _SupplierHomeScreenState extends State<SupplierHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-    //  appBar: AppBar(title: Text('${widget.type.capitalize()} Supplier')),
+      //  appBar: AppBar(title: Text('${widget.type.capitalize()} Supplier')),
       body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
@@ -236,86 +236,86 @@ class SupplierHome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return  Scaffold(
-        appBar: AppBar(
-          toolbarHeight: 80, //
-          automaticallyImplyLeading: false,
-          title: Row(
-            children: [
-              const CircleAvatar(
-                backgroundColor: Colors.white24,
-                child: Icon(Icons.store, color: Colors.white),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${type.capitalize()} Supplier',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const Text(
-                    'My Assets',
-                    style: TextStyle(fontSize: 12, color: Colors.white70),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.account_balance_wallet_outlined, color: Colors.white),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
-            ),
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('notifications')
-                  .where('receiverId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
-                  .where('isRead', isEqualTo: false)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                int unreadCount = snapshot.data?.docs.length ?? 0;
-                return Badge(
-                  label: Text(unreadCount.toString()),
-                  isLabelVisible: unreadCount > 0,
-                  offset: const Offset(-4, 4),
-                  child: IconButton(
-                    icon: const Icon(Icons.notifications_outlined, color: Colors.white),
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(width: 4),
-          ],
-        ),
-        body:
-            AssetManagementScreen(type: type),
-        floatingActionButton: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
+      appBar: AppBar(
+        toolbarHeight: 80, //
+        automaticallyImplyLeading: false,
+        title: Row(
           children: [
-            FloatingActionButton(
-              heroTag: 'chat_fab',
-              mini: true,
-              child: const Icon(Icons.chat),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatListScreen())),
+            const CircleAvatar(
+              backgroundColor: Colors.white24,
+              child: Icon(Icons.store, color: Colors.white),
             ),
-            const SizedBox(height: 12),
-            FloatingActionButton(
-              heroTag: 'add_asset_fab',
-              child: const Icon(Icons.add),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddAssetScreen(type: type))),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${type.capitalize()} Supplier',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const Text(
+                  'My Assets',
+                  style: TextStyle(fontSize: 12, color: Colors.white70),
+                ),
+              ],
             ),
           ],
         ),
-      );
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.account_balance_wallet_outlined, color: Colors.white),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
+          ),
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('notifications')
+                .where('receiverId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+                .where('isRead', isEqualTo: false)
+                .snapshots(),
+            builder: (context, snapshot) {
+              int unreadCount = snapshot.data?.docs.length ?? 0;
+              return Badge(
+                label: Text(unreadCount.toString()),
+                isLabelVisible: unreadCount > 0,
+                offset: const Offset(-4, 4),
+                child: IconButton(
+                  icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+      body:
+      AssetManagementScreen(type: type),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: 'chat_fab',
+            mini: true,
+            child: const Icon(Icons.chat),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatListScreen())),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            heroTag: 'add_asset_fab',
+            child: const Icon(Icons.add),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddAssetScreen(type: type))),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -415,8 +415,8 @@ class AssetManagementScreen extends StatelessWidget {
             final rawTokenId = data['blockchainTokenId'];
             final tokenId = rawTokenId != null
                 ? (rawTokenId is int
-                    ? rawTokenId
-                    : int.tryParse(rawTokenId.toString()))
+                ? rawTokenId
+                : int.tryParse(rawTokenId.toString()))
                 : null;
 
             return Card(
@@ -950,6 +950,10 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         'ipfsMetadataHash': metadataHash,
         'isMinted': true,
         'verified': false,                 // ← pending admin approval
+        // Visible in marketplace from the moment it's minted.
+        // _finalizeOwnership sets this to false when a buyer purchases it.
+        // The buyer must then explicitly re-list via ResaleListingSheet.
+        'isListedForResale': true,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -1195,7 +1199,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
   }
 
   Widget _sectionCard({required String title, required Widget child,
-      Color? titleColor, IconData? icon}) {
+    Color? titleColor, IconData? icon}) {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -1260,7 +1264,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                 child: SafeArea(
                   child: Padding(
                     padding:
-                        const EdgeInsets.fromLTRB(20, 48, 20, 16),
+                    const EdgeInsets.fromLTRB(20, 48, 20, 16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.end,
@@ -1353,7 +1357,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                           child: Text(
                             '🔒 Fields below are recorded on the blockchain and are permanently immutable.',
                             style:
-                                TextStyle(fontSize: 12, height: 1.4),
+                            TextStyle(fontSize: 12, height: 1.4),
                           ),
                         ),
                       ],
@@ -1366,36 +1370,36 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                     child: Column(
                       children: widget.type == 'electronics'
                           ? [
-                              _lockedField('Brand', d['brand']?.toString(),
-                                  Icons.business_outlined),
-                              _lockedField('Model', d['model']?.toString(),
-                                  Icons.phone_android_outlined),
-                              _lockedField('Serial / IMEI',
-                                  d['serial']?.toString(),
-                                  Icons.tag_outlined),
-                              _lockedField('Warranty',
-                                  d['warranty']?.toString(),
-                                  Icons.shield_outlined),
-                              _lockedField('Condition',
-                                  d['condition']?.toString(),
-                                  Icons.star_outline),
-                            ]
+                        _lockedField('Brand', d['brand']?.toString(),
+                            Icons.business_outlined),
+                        _lockedField('Model', d['model']?.toString(),
+                            Icons.phone_android_outlined),
+                        _lockedField('Serial / IMEI',
+                            d['serial']?.toString(),
+                            Icons.tag_outlined),
+                        _lockedField('Warranty',
+                            d['warranty']?.toString(),
+                            Icons.shield_outlined),
+                        _lockedField('Condition',
+                            d['condition']?.toString(),
+                            Icons.star_outline),
+                      ]
                           : [
-                              _lockedField('Location / Title',
-                                  d['title']?.toString(),
-                                  Icons.location_on_outlined),
-                              _lockedField(
-                                  'City', d['city']?.toString(),
-                                  Icons.location_city_outlined),
-                              _lockedField(
-                                  'Plot Area',
-                                  '${d['plotArea']} ${d['plotUnit'] ?? ''}'
-                                      .trim(),
-                                  Icons.square_foot_outlined),
-                              _lockedField('Total Fractions',
-                                  d['totalFractions']?.toString(),
-                                  Icons.pie_chart_outline),
-                            ],
+                        _lockedField('Location / Title',
+                            d['title']?.toString(),
+                            Icons.location_on_outlined),
+                        _lockedField(
+                            'City', d['city']?.toString(),
+                            Icons.location_city_outlined),
+                        _lockedField(
+                            'Plot Area',
+                            '${d['plotArea']} ${d['plotUnit'] ?? ''}'
+                                .trim(),
+                            Icons.square_foot_outlined),
+                        _lockedField('Total Fractions',
+                            d['totalFractions']?.toString(),
+                            Icons.pie_chart_outline),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -1420,7 +1424,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                         enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                             borderSide:
-                                BorderSide(color: Colors.grey[300]!)),
+                            BorderSide(color: Colors.grey[300]!)),
                       ),
                       keyboardType: const TextInputType.numberWithOptions(
                           decimal: true),
@@ -1441,7 +1445,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                         enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                             borderSide:
-                                BorderSide(color: Colors.grey[300]!)),
+                            BorderSide(color: Colors.grey[300]!)),
                       ),
                       maxLines: 4,
                     ),
@@ -1465,10 +1469,10 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                             itemCount: (d['images'] as List).length,
                             itemBuilder: (_, i) => Padding(
                               padding:
-                                  const EdgeInsets.only(right: 8),
+                              const EdgeInsets.only(right: 8),
                               child: ClipRRect(
                                 borderRadius:
-                                    BorderRadius.circular(10),
+                                BorderRadius.circular(10),
                                 child: Image.memory(
                                   base64Decode(
                                       (d['images'] as List)[i]),
@@ -1494,11 +1498,11 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                             itemCount: _newImages.length,
                             itemBuilder: (_, i) => Padding(
                               padding:
-                                  const EdgeInsets.only(right: 8),
+                              const EdgeInsets.only(right: 8),
                               child: Stack(children: [
                                 ClipRRect(
                                   borderRadius:
-                                      BorderRadius.circular(10),
+                                  BorderRadius.circular(10),
                                   child: Image.memory(
                                       _newImages[i],
                                       width: 100,
@@ -1510,15 +1514,15 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                                   right: 4,
                                   child: GestureDetector(
                                     onTap: () => setState(
-                                        () => _newImages.removeAt(i)),
+                                            () => _newImages.removeAt(i)),
                                     child: Container(
                                       decoration:
-                                          const BoxDecoration(
+                                      const BoxDecoration(
                                         color: Colors.black54,
                                         shape: BoxShape.circle,
                                       ),
                                       padding:
-                                          const EdgeInsets.all(3),
+                                      const EdgeInsets.all(3),
                                       child: const Icon(Icons.close,
                                           color: Colors.white,
                                           size: 14),
@@ -1542,7 +1546,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                               color: Colors.indigo),
                           shape: RoundedRectangleBorder(
                               borderRadius:
-                                  BorderRadius.circular(10)),
+                              BorderRadius.circular(10)),
                         ),
                       ),
                     ],
@@ -1563,36 +1567,36 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                                 color: Colors.grey[500],
                                 fontSize: 13)),
                       ..._documents.map((doc) => Container(
-                            margin:
-                                const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.indigo[50],
-                              borderRadius:
-                                  BorderRadius.circular(8),
-                            ),
-                            child: Row(children: [
-                              Icon(Icons.insert_drive_file,
-                                  size: 18,
-                                  color: Colors.indigo[400]),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                    doc['name'] ?? 'Document',
-                                    style: const TextStyle(
-                                        fontSize: 13),
-                                    overflow:
-                                        TextOverflow.ellipsis),
-                              ),
-                              GestureDetector(
-                                onTap: () => setState(
+                        margin:
+                        const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.indigo[50],
+                          borderRadius:
+                          BorderRadius.circular(8),
+                        ),
+                        child: Row(children: [
+                          Icon(Icons.insert_drive_file,
+                              size: 18,
+                              color: Colors.indigo[400]),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                                doc['name'] ?? 'Document',
+                                style: const TextStyle(
+                                    fontSize: 13),
+                                overflow:
+                                TextOverflow.ellipsis),
+                          ),
+                          GestureDetector(
+                            onTap: () => setState(
                                     () => _documents.remove(doc)),
-                                child: const Icon(Icons.close,
-                                    size: 16, color: Colors.grey),
-                              ),
-                            ]),
-                          )),
+                            child: const Icon(Icons.close,
+                                size: 16, color: Colors.grey),
+                          ),
+                        ]),
+                      )),
                       const SizedBox(height: 8),
                       OutlinedButton.icon(
                         onPressed: _pickDocuments,
@@ -1604,7 +1608,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                               color: Colors.indigo),
                           shape: RoundedRectangleBorder(
                               borderRadius:
-                                  BorderRadius.circular(10)),
+                              BorderRadius.circular(10)),
                         ),
                       ),
                     ],
@@ -1625,13 +1629,13 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                     boxShadow: _saving
                         ? []
                         : [
-                            BoxShadow(
-                              color:
-                                  Colors.indigo.withOpacity(0.35),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
+                      BoxShadow(
+                        color:
+                        Colors.indigo.withOpacity(0.35),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
                   child: Material(
                     color: Colors.transparent,
@@ -1641,26 +1645,26 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                       child: Center(
                         child: _saving
                             ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2.5,
-                                    color: Colors.white))
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.white))
                             : const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.save_outlined,
-                                      color: Colors.white,
-                                      size: 20),
-                                  SizedBox(width: 10),
-                                  Text('Save Changes',
-                                      style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight:
-                                              FontWeight.bold)),
-                                ],
-                              ),
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.save_outlined,
+                                color: Colors.white,
+                                size: 20),
+                            SizedBox(width: 10),
+                            Text('Save Changes',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight:
+                                    FontWeight.bold)),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -1674,4 +1678,4 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
     );
   }
 
-}
+}

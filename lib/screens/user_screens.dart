@@ -9,6 +9,8 @@ import 'chat_list_screen.dart';
 import 'wallet_screen.dart';
 import 'qr_scanner_enhanced.dart';
 import '../blockchain/blockchain_service.dart';
+import '../services/resale_service.dart';
+import 'resale_listing_sheet.dart';
 
 final db = FirebaseFirestore.instance;
 
@@ -58,7 +60,17 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: _index == 3
+          ? null
+          : _index == 2
+          ? AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => setState(() => _index = 0),
+        ),
+        title: const Text("My Assets"),
+      )
+          : AppBar(
         title: const Text("Marketplace"),
         actions: [
           IconButton(
@@ -66,7 +78,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
           ),
           StreamBuilder<QuerySnapshot>(
-            // Filter by receiverId and only where isRead is false
             stream: FirebaseFirestore.instance
                 .collection('notifications')
                 .where('receiverId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
@@ -74,10 +85,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                 .snapshots(),
             builder: (context, snapshot) {
               int unreadCount = snapshot.data?.docs.length ?? 0;
-
               return Badge(
                 label: Text(unreadCount.toString()),
-                isLabelVisible: unreadCount > 0, // Only show badge if count > 0
+                isLabelVisible: unreadCount > 0,
                 offset: const Offset(-4, 4),
                 child: IconButton(
                   icon: const Icon(Icons.notifications_none_rounded),
@@ -120,7 +130,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           _mainMarketplaceBody(),
           const SizedBox(), // Placeholder for Scan (handled by nav)
           const MyAssetsScreen(),
-          const ProfileScreen(),
+          ProfileScreen(onBack: () => setState(() => _index = 0)),
         ],
       ),
     );
@@ -205,6 +215,7 @@ class MyAssetsScreen extends StatefulWidget {
 
 class _MyAssetsScreenState extends State<MyAssetsScreen> {
   final BlockchainServiceEnhanced _blockchain = BlockchainServiceEnhanced();
+  final ResaleService _resaleSvc = ResaleService();
   bool _loading = false;
 
   // ── Owned-asset state ────────────────────────────────────────
@@ -303,6 +314,61 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  // ── Resale helpers ────────────────────────────────────────────────────────
+  Future<void> _listForResale(
+      String assetId, Map<String, dynamic> asset) async {
+    final listed = await ResaleListingSheet.show(
+      context,
+      assetId   : assetId,
+      assetData : asset,
+    );
+    if (listed && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content         : Text('Asset listed for resale on marketplace!'),
+          backgroundColor : Colors.green,
+        ),
+      );
+    }
+  }
+
+  Future<void> _removeListing(String assetId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title  : const Text('Remove Listing'),
+        content: const Text(
+            'This will hide the asset from the marketplace. You can re-list it at any time.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style    : ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child    : const Text('Remove',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _resaleSvc.removeListing(assetId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Listing removed. Asset hidden from marketplace.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
     }
   }
 
@@ -548,12 +614,90 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                   ],
 
                   const SizedBox(height: 4),
+
+                  // ── Resale status + actions ──────────────────────────
+                  const Divider(height: 1),
+                  _buildResaleRow(assetId, asset),
                 ],
               ),
             ),
           ), // end Card
         ); // end _SafeCard
       },
+    );
+  }
+
+
+// ── Resale action row ─────────────────────────────────────────────────────
+  Widget _buildResaleRow(String assetId, Map<String, dynamic> asset) {
+    final isListed = asset['isListedForResale'] == true;
+    final resalePrice = asset['resalePrice'];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          // Status chip
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color       : isListed ? Colors.orange[50] : Colors.green[50],
+              borderRadius: BorderRadius.circular(20),
+              border      : Border.all(
+                  color: isListed ? Colors.orange[300]! : Colors.green[300]!),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isListed ? Icons.storefront : Icons.inventory_2_outlined,
+                  size : 13,
+                  color: isListed ? Colors.orange[700] : Colors.green[700],
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  isListed
+                      ? (resalePrice != null
+                      ? 'Listed · PKR $resalePrice'
+                      : 'Listed for Resale')
+                      : 'In Portfolio',
+                  style: TextStyle(
+                    fontSize   : 11,
+                    fontWeight : FontWeight.w600,
+                    color      : isListed ? Colors.orange[700] : Colors.green[700],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const Spacer(),
+
+          // Action button
+          if (isListed)
+            TextButton.icon(
+              onPressed : () => _removeListing(assetId),
+              icon      : const Icon(Icons.remove_circle_outline, size: 15),
+              label     : const Text('Remove Listing', style: TextStyle(fontSize: 12)),
+              style     : TextButton.styleFrom(
+                foregroundColor : Colors.red[700],
+                visualDensity   : VisualDensity.compact,
+                padding         : const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              ),
+            )
+          else
+            TextButton.icon(
+              onPressed : () => _listForResale(assetId, asset),
+              icon      : const Icon(Icons.sell_outlined, size: 15),
+              label     : const Text('List for Resale', style: TextStyle(fontSize: 12)),
+              style     : TextButton.styleFrom(
+                foregroundColor : Colors.blue[700],
+                visualDensity   : VisualDensity.compact,
+                padding         : const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -707,22 +851,51 @@ class AssetListView extends StatelessWidget {
           return _matchesFilters(data) && _matchesSearch(data);
         }).toList();
 
-        if (filtered.isEmpty) {
+        // ── Step 5: Only show assets that are actively listed for sale ──
+        //
+        // Two cases to handle:
+        //   A) Original supplier listing (never purchased):
+        //      → previousOwnerId is null, isListedForResale may be null (legacy) or true (new).
+        //      → Show unless explicitly set to false.
+        //   B) Asset that was purchased by a user:
+        //      → previousOwnerId is set by _finalizeOwnership on every transfer.
+        //      → Only show if isListedForResale == true (owner explicitly re-listed it).
+        //      → This correctly hides legacy purchased assets even if isListedForResale is null.
+        final currentUid = FirebaseAuth.instance.currentUser?.uid;
+        final visible = filtered.where((doc) {
+          final d     = doc.data() as Map<String, dynamic>;
+          final owner = (d['ownerId'] ?? d['ownerUid']) as String?;
+
+          // Always hide from the owner — they use My Assets tab instead.
+          if (currentUid != null && owner == currentUid) return false;
+
+          final isListedForResale = d['isListedForResale'];
+          final wasPurchased      = d['previousOwnerId'] != null;
+
+          if (wasPurchased) {
+            // Purchased asset: must be explicitly re-listed to appear.
+            return isListedForResale == true;
+          } else {
+            // Original supplier listing: visible unless explicitly hidden.
+            return isListedForResale != false;
+          }
+        }).toList();
+
+        if (visible.isEmpty) {
           return const Center(child: Text("No assets found matching criteria"));
         }
 
         return GridView.builder(
           padding: const EdgeInsets.all(12),
-          itemCount: filtered.length,
+          itemCount: visible.length,
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
-            // 2. FIXED ALIGNMENT: Adjusted ratio for better fit
             childAspectRatio: 0.75,
           ),
           itemBuilder: (_, i) {
-            final doc = filtered[i];
+            final doc = visible[i];
             return AssetGridCard(
               id: doc.id,
               data: doc.data() as Map<String, dynamic>,
@@ -765,9 +938,33 @@ class AssetGridCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                child: buildAssetImage(firstImg, width: double.infinity, height: double.infinity),
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                    child: buildAssetImage(firstImg, width: double.infinity, height: double.infinity),
+                  ),
+                  // ── Resale badge ─────────────────────────────────────
+                  if (data['isListedForResale'] == true)
+                    Positioned(
+                      top: 6, right: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color       : Colors.orange[700],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'Resale',
+                          style: TextStyle(
+                            color     : Colors.white,
+                            fontSize  : 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
             Padding(
