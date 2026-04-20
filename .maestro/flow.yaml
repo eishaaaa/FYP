@@ -1,0 +1,22 @@
+appId: com.example.digitalgoods
+---
+- launchApp
+# This is a sample Flow. Maestro reads the screen just like a human!
+# Below are some examples of what you can do:
+
+# 1. Tap on a text anywhere on the screen
+# - tapOn: "Login"
+
+# 2. Wait for a specific widget to appear before continuing
+# - assertVisible: "Welcome"
+
+# 3. Swipe down
+# - swipe:
+#     direction: DOWN
+
+# 4. Input text into a focused text field
+# - inputText: "maestro_is_cool@example.com"
+
+# 5. Tap by Semantics Identifier or Key in your Flutter app
+# - tapOn:
+#     id: "login_button"
