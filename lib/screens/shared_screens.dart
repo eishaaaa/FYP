@@ -1210,44 +1210,42 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
     );
   }
 
-  void _showQRCode(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => Scaffold(
-          appBar: AppBar(title: const Text('QR Code')),
-          body: Center(
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    'Scan to verify',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(
-                      Icons.qr_code,
-                      size: 200,
-                    ),
-                  ),
-                ],
-              ),
+  void _showQRCode(BuildContext context) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final doc = await db.collection('assets').doc(widget.assetId).get();
+
+      if (context.mounted) Navigator.pop(context);
+
+      if (!doc.exists) return;
+      final data = doc.data() as Map<String, dynamic>;
+
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => QRGeneratorScreen(
+              assetId: widget.assetId,
+              category: data['category'] ?? 'electronics',
+              blockchainTokenId: data['blockchainTokenId'],
+              title: data['title'] ?? 'Asset',
             ),
           ),
-        ),
-      ),
-    );
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading QR Code: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _requestToBuy(
