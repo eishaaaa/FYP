@@ -130,8 +130,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           _mainMarketplaceBody(),
           const SizedBox(), // Placeholder for Scan (handled by nav)
           const MyAssetsScreen(),
-          ProfileScreen(onBack: () => setState(() => _index = 0)),
-        ],
+          ProfileScreen(),        ],
       ),
     );
   }
