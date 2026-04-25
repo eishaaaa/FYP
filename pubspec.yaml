@@ -64,6 +64,7 @@ dependencies:
   #  reown_appkit: ^1.0.0
  # web3dart: ^3.0.1
   web3dart: ^2.7.1
+  google_fonts: ^6.2.1
   intl: ^0.20.1          # Upgrading this resolves the Reown/PointyCastle conflict
   reown_appkit: ^1.4.0-beta04 # Use a version compatible with intl 0.20
   device_info_plus: ^9.0.0  #download images in phone

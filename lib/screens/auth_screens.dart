@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -12,37 +13,62 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:introduction_screen/introduction_screen.dart';
 import 'package:image/image.dart' as img;
 
-// IMPORTS FOR NAVIGATION
 import 'user_screens.dart';
 import 'supplier_screens.dart';
-import 'admin_screen.dart'; // <--- ADDED THIS IMPORT
+import 'admin_screen.dart';
 
-final FirebaseAuth auth = FirebaseAuth.instance;
-final FirebaseFirestore db = FirebaseFirestore.instance;
+// ─── Brand Colors ─────────────────────────────────────────────────────────────
+const kTeal        = Color(0xFF2D7D7D);
+const kTealDark    = Color(0xFF1F5C5C);
+const kTealLight   = Color(0xFFE8F4F4);
+const kTealAccent  = Color(0xFF3AAFA9);
+const kScaffoldBg  = Color(0xFFF5F8F8);
+const kTextPrimary = Color(0xFF1A2E2E);
+const kTextSecondary = Color(0xFF6B8E8E);
 
-/// Compress image to stay under Firestore 1MB limit
+final FirebaseAuth      auth = FirebaseAuth.instance;
+final FirebaseFirestore db   = FirebaseFirestore.instance;
+
+// ─── Shared Input Decoration ──────────────────────────────────────────────────
+InputDecoration _inputDecoration(String label, {Widget? prefix, Widget? suffix}) {
+  return InputDecoration(
+    labelText      : label,
+    labelStyle     : GoogleFonts.poppins(color: kTextSecondary, fontSize: 14),
+    prefixIcon     : prefix,
+    suffixIcon     : suffix,
+    filled         : true,
+    fillColor      : Colors.white,
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide  : BorderSide.none,
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide  : BorderSide(color: kTeal.withOpacity(0.15)),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide  : const BorderSide(color: kTeal, width: 2),
+    ),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+  );
+}
+
+// ─── Image Compression ───────────────────────────────────────────────────────
 Future<String> compressImageToBase64(Uint8List bytes, {int quality = 70}) async {
   final image = img.decodeImage(bytes);
   if (image == null) return base64Encode(bytes);
-
-  // Resize if too large
   img.Image resized = image;
-  if (image.width > 800) {
-    resized = img.copyResize(image, width: 800);
-  }
-
+  if (image.width > 800) resized = img.copyResize(image, width: 800);
   final compressed = img.encodeJpg(resized, quality: quality);
-  final base64Str = base64Encode(compressed);
-
-  // If still too large, reduce quality
+  final base64Str  = base64Encode(compressed);
   if (base64Str.length > 900000) {
     return compressImageToBase64(bytes, quality: quality - 10);
   }
-
   return base64Str;
 }
 
-/// Onboarding Screen
+// ─── Onboarding Screen ────────────────────────────────────────────────────────
 class OnboardingScreen extends StatelessWidget {
   const OnboardingScreen({super.key});
 
@@ -50,221 +76,277 @@ class OnboardingScreen extends StatelessWidget {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboarding', true);
     if (!ctx.mounted) return;
-    Navigator.pushReplacement(ctx, MaterialPageRoute(builder: (_) => const SplashScreen()));
+    Navigator.pushReplacement(
+        ctx, MaterialPageRoute(builder: (_) => const SplashScreen()));
   }
 
   @override
   Widget build(BuildContext context) {
+    final pages = [
+      _buildPage(
+        icon : Icons.security_rounded,
+        title: 'Secure Ownership',
+        body : 'Digital verification for land & electronic assets.',
+      ),
+      _buildPage(
+        icon : Icons.qr_code_scanner_rounded,
+        title: 'QR Verification',
+        body : 'Instant verification using QR codes.',
+      ),
+      _buildPage(
+        icon : Icons.token_rounded,
+        title: 'Future Tokenization',
+        body : 'Invest in tokenized assets in Phase 2.',
+      ),
+    ];
+
     return IntroductionScreen(
-      globalBackgroundColor: Theme.of(context).colorScheme.surface,
-      pages: [
-        PageViewModel(
-          title: "Secure Ownership",
-          body: "Digital verification for land & electronic assets.",
-          image: const Icon(Icons.security, size: 140, color: Color(0xFF0D47A1)),
+      globalBackgroundColor: kScaffoldBg,
+      pages              : pages,
+      done               : Text('Get Started',
+          style: GoogleFonts.poppins(
+              fontWeight: FontWeight.w700, color: kTeal)),
+      onDone             : () => _complete(context),
+      next               : const Icon(Icons.arrow_forward_ios_rounded,
+          color: kTeal, size: 18),
+      showSkipButton     : true,
+      skip               : Text('Skip',
+          style: GoogleFonts.poppins(color: kTextSecondary)),
+      dotsDecorator      : const DotsDecorator(
+        activeColor: kTeal,
+        color      : Color(0xFFB2CFCF),
+        size       : Size(8, 8),
+        activeSize : Size(20, 8),
+        activeShape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(4)),
         ),
-        PageViewModel(
-          title: "QR Verification",
-          body: "Instant verification using QR codes.",
-          image: const Icon(Icons.qr_code_scanner, size: 140, color: Color(0xFF0D47A1)),
+      ),
+    );
+  }
+
+  PageViewModel _buildPage(
+      {required IconData icon,
+        required String title,
+        required String body}) {
+    return PageViewModel(
+      titleWidget: Text(
+        title,
+        style: GoogleFonts.poppins(
+            fontSize: 24, fontWeight: FontWeight.w700, color: kTextPrimary),
+      ),
+      bodyWidget: Text(
+        body,
+        textAlign: TextAlign.center,
+        style: GoogleFonts.poppins(fontSize: 15, color: kTextSecondary),
+      ),
+      image: Container(
+        padding   : const EdgeInsets.all(28),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [kTealDark, kTealAccent],
+            begin : Alignment.topLeft,
+            end   : Alignment.bottomRight,
+          ),
+          shape    : BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color     : kTeal.withOpacity(0.3),
+              blurRadius: 30,
+              offset    : const Offset(0, 10),
+            ),
+          ],
         ),
-        PageViewModel(
-          title: "Future Tokenization",
-          body: "Invest in tokenized assets in Phase 2.",
-          image: const Icon(Icons.token, size: 140, color: Color(0xFF0D47A1)),
-        ),
-      ],
-      done: const Text("Get Started", style: TextStyle(fontWeight: FontWeight.bold)),
-      onDone: () => _complete(context),
-      next: const Icon(Icons.arrow_forward),
-      showSkipButton: true,
-      skip: const Text("Skip"),
-      dotsDecorator: const DotsDecorator(activeColor: Color(0xFF0D47A1)),
+        child: Icon(icon, size: 80, color: Colors.white),
+      ),
     );
   }
 }
 
-/// Splash Screen with Animation
+// ─── Splash Screen ────────────────────────────────────────────────────────────
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
-
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _opacityAnimation;
-  late Animation<Offset> _slideAnimation;
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _scaleAnim;
+  late Animation<double> _fadeAnim;
+  late Animation<Offset> _slideAnim;
+  late Animation<double> _glowAnim;
 
   @override
   void initState() {
     super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 2600))
+      ..forward();
 
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 2500),
-      vsync: this,
-    );
-
-    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+    _scaleAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.5, curve: Curves.elasticOut),
-      ),
+          parent: _ctrl,
+          curve : const Interval(0.0, 0.5, curve: Curves.elasticOut)),
     );
-
-    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+    _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.4, 0.8, curve: Curves.easeIn),
-      ),
+          parent: _ctrl,
+          curve : const Interval(0.4, 0.8, curve: Curves.easeIn)),
     );
-
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.4),
-      end: Offset.zero,
-    ).animate(
+    _slideAnim = Tween<Offset>(
+        begin: const Offset(0, 0.4), end: Offset.zero)
+        .animate(CurvedAnimation(
+        parent: _ctrl,
+        curve : const Interval(0.4, 0.8, curve: Curves.easeOut)));
+    _glowAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.4, 0.8, curve: Curves.easeOut),
-      ),
+          parent: _ctrl,
+          curve : const Interval(0.3, 0.7, curve: Curves.easeOut)),
     );
 
-    _controller.forward();
-    _controller.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        _goNext();
-      }
+    _ctrl.addStatusListener((s) {
+      if (s == AnimationStatus.completed) _goNext();
     });
   }
 
   Future<void> _goNext() async {
     await Future.delayed(const Duration(milliseconds: 500));
-
     final user = auth.currentUser;
-
     if (!mounted) return;
-
     if (user == null) {
       Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
+          context, MaterialPageRoute(builder: (_) => const LoginScreen()));
       return;
     }
-
     try {
-      final snap = await db.collection("users").doc(user.uid).get();
-
+      final snap = await db.collection('users').doc(user.uid).get();
       if (!snap.exists) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
+        Navigator.pushReplacement(context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()));
         return;
       }
-
-      // FIX: Robust Role Logic
-      final rawRole = snap.data()?["role"] as String? ?? "user";
-      final role = rawRole.toLowerCase().trim();
-
+      final role = ((snap.data()?['role'] as String?) ?? 'user')
+          .toLowerCase()
+          .trim();
       if (!mounted) return;
-
-      // 1. Check Admin
-      if (role.contains("admin")) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const AdminHomeScreen()),
-        );
-      }
-      // 2. Check Supplier
-      else if (role.contains("supplier")) {
-        final type = role.contains("land") ? "land" : "electronics";
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => SupplierHomeScreen(type: type),
-          ),
-        );
-      }
-      // 3. Default to User
-      else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const UserHomeScreen()),
-        );
-      }
-    } catch (e) {
+      _navigateByRole(role);
+    } catch (_) {
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
+        Navigator.pushReplacement(context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()));
       }
+    }
+  }
+
+  void _navigateByRole(String role) {
+    if (role.contains('admin')) {
+      Navigator.pushReplacement(context,
+          MaterialPageRoute(builder: (_) => const AdminHomeScreen()));
+    } else if (role.contains('supplier')) {
+      final type = role.contains('land') ? 'land' : 'electronics';
+      Navigator.pushReplacement(context,
+          MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)));
+    } else {
+      Navigator.pushReplacement(context,
+          MaterialPageRoute(builder: (_) => const UserHomeScreen()));
     }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _ctrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D47A1),
-      body: Center(
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            return Column(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [kTealDark, kTeal, kTealAccent],
+            begin : Alignment.topLeft,
+            end   : Alignment.bottomRight,
+          ),
+        ),
+        child: Center(
+          child: AnimatedBuilder(
+            animation: _ctrl,
+            builder  : (_, __) => Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // Glow ring
                 Transform.scale(
-                  scale: _scaleAnimation.value,
-                  child: Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.15),
-                          blurRadius: 20,
-                          spreadRadius: 3,
-                          offset: const Offset(0, 5),
-                        )
-                      ],
-                    ),
-                    child: const Icon(Icons.apartment, size: 60, color: Color(0xFF0D47A1)),
-                  ),
-                ),
-                const SizedBox(height: 30),
-                FadeTransition(
-                  opacity: _opacityAnimation,
-                  child: SlideTransition(
-                    position: _slideAnimation,
-                    child: const Column(
-                      children: [
-                        Text(
-                          "Digital Goods",
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                            letterSpacing: 1.4,
+                  scale: _scaleAnim.value,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Outer glow ring
+                      Opacity(
+                        opacity: _glowAnim.value * 0.3,
+                        child: Container(
+                          width : 160,
+                          height: 160,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withOpacity(0.2),
                           ),
                         ),
-                        SizedBox(height: 8),
+                      ),
+                      // Logo circle
+                      Container(
+                        width : 110,
+                        height: 110,
+                        decoration: BoxDecoration(
+                          color    : Colors.white,
+                          shape    : BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color     : Colors.black.withOpacity(0.2),
+                              blurRadius: 30,
+                              offset    : const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.apartment_rounded,
+                            size: 56, color: kTeal),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 36),
+                FadeTransition(
+                  opacity : _fadeAnim,
+                  child   : SlideTransition(
+                    position: _slideAnim,
+                    child   : Column(
+                      children: [
                         Text(
-                          "Verify. Secure. Own.",
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: Colors.white,
+                          'Digital Goods',
+                          style: GoogleFonts.poppins(
+                            fontSize  : 30,
+                            fontWeight: FontWeight.w800,
+                            color     : Colors.white,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Verify. Secure. Own.',
+                          style: GoogleFonts.poppins(
+                            fontSize    : 15,
+                            color       : Colors.white.withOpacity(0.85),
                             letterSpacing: 1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 48),
+                        SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: CircularProgressIndicator(
+                            strokeWidth : 2.5,
+                            color       : Colors.white.withOpacity(0.6),
                           ),
                         ),
                       ],
@@ -272,118 +354,120 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                   ),
                 ),
               ],
-            );
-          },
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-/// Create user document if not exists
-Future<void> createUserDocIfNotExists(User user, {String role = 'user', String? photoBase64}) async {
+// ─── User doc helper ──────────────────────────────────────────────────────────
+Future<void> createUserDocIfNotExists(User user,
+    {String role = 'user', String? photoBase64}) async {
   final docRef = db.collection('users').doc(user.uid);
-  final snap = await docRef.get();
+  final snap   = await docRef.get();
   if (!snap.exists) {
     await docRef.set({
-      'uid': user.uid,
-      'name': user.displayName ?? '',
-      'email': user.email ?? '',
-      'phone': user.phoneNumber ?? '',
+      'uid'        : user.uid,
+      'name'       : user.displayName ?? '',
+      'email'      : user.email ?? '',
+      'phone'      : user.phoneNumber ?? '',
       'photoBase64': photoBase64 ?? '',
-      'role': role,
-      'createdAt': FieldValue.serverTimestamp(),
+      'role'       : role,
+      'createdAt'  : FieldValue.serverTimestamp(),
     });
   }
 }
 
-/// Google Sign-In
+// ─── Google Sign-In ───────────────────────────────────────────────────────────
 Future<User?> signInWithGoogle(BuildContext ctx) async {
   try {
-    final GoogleSignInAccount? gUser = await GoogleSignIn().signIn();
+    final gUser = await GoogleSignIn().signIn();
     if (gUser == null) return null;
-    final GoogleSignInAuthentication gAuth = await gUser.authentication;
-    final credential = GoogleAuthProvider.credential(
+    final gAuth = await gUser.authentication;
+    final cred  = GoogleAuthProvider.credential(
       accessToken: gAuth.accessToken,
-      idToken: gAuth.idToken,
+      idToken    : gAuth.idToken,
     );
-    final userCred = await auth.signInWithCredential(credential);
-    final user = userCred.user;
-    if (user != null) {
-      await createUserDocIfNotExists(user);
-    }
+    final userCred = await auth.signInWithCredential(cred);
+    final user     = userCred.user;
+    if (user != null) await createUserDocIfNotExists(user);
     return user;
   } catch (e) {
     if (ctx.mounted) {
-      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Google sign-in failed: $e')));
+      _showSnack(ctx, 'Google sign-in failed: $e', color: Colors.red);
     }
     return null;
   }
 }
 
-/// Login Screen
+void _showSnack(BuildContext ctx, String msg, {Color? color}) {
+  ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+    content        : Text(msg, style: GoogleFonts.poppins()),
+    backgroundColor: color ?? kTeal,
+    behavior       : SnackBarBehavior.floating,
+    shape          : RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10)),
+  ));
+}
+
+// ─── Login Screen ─────────────────────────────────────────────────────────────
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _email = TextEditingController();
-  final TextEditingController _pass = TextEditingController();
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
+  final _emailCtrl = TextEditingController();
+  final _passCtrl  = TextEditingController();
   bool _loading = false;
   bool _obscure = true;
 
+  late AnimationController _animCtrl;
+  late Animation<double>   _fadeAnim;
+  late Animation<Offset>   _slideAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 600))
+      ..forward();
+    _fadeAnim  = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+    _slideAnim = Tween<Offset>(
+        begin: const Offset(0, 0.12), end: Offset.zero)
+        .animate(
+        CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut));
+  }
+
   @override
   void dispose() {
-    _email.dispose();
-    _pass.dispose();
+    _animCtrl.dispose();
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _login() async {
-    if (_email.text.trim().isEmpty || _pass.text.trim().isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Provide email & password')));
-      }
+    if (_emailCtrl.text.trim().isEmpty || _passCtrl.text.trim().isEmpty) {
+      _showSnack(context, 'Please enter email & password');
       return;
     }
-
     setState(() => _loading = true);
     try {
       final cred = await auth.signInWithEmailAndPassword(
-        email: _email.text.trim(),
-        password: _pass.text.trim(),
-      );
-
-      final user = cred.user;
-      if (user == null) throw Exception('Login returned null user');
-
-      final snap = await db.collection('users').doc(user.uid).get();
-
-      // FIX: Robust Role Logic
-      final rawRole = (snap.data()?['role'] as String?) ?? 'user';
-      final role = rawRole.toLowerCase().trim();
-
+          email: _emailCtrl.text.trim(), password: _passCtrl.text.trim());
+      final snap = await db.collection('users').doc(cred.user!.uid).get();
+      final role = ((snap.data()?['role'] as String?) ?? 'user')
+          .toLowerCase()
+          .trim();
       if (!mounted) return;
-
-      // 1. Check Admin
-      if (role.contains('admin')) {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminHomeScreen()));
-      }
-      // 2. Check Supplier
-      else if (role.contains('supplier')) {
-        final type = (role.contains('land')) ? 'land' : 'electronics';
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)));
-      }
-      // 3. Default to User
-      else {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserHomeScreen()));
-      }
+      _navigateByRole(role);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Login failed: $e')));
-      }
+      if (mounted) _showSnack(context, 'Login failed: $e', color: Colors.red);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -393,123 +477,942 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = true);
     final user = await signInWithGoogle(context);
     if (user != null) {
-      final snapshot = await db.collection('users').doc(user.uid).get();
-
-      // FIX: Robust Role Logic
-      final rawRole = snapshot.data()?['role'] as String? ?? 'user';
-      final role = rawRole.toLowerCase().trim();
-
-      if (!mounted) return;
-
-      if (role.contains('admin')) {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminHomeScreen()));
-      } else if (role.contains('supplier')) {
-        final type = role.contains('land') ? 'land' : 'electronics';
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)));
-      } else {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserHomeScreen()));
-      }
+      final snap = await db.collection('users').doc(user.uid).get();
+      final role = ((snap.data()?['role'] as String?) ?? 'user')
+          .toLowerCase()
+          .trim();
+      if (mounted) _navigateByRole(role);
     }
     if (mounted) setState(() => _loading = false);
   }
 
-  Widget _glassCard({required Widget child}) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface.withOpacity(0.85),
-            borderRadius: BorderRadius.circular(16),
+  void _navigateByRole(String role) {
+    if (role.contains('admin')) {
+      Navigator.pushReplacement(context,
+          MaterialPageRoute(builder: (_) => const AdminHomeScreen()));
+    } else if (role.contains('supplier')) {
+      final type = role.contains('land') ? 'land' : 'electronics';
+      Navigator.pushReplacement(context,
+          MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)));
+    } else {
+      Navigator.pushReplacement(context,
+          MaterialPageRoute(builder: (_) => const UserHomeScreen()));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: kScaffoldBg,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [kTealDark, kTeal],
+            begin : Alignment.topLeft,
+            end   : Alignment(0.4, 0.5),
           ),
-          child: child,
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // ── Top hero area ─────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
+                child: FadeTransition(
+                  opacity: _fadeAnim,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding   : const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color        : Colors.white.withOpacity(0.2),
+                          borderRadius : BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.apartment_rounded,
+                            color: Colors.white, size: 28),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Welcome Back!',
+                        style: GoogleFonts.poppins(
+                          fontSize  : 28,
+                          fontWeight: FontWeight.w800,
+                          color     : Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Sign in to continue',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          color   : Colors.white.withOpacity(0.8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // ── White bottom card ─────────────────────────────────
+              Expanded(
+                child: SlideTransition(
+                  position: _slideAnim,
+                  child   : FadeTransition(
+                    opacity: _fadeAnim,
+                    child  : Container(
+                      decoration: const BoxDecoration(
+                        color       : kScaffoldBg,
+                        borderRadius: BorderRadius.only(
+                          topLeft : Radius.circular(32),
+                          topRight: Radius.circular(32),
+                        ),
+                      ),
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(24, 30, 24, 24),
+                        child  : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Email
+                            TextField(
+                              controller  : _emailCtrl,
+                              keyboardType: TextInputType.emailAddress,
+                              style       : GoogleFonts.poppins(
+                                  fontSize: 14, color: kTextPrimary),
+                              decoration  : _inputDecoration(
+                                'Email Address',
+                                prefix: const Icon(Icons.email_outlined,
+                                    color: kTeal, size: 20),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+
+                            // Password
+                            TextField(
+                              controller : _passCtrl,
+                              obscureText: _obscure,
+                              style      : GoogleFonts.poppins(
+                                  fontSize: 14, color: kTextPrimary),
+                              decoration : _inputDecoration(
+                                'Password',
+                                prefix: const Icon(Icons.lock_outline_rounded,
+                                    color: kTeal, size: 20),
+                                suffix: IconButton(
+                                  icon: Icon(
+                                    _obscure
+                                        ? Icons.visibility_outlined
+                                        : Icons.visibility_off_outlined,
+                                    color: kTextSecondary,
+                                    size : 20,
+                                  ),
+                                  onPressed: () =>
+                                      setState(() => _obscure = !_obscure),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+
+                            // Forgot password
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child    : TextButton(
+                                onPressed: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) =>
+                                      const ForgotPasswordScreen()),
+                                ),
+                                child: Text(
+                                  'Forgot Password?',
+                                  style: GoogleFonts.poppins(
+                                    color     : kTeal,
+                                    fontSize  : 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+
+                            // Login button
+                            _GradientButton(
+                              label    : 'Sign In',
+                              loading  : _loading,
+                              onPressed: _login,
+                            ),
+                            const SizedBox(height: 20),
+
+                            // Divider
+                            Row(children: [
+                              Expanded(
+                                  child: Divider(
+                                      color: kTeal.withOpacity(0.2))),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12),
+                                child: Text('or',
+                                    style: GoogleFonts.poppins(
+                                        color   : kTextSecondary,
+                                        fontSize: 13)),
+                              ),
+                              Expanded(
+                                  child: Divider(
+                                      color: kTeal.withOpacity(0.2))),
+                            ]),
+                            const SizedBox(height: 16),
+
+                            // Google button
+                            _GoogleButton(
+                              onPressed: _loading ? null : _googleLogin,
+                            ),
+                            const SizedBox(height: 24),
+
+                            // Register link
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text("Don't have an account? ",
+                                    style: GoogleFonts.poppins(
+                                        color  : kTextSecondary,
+                                        fontSize: 13)),
+                                GestureDetector(
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                        const RegisterScreen()),
+                                  ),
+                                  child: Text(
+                                    'Register',
+                                    style: GoogleFonts.poppins(
+                                      color     : kTeal,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize  : 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Register Screen ──────────────────────────────────────────────────────────
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
+  @override
+  State<RegisterScreen> createState() => _RegisterScreenState();
+}
+
+class _RegisterScreenState extends State<RegisterScreen>
+    with SingleTickerProviderStateMixin {
+  final _nameCtrl    = TextEditingController();
+  final _emailCtrl   = TextEditingController();
+  final _phoneCtrl   = TextEditingController();
+  final _passCtrl    = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  final _companyCtrl = TextEditingController();
+  final _cnicCtrl    = TextEditingController();
+  final _cityCtrl    = TextEditingController();
+
+  String     _role         = 'user';
+  String     _supplierType = 'land';
+  Uint8List? _photo;
+  bool       _loading = false;
+  bool       _obscure = true;
+  final      _picker  = ImagePicker();
+
+  late AnimationController _animCtrl;
+  late Animation<double>   _fadeAnim;
+  late Animation<Offset>   _slideAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 600))
+      ..forward();
+    _fadeAnim  = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+    _slideAnim = Tween<Offset>(
+        begin: const Offset(0, 0.1), end: Offset.zero)
+        .animate(
+        CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut));
+  }
+
+  @override
+  void dispose() {
+    _animCtrl.dispose();
+    for (final c in [
+      _nameCtrl, _emailCtrl, _phoneCtrl, _passCtrl,
+      _confirmCtrl, _companyCtrl, _cnicCtrl, _cityCtrl
+    ]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _pickPhoto() async {
+    final status = await Permission.photos.request();
+    if (!status.isGranted) return;
+    final XFile? file =
+    await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    if (file != null) {
+      _photo = await file.readAsBytes();
+      setState(() {});
+    }
+  }
+
+  Future<void> _register() async {
+    if (_passCtrl.text != _confirmCtrl.text) {
+      _showSnack(context, 'Passwords do not match', color: Colors.red);
+      return;
+    }
+    if (_emailCtrl.text.isEmpty || _passCtrl.text.isEmpty) {
+      _showSnack(context, 'Email and password required');
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final userCred = await auth.createUserWithEmailAndPassword(
+          email: _emailCtrl.text.trim(), password: _passCtrl.text.trim());
+      final uid        = userCred.user!.uid;
+      final roleString = _role == 'user' ? 'user' : 'supplier_$_supplierType';
+      final Map<String, dynamic> data = {
+        'uid'      : uid,
+        'name'     : _nameCtrl.text.trim(),
+        'email'    : _emailCtrl.text.trim(),
+        'phone'    : _phoneCtrl.text.trim(),
+        'role'     : roleString,
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+      if (_role == 'supplier') {
+        data.addAll({
+          'company': _companyCtrl.text.trim(),
+          'cnic'   : _cnicCtrl.text.trim(),
+          'city'   : _cityCtrl.text.trim(),
+        });
+      }
+      if (_photo != null) {
+        data['photoBase64'] = await compressImageToBase64(_photo!);
+      }
+      await db.collection('users').doc(uid).set(data);
+      await userCred.user!.updateDisplayName(roleString);
+      if (!mounted) return;
+      _showSnack(context, '✅ Account created! Please login.',
+          color: Colors.green);
+      Navigator.pop(context);
+    } catch (e) {
+      if (mounted) _showSnack(context, 'Error: $e', color: Colors.red);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _googleRegister() async {
+    setState(() => _loading = true);
+    final user = await signInWithGoogle(context);
+    if (user != null) {
+      final docRef = db.collection('users').doc(user.uid);
+      final snap   = await docRef.get();
+      if (!snap.exists) {
+        await docRef.set({
+          'uid'        : user.uid,
+          'name'       : user.displayName ?? '',
+          'email'      : user.email ?? '',
+          'phone'      : user.phoneNumber ?? '',
+          'photoBase64': '',
+          'role'       : 'user',
+          'createdAt'  : FieldValue.serverTimestamp(),
+        });
+      }
+      final role =
+      ((await docRef.get()).data()?['role'] as String? ?? 'user')
+          .toLowerCase()
+          .trim();
+      if (!mounted) return;
+      _navigateByRole(role);
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  void _navigateByRole(String role) {
+    if (role.contains('admin')) {
+      Navigator.pushReplacement(context,
+          MaterialPageRoute(builder: (_) => const AdminHomeScreen()));
+    } else if (role.contains('supplier')) {
+      final type = role.contains('land') ? 'land' : 'electronics';
+      Navigator.pushReplacement(context,
+          MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)));
+    } else {
+      Navigator.pushReplacement(context,
+          MaterialPageRoute(builder: (_) => const UserHomeScreen()));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: kScaffoldBg,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [kTealDark, kTeal],
+            begin : Alignment.topLeft,
+            end   : Alignment(0.4, 0.4),
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Top bar
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                child: FadeTransition(
+                  opacity: _fadeAnim,
+                  child: Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color       : Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.arrow_back_ios_new_rounded,
+                              color: Colors.white, size: 18),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Create Account',
+                              style: GoogleFonts.poppins(
+                                  fontSize  : 20,
+                                  fontWeight: FontWeight.w700,
+                                  color     : Colors.white)),
+                          Text('Join Digital Goods today',
+                              style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  color   : Colors.white.withOpacity(0.8))),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Form card
+              Expanded(
+                child: SlideTransition(
+                  position: _slideAnim,
+                  child   : FadeTransition(
+                    opacity: _fadeAnim,
+                    child  : Container(
+                      decoration: const BoxDecoration(
+                        color       : kScaffoldBg,
+                        borderRadius: BorderRadius.only(
+                          topLeft : Radius.circular(32),
+                          topRight: Radius.circular(32),
+                        ),
+                      ),
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
+                        child  : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+
+                            // Avatar picker
+                            Center(
+                              child: GestureDetector(
+                                onTap: _pickPhoto,
+                                child: Stack(
+                                  children: [
+                                    CircleAvatar(
+                                      radius         : 50,
+                                      backgroundColor: kTealLight,
+                                      backgroundImage: _photo != null
+                                          ? MemoryImage(_photo!)
+                                          : null,
+                                      child: _photo == null
+                                          ? const Icon(Icons.person_rounded,
+                                          size : 44, color: kTeal)
+                                          : null,
+                                    ),
+                                    Positioned(
+                                      bottom: 0,
+                                      right : 0,
+                                      child : Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: const BoxDecoration(
+                                          color : kTeal,
+                                          shape : BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                            Icons.camera_alt_rounded,
+                                            color: Colors.white,
+                                            size : 16),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+
+                            // Role chips
+                            _SectionLabel('Account Type'),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                _RoleChip(
+                                  label   : 'User',
+                                  icon    : Icons.person_rounded,
+                                  selected: _role == 'user',
+                                  onTap   : () => setState(() => _role = 'user'),
+                                ),
+                                const SizedBox(width: 10),
+                                _RoleChip(
+                                  label   : 'Supplier',
+                                  icon    : Icons.business_rounded,
+                                  selected: _role == 'supplier',
+                                  onTap   : () =>
+                                      setState(() => _role = 'supplier'),
+                                ),
+                              ],
+                            ),
+
+                            if (_role == 'supplier') ...[
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  _RoleChip(
+                                    label   : 'Land',
+                                    icon    : Icons.landscape_rounded,
+                                    selected: _supplierType == 'land',
+                                    onTap   : () => setState(
+                                            () => _supplierType = 'land'),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _RoleChip(
+                                    label   : 'Electronics',
+                                    icon    : Icons.devices_rounded,
+                                    selected: _supplierType == 'electronics',
+                                    onTap   : () => setState(
+                                            () => _supplierType = 'electronics'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                            const SizedBox(height: 22),
+
+                            // Fields
+                            _SectionLabel('Personal Info'),
+                            const SizedBox(height: 10),
+                            _Field(ctrl: _nameCtrl,  label: 'Full Name',  icon: Icons.person_outline_rounded),
+                            const SizedBox(height: 12),
+                            _Field(ctrl: _emailCtrl, label: 'Email',      icon: Icons.email_outlined,   type: TextInputType.emailAddress),
+                            const SizedBox(height: 12),
+                            _Field(ctrl: _phoneCtrl, label: 'Phone',      icon: Icons.phone_outlined,   type: TextInputType.phone),
+                            const SizedBox(height: 12),
+                            _PasswordField(
+                              ctrl   : _passCtrl,
+                              label  : 'Password',
+                              obscure: _obscure,
+                              onToggle: () => setState(() => _obscure = !_obscure),
+                            ),
+                            const SizedBox(height: 12),
+                            _PasswordField(
+                              ctrl    : _confirmCtrl,
+                              label   : 'Confirm Password',
+                              obscure : _obscure,
+                              onToggle: () => setState(() => _obscure = !_obscure),
+                            ),
+
+                            if (_role == 'supplier') ...[
+                              const SizedBox(height: 22),
+                              _SectionLabel('Business Info'),
+                              const SizedBox(height: 10),
+                              _Field(ctrl: _companyCtrl, label: 'Company / Brand', icon: Icons.business_outlined),
+                              const SizedBox(height: 12),
+                              _Field(ctrl: _cnicCtrl,    label: 'CNIC / NTN',      icon: Icons.badge_outlined),
+                              const SizedBox(height: 12),
+                              _Field(ctrl: _cityCtrl,    label: 'City',            icon: Icons.location_on_outlined),
+                            ],
+
+                            const SizedBox(height: 28),
+
+                            _GradientButton(
+                              label    : 'Create Account',
+                              loading  : _loading,
+                              onPressed: _register,
+                            ),
+
+                            if (_role == 'user') ...[
+                              const SizedBox(height: 16),
+                              Row(children: [
+                                Expanded(child: Divider(color: kTeal.withOpacity(0.2))),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  child: Text('or',
+                                      style: GoogleFonts.poppins(
+                                          color: kTextSecondary, fontSize: 13)),
+                                ),
+                                Expanded(child: Divider(color: kTeal.withOpacity(0.2))),
+                              ]),
+                              const SizedBox(height: 14),
+                              _GoogleButton(
+                                label    : 'Register with Google',
+                                onPressed: _loading ? null : _googleRegister,
+                              ),
+                            ],
+
+                            const SizedBox(height: 24),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text('Already have an account? ',
+                                    style: GoogleFonts.poppins(
+                                        color: kTextSecondary, fontSize: 13)),
+                                GestureDetector(
+                                  onTap: () => Navigator.pop(context),
+                                  child: Text('Login',
+                                      style: GoogleFonts.poppins(
+                                        color     : kTeal,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize  : 13,
+                                      )),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Forgot Password Screen ───────────────────────────────────────────────────
+class ForgotPasswordScreen extends StatefulWidget {
+  const ForgotPasswordScreen({super.key});
+  @override
+  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+}
+
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
+    with SingleTickerProviderStateMixin {
+  final _emailCtrl = TextEditingController();
+  bool _loading    = false;
+  bool _sent       = false;
+
+  late AnimationController _animCtrl;
+  late Animation<double>   _fadeAnim;
+  late Animation<Offset>   _slideAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 600))
+      ..forward();
+    _fadeAnim  = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+    _slideAnim = Tween<Offset>(
+        begin: const Offset(0, 0.12), end: Offset.zero)
+        .animate(
+        CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut));
+  }
+
+  @override
+  void dispose() {
+    _animCtrl.dispose();
+    _emailCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _reset() async {
+    if (_emailCtrl.text.trim().isEmpty) {
+      _showSnack(context, 'Please enter your email');
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      await auth.sendPasswordResetEmail(email: _emailCtrl.text.trim());
+      if (mounted) setState(() => _sent = true);
+    } catch (e) {
+      if (mounted) _showSnack(context, 'Error: $e', color: Colors.red);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: kScaffoldBg,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [kTealDark, kTeal],
+            begin : Alignment.topLeft,
+            end   : Alignment(0.4, 0.5),
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Top bar
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                child: FadeTransition(
+                  opacity: _fadeAnim,
+                  child: Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color       : Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.arrow_back_ios_new_rounded,
+                              color: Colors.white, size: 18),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Text('Forgot Password',
+                          style: GoogleFonts.poppins(
+                              fontSize  : 20,
+                              fontWeight: FontWeight.w700,
+                              color     : Colors.white)),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Card
+              Expanded(
+                child: SlideTransition(
+                  position: _slideAnim,
+                  child   : FadeTransition(
+                    opacity: _fadeAnim,
+                    child  : Container(
+                      decoration: const BoxDecoration(
+                        color       : kScaffoldBg,
+                        borderRadius: BorderRadius.only(
+                          topLeft : Radius.circular(32),
+                          topRight: Radius.circular(32),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(28),
+                        child  : _sent
+                            ? _buildSuccessState()
+                            : _buildFormState(),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final card = _glassCard(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('Welcome back', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _email,
-            decoration: _inputDecoration('Email', prefix: const Icon(Icons.email_outlined)),
-            keyboardType: TextInputType.emailAddress,
+  Widget _buildFormState() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding   : const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color       : kTealLight,
+            borderRadius: BorderRadius.circular(20),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _pass,
-            decoration: _inputDecoration(
-              'Password',
-              prefix: const Icon(Icons.lock_outline),
-              suffix: IconButton(
-                icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
-                onPressed: () => setState(() => _obscure = !_obscure),
-              ),
-            ),
-            obscureText: _obscure,
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _loading ? null : _login,
-              style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-              child: _loading
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Login'),
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())),
-            child: const Text('Forgot Password?'),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Column(
             children: [
-              const Text("Don't have an account? "),
-              GestureDetector(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
-                child: const Text("Register", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+              const Icon(Icons.lock_reset_rounded, size: 48, color: kTeal),
+              const SizedBox(height: 12),
+              Text(
+                'Reset your password',
+                style: GoogleFonts.poppins(
+                    fontSize  : 17,
+                    fontWeight: FontWeight.w700,
+                    color     : kTextPrimary),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Enter your email and we will send a reset link.',
+              textAlign: TextAlign.center,
+                style    : GoogleFonts.poppins(
+                    fontSize: 13, color: kTextSecondary),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _loading ? null : _googleLogin,
-            icon: Image.network(
-              'https://developers.google.com/identity/images/g-logo.png',
-              height: 20,
-              width: 20,
-              errorBuilder: (_, __, ___) => const Icon(Icons.g_mobiledata),
-            ),
-            label: const Text('Continue with Google'),
-            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+        ),
+        const SizedBox(height: 28),
+        TextField(
+          controller  : _emailCtrl,
+          keyboardType: TextInputType.emailAddress,
+          style       : GoogleFonts.poppins(fontSize: 14, color: kTextPrimary),
+          decoration  : _inputDecoration(
+            'Email Address',
+            prefix: const Icon(Icons.email_outlined, color: kTeal, size: 20),
           ),
-        ],
+        ),
+        const SizedBox(height: 24),
+        _GradientButton(
+          label    : 'Send Reset Link',
+          loading  : _loading,
+          onPressed: _reset,
+          icon     : Icons.send_rounded,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSuccessState() {
+    return TweenAnimationBuilder<double>(
+      tween   : Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 500),
+      builder : (_, v, __) => Opacity(
+        opacity : v,
+        child   : Transform.translate(
+          offset: Offset(0, 20 * (1 - v)),
+          child : Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding   : const EdgeInsets.all(28),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.mark_email_read_rounded,
+                    size: 56, color: Colors.green),
+              ),
+              const SizedBox(height: 24),
+              Text('Email Sent!',
+                  style: GoogleFonts.poppins(
+                      fontSize  : 22,
+                      fontWeight: FontWeight.w700,
+                      color     : kTextPrimary)),
+              const SizedBox(height: 10),
+              Text(
+                'Check your inbox for the password reset link.',
+                textAlign: TextAlign.center,
+                style    : GoogleFonts.poppins(
+                    fontSize: 14, color: kTextSecondary, height: 1.5),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style    : OutlinedButton.styleFrom(
+                    foregroundColor: kTeal,
+                    side           : const BorderSide(color: kTeal),
+                    shape          : RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                    padding        : const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: Text('Back to Login',
+                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
+  }
+}
 
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
-            child: Column(
+// ─── Reusable small widgets ───────────────────────────────────────────────────
+class _GradientButton extends StatelessWidget {
+  final String    label;
+  final bool      loading;
+  final VoidCallback onPressed;
+  final IconData? icon;
+
+  const _GradientButton({
+    required this.label,
+    required this.loading,
+    required this.onPressed,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration   : const Duration(milliseconds: 200),
+      height     : 52,
+      decoration : BoxDecoration(
+        gradient    : loading
+            ? null
+            : const LinearGradient(
+            colors: [kTealDark, kTealAccent],
+            begin : Alignment.topLeft,
+            end   : Alignment.bottomRight),
+        color       : loading ? Colors.grey.shade300 : null,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow   : loading
+            ? []
+            : [
+          BoxShadow(
+            color     : kTeal.withOpacity(0.35),
+            blurRadius: 14,
+            offset    : const Offset(0, 5),
+          )
+        ],
+      ),
+      child: Material(
+        color       : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child       : InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap       : loading ? null : onPressed,
+          child       : Center(
+            child: loading
+                ? const SizedBox(
+                width: 22, height: 22,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2.5, color: Colors.white))
+                : Row(
               mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 12),
-                const SizedBox(height: 20),
-                card,
+              children    : [
+                if (icon != null) ...[
+                  Icon(icon, color: Colors.white, size: 18),
+                  const SizedBox(width: 8),
+                ],
+                Text(label,
+                    style: GoogleFonts.poppins(
+                      color     : Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize  : 15,
+                    )),
               ],
             ),
           ),
@@ -519,366 +1422,169 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-/// Register Screen
-class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
-  @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
-}
+class _GoogleButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+  final String        label;
 
-class _RegisterScreenState extends State<RegisterScreen> {
-  final TextEditingController _nameCtrl = TextEditingController();
-  final TextEditingController _emailCtrl = TextEditingController();
-  final TextEditingController _phoneCtrl = TextEditingController();
-  final TextEditingController _passCtrl = TextEditingController();
-  final TextEditingController _confirmCtrl = TextEditingController();
-  final TextEditingController _companyCtrl = TextEditingController();
-  final TextEditingController _cnicCtrl = TextEditingController();
-  final TextEditingController _cityCtrl = TextEditingController();
-
-  String _role = 'user';
-  String _supplierType = 'land';
-  Uint8List? _photo;
-  bool _loading = false;
-  bool _obscure = true;
-  final ImagePicker _picker = ImagePicker();
-
-  @override
-  void dispose() {
-    _nameCtrl.dispose();
-    _emailCtrl.dispose();
-    _phoneCtrl.dispose();
-    _passCtrl.dispose();
-    _confirmCtrl.dispose();
-    _companyCtrl.dispose();
-    _cnicCtrl.dispose();
-    _cityCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickPhoto() async {
-    final status = await Permission.photos.request();
-    if (!status.isGranted) return;
-    final XFile? img = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-    if (img != null) {
-      _photo = await img.readAsBytes();
-      setState(() {});
-    }
-  }
-
-  Future<void> _register() async {
-    if (_passCtrl.text != _confirmCtrl.text) {
-      _msg('Passwords do not match');
-      return;
-    }
-    if (_emailCtrl.text.isEmpty || _passCtrl.text.isEmpty) {
-      _msg('Email and password required');
-      return;
-    }
-    setState(() => _loading = true);
-    try {
-      final userCred = await auth.createUserWithEmailAndPassword(
-        email: _emailCtrl.text.trim(),
-        password: _passCtrl.text.trim(),
-      );
-      final uid = userCred.user!.uid;
-      final roleString = _role == 'user' ? 'user' : 'supplier_$_supplierType';
-      final Map<String, dynamic> data = {
-        'uid': uid,
-        'name': _nameCtrl.text.trim(),
-        'email': _emailCtrl.text.trim(),
-        'phone': _phoneCtrl.text.trim(),
-        'role': roleString,
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-      if (_role == 'supplier') {
-        data.addAll({
-          'company': _companyCtrl.text.trim(),
-          'cnic': _cnicCtrl.text.trim(),
-          'city': _cityCtrl.text.trim(),
-        });
-      }
-      if (_photo != null) {
-        data['photoBase64'] = await compressImageToBase64(_photo!);
-      }
-      await db.collection('users').doc(uid).set(data);
-      await userCred.user!.updateDisplayName(roleString);
-      if (!mounted) return;
-      _msg('Account created. Please login.');
-      Navigator.pop(context);
-    } catch (e) {
-      _msg('Error: $e');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  void _msg(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
-
-  Future<void> _googleRegisterOrLogin() async {
-    setState(() => _loading = true);
-    final user = await signInWithGoogle(context);
-    if (user != null) {
-      final docRef = db.collection('users').doc(user.uid);
-      final snap = await docRef.get();
-      if (!snap.exists) {
-        await docRef.set({
-          'uid': user.uid,
-          'name': user.displayName ?? '',
-          'email': user.email ?? '',
-          'phone': user.phoneNumber ?? '',
-          'photoBase64': '',
-          'role': 'user',
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-      }
-
-      // FIX: Robust Role Logic
-      final rawRole = (await docRef.get()).data()?['role'] as String? ?? 'user';
-      final role = rawRole.toLowerCase().trim();
-
-      if (!mounted) return;
-
-      if (role.contains('admin')) {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminHomeScreen()));
-      } else if (role.contains('supplier')) {
-        final type = role.contains('land') ? 'land' : 'electronics';
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)));
-      } else {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserHomeScreen()));
-      }
-    }
-    if (mounted) setState(() => _loading = false);
-  }
+  const _GoogleButton({this.onPressed, this.label = 'Continue with Google'});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Register')),
-      body: SafeArea(
-        child: LayoutBuilder(builder: (context, constraints) {
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: GestureDetector(
-                        onTap: _pickPhoto,
-                        child: CircleAvatar(
-                          radius: 45,
-                          backgroundImage: _photo != null ? MemoryImage(_photo!) : null,
-                          child: _photo == null ? const Icon(Icons.camera_alt, size: 30) : null,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-
-                    Row(
-                      children: [
-                        ChoiceChip(
-                          label: const Text('User'),
-                          selected: _role == 'user',
-                          onSelected: (_) => setState(() => _role = 'user'),
-                        ),
-                        const SizedBox(width: 12),
-                        ChoiceChip(
-                          label: const Text('Supplier'),
-                          selected: _role == 'supplier',
-                          onSelected: (_) => setState(() => _role = 'supplier'),
-                        ),
-                      ],
-                    ),
-                    if (_role == 'supplier') ...[
-                      const SizedBox(height: 12),
-                      Row(children: [
-                        ChoiceChip(
-                          label: const Text('Land'),
-                          selected: _supplierType == 'land',
-                          onSelected: (_) => setState(() => _supplierType = 'land'),
-                        ),
-                        const SizedBox(width: 12),
-                        ChoiceChip(
-                          label: const Text('Electronics'),
-                          selected: _supplierType == 'electronics',
-                          onSelected: (_) => setState(() => _supplierType = 'electronics'),
-                        ),
-                      ]),
-                    ],
-                    const SizedBox(height: 20),
-
-                    TextField(controller: _nameCtrl, decoration: _inputDecoration('Full Name')),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _emailCtrl,
-                      decoration: _inputDecoration('Email'),
-                      keyboardType: TextInputType.emailAddress,
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(controller: _phoneCtrl, decoration: _inputDecoration('Phone')),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _passCtrl,
-                      decoration: _inputDecoration(
-                        'Password',
-                        suffix: IconButton(
-                          icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
-                          onPressed: () => setState(() => _obscure = !_obscure),
-                        ),
-                      ),
-                      obscureText: _obscure,
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _confirmCtrl,
-                      decoration: _inputDecoration(
-                        'Confirm Password',
-                        suffix: IconButton(
-                          icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
-                          onPressed: () => setState(() => _obscure = !_obscure),
-                        ),
-                      ),
-                      obscureText: _obscure,
-                    ),
-
-                    if (_role == 'supplier') ...[
-                      const SizedBox(height: 10),
-                      TextField(controller: _companyCtrl, decoration: _inputDecoration('Company/Brand')),
-                      const SizedBox(height: 10),
-                      TextField(controller: _cnicCtrl, decoration: _inputDecoration('CNIC/NTN')),
-                      const SizedBox(height: 10),
-                      TextField(controller: _cityCtrl, decoration: _inputDecoration('City')),
-                    ],
-
-                    const SizedBox(height: 20),
-                    _loading
-                        ? const Center(child: CircularProgressIndicator())
-                        : ElevatedButton(
-                      onPressed: _register,
-                      style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                      child: const Text('Register'),
-                    ),
-                    const SizedBox(height: 16),
-
-                    if (_role == 'user') ...[
-                      InkWell(
-                        onTap: _loading ? null : _googleRegisterOrLogin,
-                        child: Container(
-                          height: 48,
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.black12),
-                            color: Colors.white,
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Image.network(
-                                'https://developers.google.com/identity/images/g-logo.png',
-                                height: 20,
-                                width: 20,
-                                errorBuilder: (_, __, ___) => const Icon(Icons.g_mobiledata),
-                              ),
-                              const SizedBox(width: 10),
-                              const Text('Register with Google'),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
+    return SizedBox(
+      height: 50,
+      child : OutlinedButton(
+        onPressed: onPressed,
+        style    : OutlinedButton.styleFrom(
+          backgroundColor: Colors.white,
+          side           : BorderSide(color: kTeal.withOpacity(0.3)),
+          shape          : RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children         : [
+            Image.network(
+              'https://developers.google.com/identity/images/g-logo.png',
+              height      : 20,
+              width       : 20,
+              errorBuilder: (_, __, ___) =>
+              const Icon(Icons.g_mobiledata, color: Colors.red),
             ),
-          );
-        }),
+            const SizedBox(width: 12),
+            Text(label,
+                style: GoogleFonts.poppins(
+                  color     : kTextPrimary,
+                  fontWeight: FontWeight.w600,
+                  fontSize  : 14,
+                )),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// Forgot Password Screen
-class ForgotPasswordScreen extends StatefulWidget {
-  const ForgotPasswordScreen({super.key});
-  @override
-  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
-}
+class _RoleChip extends StatelessWidget {
+  final String       label;
+  final IconData     icon;
+  final bool         selected;
+  final VoidCallback onTap;
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  final TextEditingController _emailCtrl = TextEditingController();
-  bool _loading = false;
-
-  @override
-  void dispose() {
-    _emailCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _reset() async {
-    final email = _emailCtrl.text.trim();
-    if (email.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter email')));
-      }
-      return;
-    }
-    setState(() => _loading = true);
-    try {
-      await auth.sendPasswordResetEmail(email: email);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reset email sent')));
-      }
-      if (mounted) Navigator.pop(context);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
+  const _RoleChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Reset Password')),
-      body: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(children: [
-          TextField(
-            controller: _emailCtrl,
-            decoration: _inputDecoration('Email'),
-            keyboardType: TextInputType.emailAddress,
-          ),
-          const SizedBox(height: 20),
-          _loading
-              ? const CircularProgressIndicator()
-              : ElevatedButton(
-            onPressed: _reset,
-            style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-            child: const Text('Send Reset Link'),
-          ),
-        ]),
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration   : const Duration(milliseconds: 200),
+        padding    : const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        decoration : BoxDecoration(
+          color       : selected ? kTeal : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border      : Border.all(
+              color: selected ? kTeal : kTeal.withOpacity(0.2)),
+          boxShadow   : selected
+              ? [
+            BoxShadow(
+              color     : kTeal.withOpacity(0.3),
+              blurRadius: 8,
+              offset    : const Offset(0, 3),
+            )
+          ]
+              : [],
+        ),
+        child: Row(
+          children: [
+            Icon(icon,
+                size : 16,
+                color: selected ? Colors.white : kTextSecondary),
+            const SizedBox(width: 6),
+            Text(label,
+                style: GoogleFonts.poppins(
+                  color     : selected ? Colors.white : kTextSecondary,
+                  fontWeight: FontWeight.w600,
+                  fontSize  : 13,
+                )),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// Input decoration helper
-InputDecoration _inputDecoration(String label, {Widget? prefix, Widget? suffix}) {
-  return InputDecoration(
-    labelText: label,
-    prefixIcon: prefix,
-    suffixIcon: suffix,
-    filled: true,
-    fillColor: Colors.transparent,
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+class _SectionLabel extends StatelessWidget {
+  final String text;
+  const _SectionLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) => Text(
+    text,
+    style: GoogleFonts.poppins(
+      fontWeight: FontWeight.w700,
+      fontSize  : 13,
+      color     : kTextPrimary,
+    ),
+  );
+}
+
+class _Field extends StatelessWidget {
+  final TextEditingController ctrl;
+  final String                label;
+  final IconData              icon;
+  final TextInputType?        type;
+
+  const _Field({
+    required this.ctrl,
+    required this.label,
+    required this.icon,
+    this.type,
+  });
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller  : ctrl,
+    keyboardType: type,
+    style       : GoogleFonts.poppins(fontSize: 14, color: kTextPrimary),
+    decoration  : _inputDecoration(label,
+        prefix: Icon(icon, color: kTeal, size: 20)),
+  );
+}
+
+class _PasswordField extends StatelessWidget {
+  final TextEditingController ctrl;
+  final String                label;
+  final bool                  obscure;
+  final VoidCallback          onToggle;
+
+  const _PasswordField({
+    required this.ctrl,
+    required this.label,
+    required this.obscure,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller : ctrl,
+    obscureText: obscure,
+    style      : GoogleFonts.poppins(fontSize: 14, color: kTextPrimary),
+    decoration : _inputDecoration(
+      label,
+      prefix: const Icon(Icons.lock_outline_rounded, color: kTeal, size: 20),
+      suffix: IconButton(
+        icon: Icon(
+          obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+          color: kTextSecondary,
+          size : 20,
+        ),
+        onPressed: onToggle,
+      ),
+    ),
   );
 }

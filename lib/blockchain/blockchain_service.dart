@@ -468,6 +468,32 @@ class BlockchainServiceEnhanced {
     return await _sendTransaction(transaction);
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // TENANT RENT PAYMENT
+  // ═══════════════════════════════════════════════════════════
+
+  /// Tenant pays rent on-chain for [propertyId].
+  ///
+  /// [amount] must be in Wei — use [etherToWei] before calling:
+  ///   final wei = blockchainService.etherToWei(0.05);
+  ///   final tx  = await blockchainService.payLandRent(propertyId: 42, amount: wei);
+  ///
+  /// Returns tx hash on success, null if the user rejected in their wallet.
+  Future<String?> payLandRent({
+    required int propertyId,
+    required BigInt amount,
+  }) async {
+    await init();
+    final function = _landContract.function('payRent');
+    final transaction = Transaction.callContract(
+      contract: _landContract,
+      function: function,
+      parameters: [BigInt.from(propertyId)],
+      value: EtherAmount.inWei(amount),   // MATIC sent with the call
+    );
+    return await _sendTransaction(transaction);
+  }
+
   Future<String?> transferLandFraction({
     required String toAddress,
     required int propertyId,
