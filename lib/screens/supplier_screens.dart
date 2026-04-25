@@ -12,6 +12,10 @@ import 'package:image/image.dart' as img;
 
 // Internal Imports
 import 'chat_screen.dart';
+import 'chat_list_screen.dart';
+import 'profile_screen.dart';
+import 'asset_screen.dart';
+import 'notification_screen.dart';
 import 'shared_screens.dart';
 import 'chat_list_screen.dart';
 import 'qr_generator_screen.dart';
@@ -235,15 +239,24 @@ class SupplierHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return  Scaffold(
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FE),
       appBar: AppBar(
-        toolbarHeight: 80, //
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
         automaticallyImplyLeading: false,
+        titleSpacing: 20,
         title: Row(
           children: [
-            const CircleAvatar(
-              backgroundColor: Colors.white24,
-              child: Icon(Icons.store, color: Colors.white),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A7F8F).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.store_rounded, color: Color(0xFF2A7F8F), size: 20),
             ),
             const SizedBox(width: 10),
             Column(
@@ -252,14 +265,14 @@ class SupplierHome extends StatelessWidget {
                 Text(
                   '${type.capitalize()} Supplier',
                   style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
                   ),
                 ),
                 const Text(
                   'My Assets',
-                  style: TextStyle(fontSize: 12, color: Colors.white70),
+                  style: TextStyle(fontSize: 12, color: Colors.black45, fontWeight: FontWeight.w400),
                 ),
               ],
             ),
@@ -267,7 +280,8 @@ class SupplierHome extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.account_balance_wallet_outlined, color: Colors.white),
+            icon: const Icon(Icons.account_balance_wallet_outlined),
+            color: Colors.black54,
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
           ),
           StreamBuilder<QuerySnapshot>(
@@ -283,7 +297,8 @@ class SupplierHome extends StatelessWidget {
                 isLabelVisible: unreadCount > 0,
                 offset: const Offset(-4, 4),
                 child: IconButton(
-                  icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+                  icon: const Icon(Icons.notifications_outlined),
+                  color: Colors.black54,
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const NotificationsScreen()),
@@ -295,22 +310,27 @@ class SupplierHome extends StatelessWidget {
           const SizedBox(width: 4),
         ],
       ),
-      body:
-      AssetManagementScreen(type: type),
+      body: AssetManagementScreen(type: type),
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          FloatingActionButton(
+          FloatingActionButton.small(
             heroTag: 'chat_fab',
-            mini: true,
-            child: const Icon(Icons.chat),
+            backgroundColor: Colors.white,
+            foregroundColor: const Color(0xFF2A7F8F),
+            elevation: 2,
+            child: const Icon(Icons.chat_bubble_outline_rounded),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatListScreen())),
           ),
           const SizedBox(height: 12),
-          FloatingActionButton(
+          FloatingActionButton.extended(
             heroTag: 'add_asset_fab',
-            child: const Icon(Icons.add),
+            backgroundColor: const Color(0xFF2A7F8F),
+            foregroundColor: Colors.white,
+            elevation: 2,
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Add Asset', style: TextStyle(fontWeight: FontWeight.w600)),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddAssetScreen(type: type))),
           ),
         ],
@@ -374,7 +394,7 @@ class AssetManagementScreen extends StatelessWidget {
 
                 if (!context.mounted) return;
 
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rent Distributed Successfully!'), backgroundColor: Colors.green));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rent Distributed Successfully!'), backgroundColor: const Color(0xFF2A7F8F)));
               } catch (e) {
                 if (context.mounted) {
                   // Display exact error from Blockchain Service
@@ -403,72 +423,315 @@ class AssetManagementScreen extends StatelessWidget {
       builder: (context, snap) {
         if (!snap.hasData) return const Center(child: CircularProgressIndicator());
         final docs = snap.data!.docs;
-        if (docs.isEmpty) return const Center(child: Text("No assets found"));
+        if (docs.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A7F8F).withOpacity(0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    type == 'land' ? Icons.landscape_rounded : Icons.devices_rounded,
+                    size: 48,
+                    color: const Color(0xFF2A7F8F),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text('No assets yet',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black54)),
+                const SizedBox(height: 6),
+                Text('Tap + Add Asset to mint your first NFT',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[400])),
+              ],
+            ),
+          );
+        }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
           itemCount: docs.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
           itemBuilder: (context, i) {
             final doc = docs[i];
             final data = doc.data() as Map<String, dynamic>;
-            // Safely cast blockchainTokenId: Firestore may return it as num/int.
             final rawTokenId = data['blockchainTokenId'];
             final tokenId = rawTokenId != null
-                ? (rawTokenId is int
-                ? rawTokenId
-                : int.tryParse(rawTokenId.toString()))
+                ? (rawTokenId is int ? rawTokenId : int.tryParse(rawTokenId.toString()))
                 : null;
+            final isMinted = tokenId != null;
+            final title = data['title'] ?? 'Untitled';
+            final price = data['price']?.toString() ?? '—';
 
-            return Card(
-              margin: const EdgeInsets.symmetric(vertical: 6),
-              child: Column(
-                children: [
-                  ListTile(
-                    title: Text(data['title'] ?? 'Untitled'),
-                    subtitle: Text('Price: ${data['price']}'),
-                    trailing: tokenId != null
-                        ? const Chip(label: Text('NFT Minted'), backgroundColor: Colors.greenAccent)
-                        : const Chip(label: Text('Draft'), backgroundColor: Colors.grey),
+            // Asset thumbnail image
+            final images = data['images'] as List?;
+            final hasImage = images != null && images.isNotEmpty;
+
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey[200]!),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
-                  ButtonBar(
-                    children: [
-                      if (type == 'land' && tokenId != null)
-                        TextButton.icon(
-                          icon: const Icon(Icons.monetization_on, color: Colors.amber),
-                          label: const Text('Distribute Rent'),
-                          onPressed: () => _showDistributeRentDialog(context, doc.id, tokenId),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+
+                  // ── Thumbnail image ───────────────────────────────
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                    child: hasImage
+                        ? Image.memory(
+                      base64Decode(images!.first as String),
+                      width: double.infinity,
+                      height: 160,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _imageFallback(type),
+                    )
+                        : _imageFallback(type),
+                  ),
+
+                  // ── Title + badge row ─────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                                color: Colors.black87),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      TextButton(
-                        child: const Text('QR Code'),
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => QRGeneratorScreen(
-                              assetId: doc.id,
-                              category: type,
-                              blockchainTokenId: tokenId,
-                              title: data['title'] ?? 'Asset',
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: isMinted
+                                ? const Color(0xFF2A7F8F).withOpacity(0.1)
+                                : Colors.grey[100],
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isMinted
+                                  ? const Color(0xFF2A7F8F).withOpacity(0.3)
+                                  : Colors.grey[300]!,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isMinted ? Icons.verified_rounded : Icons.edit_note_rounded,
+                                size: 11,
+                                color: isMinted ? const Color(0xFF2A7F8F) : Colors.grey[500],
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                isMinted ? 'NFT Minted' : 'Draft',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: isMinted ? const Color(0xFF2A7F8F) : Colors.grey[500],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ── Price + token row ─────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
+                    child: Row(
+                      children: [
+                        Icon(Icons.payments_outlined, size: 14, color: Colors.grey[400]),
+                        const SizedBox(width: 5),
+                        Text('PKR $price',
+                            style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87)),
+                        if (isMinted) ...[
+                          const Spacer(),
+                          Text('Token #$tokenId',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey[400],
+                                  fontFamily: 'monospace')),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  Divider(height: 1, color: Colors.grey[100]),
+
+                  // ── Action buttons — two rows for land, one row for electronics ──
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                    child: type == 'land' && isMinted
+                        ? Column(
+                      children: [
+                        // Row 1: Distribute Rent (full width)
+                        _actionButton(
+                          icon: Icons.monetization_on_rounded,
+                          label: 'Distribute Rent',
+                          color: Colors.amber[700]!,
+                          bgColor: Colors.amber[50]!,
+                          onTap: () => _showDistributeRentDialog(context, doc.id, tokenId!),
+                        ),
+                        const SizedBox(height: 8),
+                        // Row 2: QR Code + Edit
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _actionButton(
+                                icon: Icons.qr_code_rounded,
+                                label: 'QR Code',
+                                color: const Color(0xFF2A7F8F),
+                                bgColor: const Color(0xFF2A7F8F).withOpacity(0.08),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => QRGeneratorScreen(
+                                      assetId: doc.id,
+                                      category: type,
+                                      blockchainTokenId: tokenId,
+                                      title: data['title'] ?? 'Asset',
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _actionButton(
+                                icon: Icons.edit_rounded,
+                                label: 'Edit',
+                                color: Colors.indigo[600]!,
+                                bgColor: Colors.indigo[50]!,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => EditAssetScreen(assetId: doc.id, type: type),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    )
+                        : Row(
+                      children: [
+                        Expanded(
+                          child: _actionButton(
+                            icon: Icons.qr_code_rounded,
+                            label: 'QR Code',
+                            color: const Color(0xFF2A7F8F),
+                            bgColor: const Color(0xFF2A7F8F).withOpacity(0.08),
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => QRGeneratorScreen(
+                                  assetId: doc.id,
+                                  category: type,
+                                  blockchainTokenId: tokenId,
+                                  title: data['title'] ?? 'Asset',
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      TextButton(
-                        child: const Text('Edit'),
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => EditAssetScreen(assetId: doc.id, type: type),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _actionButton(
+                            icon: Icons.edit_rounded,
+                            label: 'Edit',
+                            color: Colors.indigo[600]!,
+                            bgColor: Colors.indigo[50]!,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => EditAssetScreen(assetId: doc.id, type: type),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  )
+                      ],
+                    ),
+                  ),
                 ],
               ),
             );
           },
         );
       },
+    );
+  }
+
+  Widget _actionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required Color bgColor,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 15, color: color),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
+                ),
+              ),
+            ],
+          )
+      ),
+    );
+  }
+
+  Widget _imageFallback(String type) {
+    return Container(
+      width: double.infinity,
+      height: 160,
+      color: const Color(0xFF2A7F8F).withOpacity(0.06),
+      child: Icon(
+        type == 'land' ? Icons.landscape_rounded : Icons.devices_rounded,
+        size: 48,
+        color: const Color(0xFF2A7F8F).withOpacity(0.35),
+      ),
     );
   }
 }
@@ -734,7 +997,7 @@ class _AssetFormState extends State<AssetForm> {
                   }
                 }
               },
-              style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50), backgroundColor: Colors.indigo),
+              style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50), backgroundColor: const Color(0xFF2A7F8F)),
               child: Text(widget.isEdit ? 'Save Changes' : 'Mint NFT & Upload to IPFS', style: const TextStyle(color: Colors.white, fontSize: 16)),
             ),
           ],
@@ -962,7 +1225,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Success! Asset Minted & Uploaded.'),
-          backgroundColor: Colors.green
+          backgroundColor: const Color(0xFF2A7F8F)
       ));
       await addTransaction(
         userId: auth.currentUser!.uid,
@@ -989,21 +1252,75 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
+        backgroundColor: const Color(0xFFF8F9FE),
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          leading: const SizedBox(),
+          title: Text(
+            'Add ${widget.type.capitalize()}',
+            style: const TextStyle(color: Colors.black87, fontSize: 17, fontWeight: FontWeight.w600),
+          ),
+          centerTitle: true,
+        ),
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 20),
-              Text(_statusMessage, style: const TextStyle(fontSize: 16), textAlign: TextAlign.center),
-            ],
+          child: Padding(
+            padding: const EdgeInsets.all(40),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A7F8F).withOpacity(0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const CircularProgressIndicator(
+                    color: Color(0xFF2A7F8F),
+                    strokeWidth: 3,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                Text(
+                  _statusMessage,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black87,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Please do not close this screen',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+                ),
+              ],
+            ),
           ),
         ),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text("Add ${widget.type.capitalize()}")),
+      backgroundColor: const Color(0xFFF8F9FE),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.chevron_left, size: 28),
+          color: Colors.black87,
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Add ${widget.type.capitalize()}',
+          style: const TextStyle(color: Colors.black87, fontSize: 17, fontWeight: FontWeight.w600),
+        ),
+        centerTitle: true,
+      ),
       body: AssetForm(
         type: widget.type,
         onSubmit: _handleCreate,
@@ -1145,7 +1462,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Asset updated successfully'),
-            backgroundColor: Colors.green,
+            backgroundColor: const Color(0xFF2A7F8F),
           ),
         );
         Navigator.pop(context);
@@ -1170,10 +1487,10 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: Colors.indigo[50],
+              color: const Color(0xFFE8F4F6),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, size: 18, color: Colors.indigo[300]),
+            child: Icon(icon, size: 18, color: const Color(0xFF2A7F8F)),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1213,14 +1530,14 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
           children: [
             Row(children: [
               if (icon != null) ...[
-                Icon(icon, size: 16, color: titleColor ?? Colors.indigo),
+                Icon(icon, size: 16, color: titleColor ?? const Color(0xFF2A7F8F)),
                 const SizedBox(width: 6),
               ],
               Text(title,
                   style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
-                      color: titleColor ?? Colors.indigo[800])),
+                      color: titleColor ?? const Color(0xFF1A4F5C))),
             ]),
             const SizedBox(height: 14),
             child,
@@ -1234,7 +1551,20 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Edit Asset')),
+        backgroundColor: const Color(0xFFF8F9FE),
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.chevron_left, size: 28),
+            color: Colors.black87,
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: const Text('Edit Asset',
+              style: TextStyle(color: Colors.black87, fontSize: 17, fontWeight: FontWeight.w600)),
+          centerTitle: true,
+        ),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -1245,88 +1575,99 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
     final category = (d['category'] ?? widget.type).toString();
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: const Color(0xFFF8F9FE),
       body: CustomScrollView(
         slivers: [
-          // ── Hero Header ───────────────────────────────────────────────
+          // ── App Bar ───────────────────────────────────────────────────
           SliverAppBar(
-            expandedHeight: 140,
             pinned: true,
+            backgroundColor: const Color(0xFFF8F9FE),
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.chevron_left, size: 28),
+              color: Colors.black87,
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: const Text(
+              'Edit Asset',
+              style: TextStyle(color: Colors.black87, fontSize: 17, fontWeight: FontWeight.w600),
+            ),
+            centerTitle: true,
+            expandedHeight: 120,
             flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.indigo[700]!, Colors.indigo[400]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: SafeArea(
-                  child: Padding(
-                    padding:
-                    const EdgeInsets.fromLTRB(20, 48, 20, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Text(title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 4),
-                        Row(children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.white24,
-                              borderRadius: BorderRadius.circular(20),
+              background: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 60, 20, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold),
                             ),
-                            child: Text(category.toUpperCase(),
-                                style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600)),
+                          ),
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[100],
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.grey[300]!),
+                            ),
+                            child: Text(
+                              category.toUpperCase(),
+                              style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600),
+                            ),
                           ),
                           if (isMinted) ...[
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 6),
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: Colors.green[400],
+                                color: const Color(0xFF2A7F8F).withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: const Color(0xFF2A7F8F).withOpacity(0.3)),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.verified,
-                                      color: Colors.white, size: 10),
+                                  const Icon(Icons.verified_rounded,
+                                      color: Color(0xFF2A7F8F), size: 10),
                                   const SizedBox(width: 4),
                                   Text(
-                                      'Token #${d['blockchainTokenId']}',
-                                      style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w600)),
+                                    'Token #${d['blockchainTokenId']}',
+                                    style: const TextStyle(
+                                        color: Color(0xFF2A7F8F),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600),
+                                  ),
                                 ],
                               ),
                             ),
                           ],
-                        ]),
-                      ],
-                    ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                   ),
                 ),
               ),
-              title: const Text('Edit Asset',
-                  style: TextStyle(color: Colors.white)),
-              titlePadding: const EdgeInsets.only(left: 56, bottom: 16),
             ),
-            iconTheme: const IconThemeData(color: Colors.white),
+            iconTheme: const IconThemeData(color: Colors.black87),
           ),
 
           // ── Body ─────────────────────────────────────────────────────
@@ -1415,10 +1756,10 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                       decoration: InputDecoration(
                         labelText: 'Price (PKR)',
                         filled: true,
-                        fillColor: Colors.grey[50],
+                        fillColor: const Color(0xFFF5F7F8),
                         prefixIcon: const Icon(
                             Icons.monetization_on_outlined,
-                            color: Colors.indigo),
+                            color: const Color(0xFF2A7F8F)),
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10)),
                         enabledBorder: OutlineInputBorder(
@@ -1436,10 +1777,10 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                         labelText: 'Description',
                         alignLabelWithHint: true,
                         filled: true,
-                        fillColor: Colors.grey[50],
+                        fillColor: const Color(0xFFF5F7F8),
                         prefixIcon: const Icon(
                             Icons.description_outlined,
-                            color: Colors.indigo),
+                            color: const Color(0xFF2A7F8F)),
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10)),
                         enabledBorder: OutlineInputBorder(
@@ -1541,9 +1882,9 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                             Icons.add_photo_alternate_outlined),
                         label: const Text('Add Images'),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.indigo,
+                          foregroundColor: const Color(0xFF2A7F8F),
                           side: const BorderSide(
-                              color: Colors.indigo),
+                              color: const Color(0xFF2A7F8F)),
                           shape: RoundedRectangleBorder(
                               borderRadius:
                               BorderRadius.circular(10)),
@@ -1572,14 +1913,14 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: Colors.indigo[50],
+                          color: const Color(0xFFE8F4F6),
                           borderRadius:
                           BorderRadius.circular(8),
                         ),
                         child: Row(children: [
                           Icon(Icons.insert_drive_file,
                               size: 18,
-                              color: Colors.indigo[400]),
+                              color: const Color(0xFF2A7F8F)),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
@@ -1603,9 +1944,9 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                         icon: const Icon(Icons.attach_file),
                         label: const Text('Attach Documents'),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.indigo,
+                          foregroundColor: const Color(0xFF2A7F8F),
                           side: const BorderSide(
-                              color: Colors.indigo),
+                              color: const Color(0xFF2A7F8F)),
                           shape: RoundedRectangleBorder(
                               borderRadius:
                               BorderRadius.circular(10)),
@@ -1623,7 +1964,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                     gradient: LinearGradient(
                       colors: _saving
                           ? [Colors.grey[400]!, Colors.grey[400]!]
-                          : [Colors.indigo[600]!, Colors.indigo[400]!],
+                          : [const Color(0xFF1A4F5C), const Color(0xFF2A7F8F)],
                     ),
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: _saving
@@ -1631,7 +1972,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                         : [
                       BoxShadow(
                         color:
-                        Colors.indigo.withOpacity(0.35),
+                        const Color(0xFF2A7F8F).withOpacity(0.35),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),

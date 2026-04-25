@@ -10,9 +10,16 @@ import 'wallet_screen.dart';
 import 'qr_scanner_enhanced.dart';
 import '../blockchain/blockchain_service.dart';
 import '../services/resale_service.dart';
+import 'notification_screen.dart';
 import 'resale_listing_sheet.dart';
+import 'asset_detail_screen.dart';
+import 'profile_screen.dart';
 
 final db = FirebaseFirestore.instance;
+
+// ═══════════════════════════════════════════════════════════
+// USER HOME SCREEN
+// ═══════════════════════════════════════════════════════════
 
 class UserHomeScreen extends StatefulWidget {
   const UserHomeScreen({super.key});
@@ -64,63 +71,86 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           ? null
           : _index == 2
           ? AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => setState(() => _index = 0),
-        ),
-        title: const Text("My Assets"),
-      )
+              leading: IconButton(
+                icon: const Icon(Icons.chevron_left),
+                onPressed: () => setState(() => _index = 0),
+              ),
+              title: const Text("My Assets"),
+            )
           : AppBar(
-        title: const Text("Marketplace"),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.account_balance_wallet),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
-          ),
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('notifications')
-                .where('receiverId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
-                .where('isRead', isEqualTo: false)
-                .snapshots(),
-            builder: (context, snapshot) {
-              int unreadCount = snapshot.data?.docs.length ?? 0;
-              return Badge(
-                label: Text(unreadCount.toString()),
-                isLabelVisible: unreadCount > 0,
-                offset: const Offset(-4, 4),
-                child: IconButton(
-                  icon: const Icon(Icons.notifications_none_rounded),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+              backgroundColor: Colors.white,
+              elevation: 0,
+              leading: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Image.asset('assets/logos.png', fit: BoxFit.contain),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.account_balance_wallet_outlined,
+                    color: Color(0xFF1A2E2E),
+                  ),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const WalletScreen()),
+                  ),
+                ),
+                StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('notifications')
+                      .where(
+                        'receiverId',
+                        isEqualTo: FirebaseAuth.instance.currentUser?.uid,
+                      )
+                      .where('isRead', isEqualTo: false)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    final unreadCount = snapshot.data?.docs.length ?? 0;
+                    return Badge(
+                      label: Text(unreadCount.toString()),
+                      isLabelVisible: unreadCount > 0,
+                      offset: const Offset(-4, 4),
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.notifications_none_rounded,
+                          color: Color(0xFF1A2E2E),
+                        ),
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const NotificationsScreen(),
+                          ),
+                        ),
+                      ),
                     );
                   },
                 ),
-              );
-            },
-          ),
-        ],
-      ),
-      floatingActionButton: _index == 0 ? FloatingActionButton(
-        heroTag: 'chat_fab',
-        child: const Icon(Icons.chat),
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ChatListScreen()),
-          );
-        },
-      ) : null,
+              ],
+            ),
+      floatingActionButton: _index == 0
+          ? FloatingActionButton(
+              heroTag: 'chat_fab',
+              child: const Icon(Icons.chat),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ChatListScreen()),
+              ),
+            )
+          : null,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
         onTap: _nav,
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
-          BottomNavigationBarItem(icon: Icon(Icons.qr_code_scanner), label: "Scan"),
-          BottomNavigationBarItem(icon: Icon(Icons.inventory), label: "My Assets"),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.qr_code_scanner),
+            label: "Scan",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.inventory),
+            label: "My Assets",
+          ),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
         ],
       ),
@@ -130,72 +160,210 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           _mainMarketplaceBody(),
           const SizedBox(), // Placeholder for Scan (handled by nav)
           const MyAssetsScreen(),
-          ProfileScreen(),        ],
+          ProfileScreen(),
+        ],
       ),
     );
   }
 
   Widget _mainMarketplaceBody() {
+    final isLand = _category == 'land';
+    final headline = isLand
+        ? 'Find Your\nBest Property 🏡'
+        : 'Find Your\nBest Device 📱';
+    final latestLabel = isLand ? 'Latest Property' : 'Latest Device';
+
     return SafeArea(
-      child: Column(
+      child: ListView(
+        padding: const EdgeInsets.only(bottom: 24),
         children: [
-          // Search bar
+          // ── Headline ─────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: "Search assets...",
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.filter_list),
-                  onPressed: _openFilters,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: Colors.grey[100],
+            padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
+            child: Text(
+              headline,
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                height: 1.25,
+                color: Color(0xFF1A2E2E),
               ),
-              onChanged: (v) => setState(() => _search = v.trim().toLowerCase()),
             ),
           ),
 
-          // Category selector
-          Container(
-            height: 56,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+          // ── Search bar ───────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               children: [
-                ChoiceChip(
-                  label: const Text("Land"),
-                  selected: _category == "land",
-                  onSelected: (_) => setState(() {
-                    _category = "land";
-                    _filters = {};
-                  }),
+                Expanded(
+                  child: Container(
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5F7F8),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: TextField(
+                      onChanged: (v) =>
+                          setState(() => _search = v.trim().toLowerCase()),
+                      decoration: const InputDecoration(
+                        hintText: 'Search your home...',
+                        hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
+                        prefixIcon: Icon(
+                          Icons.search,
+                          color: Colors.grey,
+                          size: 20,
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(vertical: 15),
+                      ),
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text("Electronics"),
-                  selected: _category == "electronics",
-                  onSelected: (_) => setState(() {
-                    _category = "electronics";
-                    _filters = {};
-                  }),
+                const SizedBox(width: 12),
+                GestureDetector(
+                  onTap: _openFilters,
+                  child: Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A4F5C),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.tune_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
+          const SizedBox(height: 20),
 
-          // Asset list
-          Expanded(
-            child: AssetListView(
-              category: _category,
-              search: _search,
-              filters: _filters,
+          // ── Category toggle ──────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                _categoryChip('land', 'Property', Icons.home_work_rounded),
+                const SizedBox(width: 10),
+                _categoryChip(
+                  'electronics',
+                  'Electronics',
+                  Icons.devices_rounded,
+                ),
+              ],
             ),
           ),
+          const SizedBox(height: 26),
+
+          // ── Latest 5 — horizontal scroll ─────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  latestLabel,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A2E2E),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {},
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF2A7F8F),
+                    padding: EdgeInsets.zero,
+                  ),
+                  child: const Text(
+                    'View All',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 230,
+            child: _LatestAssetsRow(
+              category: _category,
+              currentUserId: FirebaseAuth.instance.currentUser?.uid ?? '',
+            ),
+          ),
+          const SizedBox(height: 28),
+
+          // ── Listing — full grid ──────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: const [
+                Icon(
+                  Icons.list_alt_rounded,
+                  size: 20,
+                  color: Color(0xFF1A4F5C),
+                ),
+                SizedBox(width: 8),
+                Text(
+                  'Listing',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A2E2E),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          AssetListView(
+            category: _category,
+            search: _search,
+            filters: _filters,
+            shrinkWrap: true,
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _categoryChip(String value, String label, IconData icon) {
+    final selected = _category == value;
+    return GestureDetector(
+      onTap: () => setState(() {
+        _category = value;
+        _filters = {};
+      }),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF1A4F5C) : const Color(0xFFF5F7F8),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 15,
+              color: selected ? Colors.white : Colors.grey[600],
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? Colors.white : Colors.grey[700],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -215,17 +383,18 @@ class MyAssetsScreen extends StatefulWidget {
 class _MyAssetsScreenState extends State<MyAssetsScreen> {
   final BlockchainServiceEnhanced _blockchain = BlockchainServiceEnhanced();
   final ResaleService _resaleSvc = ResaleService();
+
   bool _loading = false;
+  // FIX #3 — guard against double-tap opening two sheets simultaneously
+  bool _listingInProgress = false;
 
   // ── Owned-asset state ────────────────────────────────────────
-  // Subscriptions are created once in initState and cancelled in dispose.
-  // We keep the latest snapshot from each query and merge on every update.
   List<QueryDocumentSnapshot> _ownedAssets = [];
-  bool  _assetsLoading = true;
+  bool _assetsLoading = true;
   String? _assetsError;
 
-  QuerySnapshot? _snap1; // ownerId  query
-  QuerySnapshot? _snap2; // ownerUid query
+  QuerySnapshot? _snap1;
+  QuerySnapshot? _snap2;
   StreamSubscription? _sub1;
   StreamSubscription? _sub2;
 
@@ -242,28 +411,41 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
         .collection('assets')
         .where('ownerId', isEqualTo: uid)
         .snapshots()
-        .listen((snap) {
-      _snap1 = snap;
-      _mergeAndSetState();
-    }, onError: (e) {
-      if (mounted) setState(() { _assetsError = e.toString(); _assetsLoading = false; });
-    });
+        .listen(
+          (snap) {
+            _snap1 = snap;
+            _mergeAndSetState();
+          },
+          onError: (e) {
+            if (mounted)
+              setState(() {
+                _assetsError = e.toString();
+                _assetsLoading = false;
+              });
+          },
+        );
 
     // Query 2 — ownerUid (used by some supplier upload flows)
     _sub2 = db
         .collection('assets')
         .where('ownerUid', isEqualTo: uid)
         .snapshots()
-        .listen((snap) {
-      _snap2 = snap;
-      _mergeAndSetState();
-    }, onError: (e) {
-      if (mounted) setState(() { _assetsError = e.toString(); _assetsLoading = false; });
-    });
+        .listen(
+          (snap) {
+            _snap2 = snap;
+            _mergeAndSetState();
+          },
+          onError: (e) {
+            if (mounted)
+              setState(() {
+                _assetsError = e.toString();
+                _assetsLoading = false;
+              });
+          },
+        );
   }
 
   void _mergeAndSetState() {
-    // Emit as soon as EITHER query resolves — don't wait for both.
     final seen = <String>{};
     final merged = <QueryDocumentSnapshot>[];
     for (final snap in [_snap1, _snap2]) {
@@ -274,9 +456,9 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
     }
     if (mounted) {
       setState(() {
-        _ownedAssets  = merged;
+        _ownedAssets = merged;
         _assetsLoading = false;
-        _assetsError  = null;
+        _assetsError = null;
       });
     }
   }
@@ -289,7 +471,20 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
   }
 
   String _formatDate(DateTime dt) {
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
   }
 
@@ -302,35 +497,57 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
     try {
       await _ensureWalletConnected();
       final tx = await _blockchain.claimLandRent(propertyId);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Transaction Sent! Waiting for confirmation...')));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Transaction Sent! Waiting for confirmation...'),
+          ),
+        );
       if (tx != null) {
         await _blockchain.waitForConfirmation(tx);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Rent Claimed Successfully!'), backgroundColor: Colors.green));
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Rent Claimed Successfully!'),
+              backgroundColor: Color(0xFF2A7F8F),
+            ),
+          );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
   // ── Resale helpers ────────────────────────────────────────────────────────
+
+  // FIX #3 — double-tap guard + FIX #4 — removed redundant inner const Color
   Future<void> _listForResale(
-      String assetId, Map<String, dynamic> asset) async {
-    final listed = await ResaleListingSheet.show(
-      context,
-      assetId   : assetId,
-      assetData : asset,
-    );
-    if (listed && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content         : Text('Asset listed for resale on marketplace!'),
-          backgroundColor : Colors.green,
-        ),
+    String assetId,
+    Map<String, dynamic> asset,
+  ) async {
+    if (_listingInProgress) return;
+    if (mounted) setState(() => _listingInProgress = true);
+    try {
+      final listed = await ResaleListingSheet.show(
+        context,
+        assetId: assetId,
+        assetData: asset,
       );
+      if (listed && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Asset listed for resale on marketplace!'),
+            backgroundColor: Color(0xFF2A7F8F), // FIX #4 — no redundant const
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _listingInProgress = false);
     }
   }
 
@@ -338,19 +555,19 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title  : const Text('Remove Listing'),
+        title: const Text('Remove Listing'),
         content: const Text(
-            'This will hide the asset from the marketplace. You can re-list it at any time.'),
+          'This will hide the asset from the marketplace. You can re-list it at any time.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style    : ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child    : const Text('Remove',
-                style: TextStyle(color: Colors.white)),
+            child: const Text('Remove', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -358,16 +575,17 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
     if (confirmed != true) return;
     try {
       await _resaleSvc.removeListing(assetId);
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Listing removed. Asset hidden from marketplace.')),
+          const SnackBar(
+            content: Text('Listing removed. Asset hidden from marketplace.'),
+          ),
         );
-      }
     } catch (e) {
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
-      }
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
     }
   }
 
@@ -377,21 +595,38 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Submit Blockchain Review"),
-        content: TextField(controller: txtCtrl,
-            decoration: const InputDecoration(hintText: "Enter your review..."), maxLines: 3),
+        content: TextField(
+          controller: txtCtrl,
+          decoration: const InputDecoration(hintText: "Enter your review..."),
+          maxLines: 3,
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel"),
+          ),
           ElevatedButton(
             onPressed: () async {
               if (txtCtrl.text.isEmpty) return;
               Navigator.pop(ctx);
               try {
                 await _ensureWalletConnected();
-                await _blockchain.submitElectronicsReview(tokenId: tokenId, reviewText: txtCtrl.text);
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Review Transaction Sent!"), backgroundColor: Colors.green));
+                await _blockchain.submitElectronicsReview(
+                  tokenId: tokenId,
+                  reviewText: txtCtrl.text,
+                );
+                if (mounted)
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Review Transaction Sent!"),
+                      backgroundColor: Color(0xFF2A7F8F),
+                    ),
+                  );
               } catch (e) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+                if (mounted)
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text("Error: $e")));
               }
             },
             child: const Text("Submit"),
@@ -406,10 +641,12 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Center(child: Text("Login required"));
 
-    // ── Loading ──────────────────────────────────────────────
-    if (_assetsLoading) return const Center(child: CircularProgressIndicator());
+    if (_assetsLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFF1A4F5C)),
+      );
+    }
 
-    // ── Error ────────────────────────────────────────────────
     if (_assetsError != null) {
       return Center(
         child: Padding(
@@ -419,280 +656,506 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
             children: [
               const Icon(Icons.error_outline, size: 48, color: Colors.red),
               const SizedBox(height: 12),
-              Text('Could not load assets:\n$_assetsError',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red, fontSize: 13)),
+              Text(
+                'Could not load assets:\n$_assetsError',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red, fontSize: 13),
+              ),
             ],
           ),
         ),
       );
     }
 
-    // ── Empty ────────────────────────────────────────────────
     if (_ownedAssets.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            const Text("No assets owned yet"),
-            TextButton(
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Go to Home tab to buy assets"))),
-              child: const Text("Browse Marketplace"),
-            ),
-          ],
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 24),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F4F6),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(
+                  Icons.inventory_2_outlined,
+                  size: 34,
+                  color: Color(0xFF1A4F5C),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                "No assets owned yet",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1A2E2E),
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                "Assets you buy or receive will appear here.",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: Colors.grey, height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Go to Home tab to buy assets")),
+                ),
+                child: const Text("Browse Marketplace"),
+              ),
+            ],
+          ),
         ),
       );
     }
 
-    // ── Asset list ───────────────────────────────────────────
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: _ownedAssets.length,
-      itemBuilder: (context, index) {
-        final assetDoc = _ownedAssets[index];
-        final asset    = assetDoc.data() as Map<String, dynamic>;
-        final assetId  = assetDoc.id;
+    return Container(
+      color: const Color(0xFFF5F7F8),
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        itemCount: _ownedAssets.length,
+        itemBuilder: (context, index) {
+          final assetDoc = _ownedAssets[index];
+          final asset = assetDoc.data() as Map<String, dynamic>;
+          final assetId = assetDoc.id;
 
-        final tokenId          = asset['blockchainTokenId'] as int?;
-        final title            = (asset['title'] as String?) ?? 'Unknown Asset';
-        final imgList          = asset['images'] as List?;
+          final tokenId = asset['blockchainTokenId'] as int?;
+          final title = (asset['title'] as String?) ?? 'Unknown Asset';
+          final imgList = asset['images'] as List?;
 
-        // Safe: first element might be a String, a Map, or anything else
-        String? firstImg;
-        if (imgList != null && imgList.isNotEmpty) {
-          final raw = imgList.first;
-          if (raw is String) firstImg = raw;
-        }
+          String? firstImg;
+          if (imgList != null && imgList.isNotEmpty) {
+            final raw = imgList.first;
+            if (raw is String) firstImg = raw;
+          }
 
-        final resolvedCategory = (asset['category'] as String?) ?? 'land';
-        final transferredAt    = asset['transferredAt'] as Timestamp?;
-        final warrantyActivatedAt = resolvedCategory == 'electronics' ? transferredAt : null;
-        final fractionAmount   = asset['fractionAmount'] as int?;
+          final resolvedCategory = (asset['category'] as String?) ?? 'land';
+          final transferredAt = asset['transferredAt'] as Timestamp?;
+          final warrantyActivatedAt = resolvedCategory == 'electronics'
+              ? transferredAt
+              : null;
+          final fractionAmount = asset['fractionAmount'] as int?;
 
-        // Wrap each card in an ErrorWidget boundary so one bad item
-        // never crashes the whole list.
-        return _SafeCard(
-          key: ValueKey(assetId),
-          child: Card(
-            elevation: 3,
-            margin: const EdgeInsets.only(bottom: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: assetId))),
-              child: Column(
-                children: [
-                  // ── Header ──────────────────────────────────────
-                  ListTile(
-                    contentPadding: const EdgeInsets.all(10),
-                    leading: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: buildAssetImage(firstImg, width: 60, height: 60),
-                    ),
-                    title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(
-                      resolvedCategory == 'land' ? 'Fractional Land Ownership' : 'Electronic Device',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                    ),
-                    trailing: tokenId != null
-                        ? Chip(
-                      avatar: const Icon(Icons.verified, size: 14, color: Colors.white),
-                      label: const Text('NFT', style: TextStyle(color: Colors.white, fontSize: 11)),
-                      backgroundColor: Colors.green[700],
-                      visualDensity: VisualDensity.compact,
-                    )
-                        : const Chip(label: Text('Pending'), visualDensity: VisualDensity.compact),
+          return _SafeCard(
+            key: ValueKey(assetId),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.06),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
                   ),
-
-                  const Divider(height: 1),
-
-                  // ── Category panel ───────────────────────────────
-                  if (resolvedCategory == 'land') ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-                      child: Row(
-                        children: [
-                          Icon(Icons.pie_chart, size: 16, color: Colors.teal[700]),
-                          const SizedBox(width: 6),
-                          Text(
-                            fractionAmount != null ? 'Fractions Owned: $fractionAmount' : 'Fractional Owner',
-                            style: TextStyle(color: Colors.teal[800], fontWeight: FontWeight.w600, fontSize: 13),
-                          ),
-                        ],
-                      ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(24),
+                  // FIX #2 — navigate to detail; resale is also accessible
+                  // from _buildResaleRow below so the card tap stays as detail view
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AssetDetailScreen(assetId: assetId),
                     ),
-                    if (tokenId != null)
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── Header ───────────────────────────────────────
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Flexible prevents unconstrained-width layout error
-                            Flexible(
-                              child: FutureBuilder<BigInt>(
-                                future: _blockchain.getUnclaimedRent(user.uid, tokenId),
-                                builder: (c, s) {
-                                  if (s.hasError) return const Text('Rent: —', style: TextStyle(fontSize: 12));
-                                  final rent = s.data ?? BigInt.zero;
-                                  return Text(
-                                    'Unclaimed: ${_blockchain.weiToEther(rent)} MATIC',
-                                    style: TextStyle(color: Colors.blue[800], fontWeight: FontWeight.bold, fontSize: 12),
-                                    overflow: TextOverflow.ellipsis,
-                                  );
-                                },
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(18),
+                              child: buildAssetImage(
+                                firstImg,
+                                width: 78,
+                                height: 78,
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            // Button must NOT use Size.fromHeight inside a Row
-                            ElevatedButton.icon(
-                              icon: _loading
-                                  ? const SizedBox(width: 14, height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                  : const Icon(Icons.monetization_on, size: 15),
-                              label: const Text('Claim Rent', style: TextStyle(fontSize: 12)),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                // Explicit non-infinite minimumSize overrides any theme Size.fromHeight()
-                                minimumSize: const Size(0, 36),
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF1A2E2E),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    resolvedCategory == 'land'
+                                        ? 'Fractional Land Ownership'
+                                        : 'Electronic Device',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              onPressed: _loading ? null : () => _claimRent(tokenId),
+                            ),
+                            const SizedBox(width: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: tokenId != null
+                                    ? const Color(0xFF1A4F5C)
+                                    : Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(18),
+                                boxShadow: tokenId != null
+                                    ? [
+                                        BoxShadow(
+                                          color: const Color(
+                                            0xFF1A4F5C,
+                                          ).withOpacity(0.18),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    tokenId != null
+                                        ? Icons.verified
+                                        : Icons.schedule_rounded,
+                                    size: 14,
+                                    color: tokenId != null
+                                        ? Colors.white
+                                        : Colors.grey.shade700,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    tokenId != null ? 'NFT' : 'Pending',
+                                    style: TextStyle(
+                                      color: tokenId != null
+                                          ? Colors.white
+                                          : Colors.grey.shade700,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
                       ),
-                  ] else ...[
-                    if (warrantyActivatedAt != null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.blue[50],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.blue[200]!),
+
+                      // ── Category panel ────────────────────────────────
+                      if (resolvedCategory == 'land') ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F4F6),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: const Color(0xFFB0D8DE),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.pie_chart,
+                                  size: 16,
+                                  color: Color(0xFF1A4F5C),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  fractionAmount != null
+                                      ? 'Fractions Owned: $fractionAmount'
+                                      : 'Fractional Owner',
+                                  style: const TextStyle(
+                                    color: Color(0xFF1A4F5C),
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.verified_user, size: 16, color: Colors.blue[700]),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Warranty Activated',
-                                        style: TextStyle(fontWeight: FontWeight.bold,
-                                            color: Colors.blue[800], fontSize: 12)),
-                                    Text(_formatDate(warrantyActivatedAt.toDate()),
-                                        style: TextStyle(color: Colors.blue[700], fontSize: 11)),
-                                  ],
+                        ),
+                        if (tokenId != null)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Flexible(
+                                  child: FutureBuilder<BigInt>(
+                                    future: _blockchain.getUnclaimedRent(
+                                      user.uid,
+                                      tokenId,
+                                    ),
+                                    builder: (c, s) {
+                                      if (s.hasError)
+                                        return const Text(
+                                          'Rent: —',
+                                          style: TextStyle(fontSize: 12),
+                                        );
+                                      final rent = s.data ?? BigInt.zero;
+                                      return Text(
+                                        'Unclaimed: ${_blockchain.weiToEther(rent)} MATIC',
+                                        style: const TextStyle(
+                                          color: Color(0xFF1A4F5C),
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  icon: _loading
+                                      ? const SizedBox(
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.monetization_on,
+                                          size: 15,
+                                        ),
+                                  label: const Text(
+                                    'Claim Rent',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF2A7F8F),
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    minimumSize: const Size(0, 38),
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  onPressed: _loading
+                                      ? null
+                                      : () => _claimRent(tokenId),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ] else ...[
+                        if (warrantyActivatedAt != null)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE8F4F6),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: const Color(0xFFB0D8DE),
                                 ),
                               ),
-                            ],
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.verified_user,
+                                    size: 16,
+                                    color: Color(0xFF2A7F8F),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Warranty Activated',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF1A4F5C),
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                        Text(
+                                          _formatDate(
+                                            warrantyActivatedAt.toDate(),
+                                          ),
+                                          style: const TextStyle(
+                                            color: Color(0xFF2A7F8F),
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    if (tokenId != null)
+                      ],
+
+                      // ── Resale status + actions ───────────────────────
+                      // FIX #1 — pass tokenId so the row can apply the NFT guard
                       Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.rate_review, size: 16),
-                            label: const Text('Write Immutable Review', style: TextStyle(fontSize: 13)),
-                            onPressed: () => _submitReview(tokenId),
-                          ),
-                        ),
+                        padding: const EdgeInsets.fromLTRB(4, 2, 4, 10),
+                        child: _buildResaleRow(assetId, asset, tokenId),
                       ),
-                  ],
-
-                  const SizedBox(height: 4),
-
-                  // ── Resale status + actions ──────────────────────────
-                  const Divider(height: 1),
-                  _buildResaleRow(assetId, asset),
-                ],
+                    ],
+                  ),
+                ),
               ),
             ),
-          ), // end Card
-        ); // end _SafeCard
-      },
+          );
+        },
+      ),
     );
   }
 
-
-// ── Resale action row ─────────────────────────────────────────────────────
-  Widget _buildResaleRow(String assetId, Map<String, dynamic> asset) {
+  // ── Resale action row ─────────────────────────────────────────────────────
+  // FIX #1 — added tokenId parameter; shows "Pending NFT" when not minted
+  Widget _buildResaleRow(
+    String assetId,
+    Map<String, dynamic> asset,
+    int? tokenId, // ← NEW parameter
+  ) {
     final isListed = asset['isListedForResale'] == true;
     final resalePrice = asset['resalePrice'];
+    // NFT must be minted before the asset can be listed for resale
+    final canList = tokenId != null;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
-          // Status chip
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color       : isListed ? Colors.orange[50] : Colors.green[50],
-              borderRadius: BorderRadius.circular(20),
-              border      : Border.all(
-                  color: isListed ? Colors.orange[300]! : Colors.green[300]!),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isListed ? Icons.storefront : Icons.inventory_2_outlined,
-                  size : 13,
-                  color: isListed ? Colors.orange[700] : Colors.green[700],
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  isListed
-                      ? (resalePrice != null
-                      ? 'Listed · PKR $resalePrice'
-                      : 'Listed for Resale')
-                      : 'In Portfolio',
-                  style: TextStyle(
-                    fontSize   : 11,
-                    fontWeight : FontWeight.w600,
-                    color      : isListed ? Colors.orange[700] : Colors.green[700],
+          // Status chip — only shown when actively listed
+          if (isListed)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.orange[300]!),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.storefront, size: 13, color: Colors.orange[700]),
+                  const SizedBox(width: 4),
+                  Text(
+                    resalePrice != null
+                        ? 'Listed · PKR $resalePrice'
+                        : 'Listed for Resale',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange[700],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
 
           const Spacer(),
 
-          // Action button
-          if (isListed)
+          // FIX #1 — three-branch decision tree
+          if (!canList)
+            // NFT not yet minted — disable resale quietly
+            Tooltip(
+              message: 'NFT must be minted before listing',
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.hourglass_top_rounded,
+                    size: 13,
+                    color: Colors.grey[400],
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Pending NFT',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                  ),
+                ],
+              ),
+            )
+          else if (isListed)
             TextButton.icon(
-              onPressed : () => _removeListing(assetId),
-              icon      : const Icon(Icons.remove_circle_outline, size: 15),
-              label     : const Text('Remove Listing', style: TextStyle(fontSize: 12)),
-              style     : TextButton.styleFrom(
-                foregroundColor : Colors.red[700],
-                visualDensity   : VisualDensity.compact,
-                padding         : const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              onPressed: () => _removeListing(assetId),
+              icon: const Icon(Icons.remove_circle_outline, size: 15),
+              label: const Text(
+                'Remove Listing',
+                style: TextStyle(fontSize: 12),
+              ),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red[700],
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               ),
             )
           else
             TextButton.icon(
-              onPressed : () => _listForResale(assetId, asset),
-              icon      : const Icon(Icons.sell_outlined, size: 15),
-              label     : const Text('List for Resale', style: TextStyle(fontSize: 12)),
-              style     : TextButton.styleFrom(
-                foregroundColor : Colors.blue[700],
-                visualDensity   : VisualDensity.compact,
-                padding         : const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              // FIX #3 — disabled while another sheet is opening
+              onPressed: _listingInProgress
+                  ? null
+                  : () => _listForResale(assetId, asset),
+              icon: const Icon(Icons.sell_outlined, size: 15),
+              label: const Text(
+                'List for Resale',
+                style: TextStyle(fontSize: 12),
+              ),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF2A7F8F),
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               ),
             ),
         ],
@@ -701,7 +1164,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
   }
 }
 
-// ── Error-boundary wrapper — prevents one bad card from crashing the list ──
+// ── Error-boundary wrapper ─────────────────────────────────────────────────
 class _SafeCard extends StatelessWidget {
   final Widget child;
   const _SafeCard({super.key, required this.child});
@@ -720,8 +1183,10 @@ class _SafeCard extends StatelessWidget {
               const Icon(Icons.broken_image, color: Colors.grey),
               const SizedBox(width: 12),
               Expanded(
-                child: Text('Could not display asset',
-                    style: TextStyle(color: Colors.grey[600])),
+                child: Text(
+                  'Could not display asset',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
               ),
             ],
           ),
@@ -732,32 +1197,243 @@ class _SafeCard extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ASSET LIST VIEW (Search/Filter Logic)
+// LATEST ASSETS — horizontal scroll, last 5
+// ═══════════════════════════════════════════════════════════
+
+class _LatestAssetsRow extends StatelessWidget {
+  final String category;
+  final String currentUserId;
+
+  const _LatestAssetsRow({required this.category, required this.currentUserId});
+
+  @override
+  Widget build(BuildContext context) {
+    final query = db
+        .collection('assets')
+        .where('category', isEqualTo: category)
+        .where('isMinted', isEqualTo: true)
+        .orderBy('createdAt', descending: true)
+        .limit(5);
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: query.snapshots(),
+      builder: (context, snap) {
+        if (!snap.hasData)
+          return const Center(child: CircularProgressIndicator());
+
+        final docs = snap.data!.docs.where((doc) {
+          final d = doc.data() as Map<String, dynamic>;
+          final owner = (d['ownerId'] ?? d['ownerUid']) as String?;
+          if (currentUserId.isNotEmpty && owner == currentUserId) return false;
+          if (d['isStolenReported'] == true) return false;
+          final wasPurchased = d['previousOwnerId'] != null;
+          return wasPurchased
+              ? d['isListedForResale'] == true
+              : d['isListedForResale'] != false;
+        }).toList();
+
+        if (docs.isEmpty) {
+          return Center(
+            child: Text(
+              'No ${category == 'land' ? 'properties' : 'devices'} yet',
+              style: const TextStyle(color: Colors.grey),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          itemCount: docs.length,
+          itemBuilder: (_, i) {
+            final doc = docs[i];
+            final data = doc.data() as Map<String, dynamic>;
+            final imgList = data['images'] as List?;
+            String? firstImg;
+            if (imgList != null && imgList.isNotEmpty && imgList[0] is String) {
+              firstImg = imgList[0] as String;
+            }
+            final city = (data['city'] ?? data['location'] ?? '').toString();
+            final price = data['price'] ?? 0;
+            final isResale =
+                data['isListedForResale'] == true &&
+                data['previousOwnerId'] != null;
+
+            return GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AssetDetailScreen(assetId: doc.id),
+                ),
+              ),
+              child: Container(
+                width: 160,
+                margin: const EdgeInsets.only(right: 14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.07),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Image
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(16),
+                            ),
+                            child: buildAssetImage(
+                              firstImg,
+                              width: double.infinity,
+                              height: double.infinity,
+                            ),
+                          ),
+                          if (isResale)
+                            Positioned(
+                              top: 8,
+                              left: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange[700],
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text(
+                                  'Resale',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: Container(
+                              width: 26,
+                              height: 26,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.85),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.favorite_border_rounded,
+                                size: 14,
+                                color: Color(0xFF1A4F5C),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Info
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            data['title'] ?? 'Asset',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Color(0xFF1A2E2E),
+                            ),
+                          ),
+                          if (city.isNotEmpty) ...[
+                            const SizedBox(height: 3),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.location_on_outlined,
+                                  size: 11,
+                                  color: Colors.grey,
+                                ),
+                                const SizedBox(width: 2),
+                                Expanded(
+                                  child: Text(
+                                    city,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          const SizedBox(height: 6),
+                          Text(
+                            'PKR $price',
+                            style: const TextStyle(
+                              color: Color(0xFF2A7F8F),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ASSET LIST VIEW (Search / Filter Logic)
 // ═══════════════════════════════════════════════════════════
 
 class AssetListView extends StatelessWidget {
   final String category;
   final String search;
   final Map<String, dynamic> filters;
+  final bool shrinkWrap;
 
   const AssetListView({
     super.key,
     required this.category,
     required this.search,
     required this.filters,
+    this.shrinkWrap = false,
   });
 
   Query _buildQuery() {
-    // 1. FIXED QUERY: Changed 'verified' to 'isMinted' to match supplier upload
     Query q = db
         .collection("assets")
         .where("category", isEqualTo: category)
         .where("isMinted", isEqualTo: true);
 
     if (filters["minPrice"] != null) {
-      q = q.where("price", isGreaterThanOrEqualTo: (filters["minPrice"] as num).toInt());
+      q = q.where(
+        "price",
+        isGreaterThanOrEqualTo: (filters["minPrice"] as num).toInt(),
+      );
     }
-
     if (filters["maxPrice"] != null) {
       q = q.where(
         "price",
@@ -771,66 +1447,48 @@ class AssetListView extends StatelessWidget {
   bool _matchesSearch(Map<String, dynamic> d) {
     if (search.isEmpty) return true;
     final title = (d["title"] ?? "").toString().toLowerCase();
-    final city = (d["city"] ?? "").toString().toLowerCase();
     final brand = (d["brand"] ?? "").toString().toLowerCase();
     return title.contains(search) || brand.contains(search);
   }
 
   bool _matchesFilters(Map<String, dynamic> d) {
-
-    // Brand filter (electronics)
     if (filters["brand"] != null && filters["brand"].toString().isNotEmpty) {
       if ((d["brand"] ?? "").toString().toLowerCase() !=
-          filters["brand"].toString().toLowerCase()) {
+          filters["brand"].toString().toLowerCase())
         return false;
-      }
     }
-
-    // City / Location filter (land)
     if (filters["city"] != null && filters["city"].toString().isNotEmpty) {
       if ((d["city"] ?? "").toString().toLowerCase() !=
-          filters["city"].toString().toLowerCase()) {
+          filters["city"].toString().toLowerCase())
         return false;
-      }
     }
-
-    // 🔹 Electronics Specifications
     if (category == "electronics") {
-
       if (filters["ram"] != null && filters["ram"].toString().isNotEmpty) {
-        if ((d["ram"] ?? "").toString() != filters["ram"].toString()) {
+        if ((d["ram"] ?? "").toString() != filters["ram"].toString())
           return false;
-        }
       }
-
-      if (filters["storage"] != null && filters["storage"].toString().isNotEmpty) {
-        if ((d["storage"] ?? "").toString() != filters["storage"].toString()) {
+      if (filters["storage"] != null &&
+          filters["storage"].toString().isNotEmpty) {
+        if ((d["storage"] ?? "").toString() != filters["storage"].toString())
           return false;
-        }
       }
-
-      if (filters["condition"] != null && filters["condition"].toString().isNotEmpty) {
+      if (filters["condition"] != null &&
+          filters["condition"].toString().isNotEmpty) {
         if ((d["condition"] ?? "").toString().toLowerCase() !=
-            filters["condition"].toString().toLowerCase()) {
+            filters["condition"].toString().toLowerCase())
           return false;
-        }
       }
     }
-
-    // 🔹 Land Specifications
     if (category == "land") {
-
       if (filters["area"] != null && filters["area"].toString().isNotEmpty) {
-        if ((d["area"] ?? "").toString() != filters["area"].toString()) {
+        if ((d["area"] ?? "").toString() != filters["area"].toString())
           return false;
-        }
       }
-
-      if (filters["landType"] != null && filters["landType"].toString().isNotEmpty) {
+      if (filters["landType"] != null &&
+          filters["landType"].toString().isNotEmpty) {
         if ((d["landType"] ?? "").toString().toLowerCase() !=
-            filters["landType"].toString().toLowerCase()) {
+            filters["landType"].toString().toLowerCase())
           return false;
-        }
       }
     }
     return true;
@@ -842,42 +1500,29 @@ class AssetListView extends StatelessWidget {
       stream: _buildQuery().snapshots(),
       builder: (context, snap) {
         if (snap.hasError) return Center(child: Text("Error: ${snap.error}"));
-        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+        if (!snap.hasData)
+          return const Center(child: CircularProgressIndicator());
 
         final docs = snap.data!.docs;
-        final filtered = docs.where((e) {
-          final data = e.data() as Map<String, dynamic>;
-          return _matchesFilters(data) && _matchesSearch(data);
-        }).toList();
+        final filtered = docs
+            .where(
+              (e) =>
+                  _matchesFilters(e.data() as Map<String, dynamic>) &&
+                  _matchesSearch(e.data() as Map<String, dynamic>),
+            )
+            .toList();
 
-        // ── Step 5: Only show assets that are actively listed for sale ──
-        //
-        // Two cases to handle:
-        //   A) Original supplier listing (never purchased):
-        //      → previousOwnerId is null, isListedForResale may be null (legacy) or true (new).
-        //      → Show unless explicitly set to false.
-        //   B) Asset that was purchased by a user:
-        //      → previousOwnerId is set by _finalizeOwnership on every transfer.
-        //      → Only show if isListedForResale == true (owner explicitly re-listed it).
-        //      → This correctly hides legacy purchased assets even if isListedForResale is null.
         final currentUid = FirebaseAuth.instance.currentUser?.uid;
         final visible = filtered.where((doc) {
-          final d     = doc.data() as Map<String, dynamic>;
+          final d = doc.data() as Map<String, dynamic>;
           final owner = (d['ownerId'] ?? d['ownerUid']) as String?;
-
-          // Always hide from the owner — they use My Assets tab instead.
           if (currentUid != null && owner == currentUid) return false;
-
+          if (d['isStolenReported'] == true) return false;
           final isListedForResale = d['isListedForResale'];
-          final wasPurchased      = d['previousOwnerId'] != null;
-
-          if (wasPurchased) {
-            // Purchased asset: must be explicitly re-listed to appear.
-            return isListedForResale == true;
-          } else {
-            // Original supplier listing: visible unless explicitly hidden.
-            return isListedForResale != false;
-          }
+          final wasPurchased = d['previousOwnerId'] != null;
+          return wasPurchased
+              ? isListedForResale == true
+              : isListedForResale != false;
         }).toList();
 
         if (visible.isEmpty) {
@@ -885,7 +1530,9 @@ class AssetListView extends StatelessWidget {
         }
 
         return GridView.builder(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          shrinkWrap: shrinkWrap,
+          physics: shrinkWrap ? const NeverScrollableScrollPhysics() : null,
           itemCount: visible.length,
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
@@ -908,7 +1555,7 @@ class AssetListView extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════
-// FILTER SHEET & ASSET GRID CARD
+// ASSET GRID CARD
 // ═══════════════════════════════════════════════════════════
 
 class AssetGridCard extends StatelessWidget {
@@ -916,7 +1563,12 @@ class AssetGridCard extends StatelessWidget {
   final Map<String, dynamic> data;
   final String currentUserId;
 
-  const AssetGridCard({super.key, required this.id, required this.data, required this.currentUserId});
+  const AssetGridCard({
+    super.key,
+    required this.id,
+    required this.data,
+    required this.currentUserId,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -926,73 +1578,221 @@ class AssetGridCard extends StatelessWidget {
       firstImg = imgList[0] as String;
     }
 
+    final city = (data['city'] ?? data['location'] ?? '').toString();
+    final price = data['price'] ?? 0;
+    final isResale = data['isListedForResale'] == true;
+    final isStolen = data['isStolenReported'] == true;
+
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => AssetDetailScreen(assetId: id)),
       ),
-      child: Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.07),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Image ────────────────────────────────────────────
             Expanded(
               child: Stack(
                 children: [
                   ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                    child: buildAssetImage(firstImg, width: double.infinity, height: double.infinity),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(16),
+                    ),
+                    child: buildAssetImage(
+                      firstImg,
+                      width: double.infinity,
+                      height: double.infinity,
+                    ),
                   ),
-                  // ── Resale badge ─────────────────────────────────────
-                  if (data['isListedForResale'] == true)
+                  if (isResale)
                     Positioned(
-                      top: 6, right: 6,
+                      top: 8,
+                      left: 8,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
-                          color       : Colors.orange[700],
+                          color: Colors.orange[700],
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Text(
                           'Resale',
                           style: TextStyle(
-                            color     : Colors.white,
-                            fontSize  : 10,
+                            color: Colors.white,
+                            fontSize: 9,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                     ),
+                  if (isStolen)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.red[700]!.withOpacity(0.92),
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(16),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.report_problem_rounded,
+                              color: Colors.white,
+                              size: 11,
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              '🚨 STOLEN — REPORTED',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.85),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.favorite_border_rounded,
+                        size: 16,
+                        color: Color(0xFF1A4F5C),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
+
+            // ── Info ─────────────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.all(8.0),
-              // 3. FIXED OVERFLOW: Added Flexible/overflow protection
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                      data['title'] ?? 'Asset',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.bold)
+                    data['title'] ?? 'Asset',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: Color(0xFF1A2E2E),
+                    ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                      "PKR ${data['price'] ?? 0}",
-                      style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)
+                  if (city.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on_outlined,
+                          size: 11,
+                          color: Colors.grey,
+                        ),
+                        const SizedBox(width: 2),
+                        Expanded(
+                          child: Text(
+                            city,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'PKR $price',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF2A7F8F),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AssetDetailScreen(assetId: id),
+                          ),
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1A4F5C),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            'View',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            )
+            ),
           ],
         ),
       ),
     );
   }
 }
+
+// ═══════════════════════════════════════════════════════════
+// FILTER SHEET
+// ═══════════════════════════════════════════════════════════
 
 class FilterSheet extends StatefulWidget {
   final String category;
@@ -1011,260 +1811,278 @@ class FilterSheet extends StatefulWidget {
 }
 
 class _FilterSheetState extends State<FilterSheet> {
+  String _priceSort = 'low';
+  String? _selectedCity;
+  String? _selectedArea;
 
-  double minPrice = 0;
-  double maxPrice = 10000000;
+  static const _cities = ['Lahore', 'Karachi', 'Islamabad', 'Rawalpindi'];
+  static const _areas = ['5 Marla', '10 Marla', '1 Kanal'];
 
-  TextEditingController _minPrice = TextEditingController();
-  TextEditingController _maxPrice = TextEditingController();
+  final _minCtrl = TextEditingController();
+  final _maxCtrl = TextEditingController();
 
-  String? selectedCity = "None";
-  String? selectedArea = "None";
-
-  final List<String> cities = [
-    "None",
-    "Lahore",
-    "Karachi",
-    "Islamabad",
-    "Rawalpindi",
-  ];
-
-  final List<String> areas = [
-    "None",
-    "5 Marla",
-    "10 Marla",
-    "1 Kanal",
-  ];
+  static const _teal = Color(0xFF1A4F5C);
+  static const _chipBg = Color(0xFFF5F7F8);
+  static const _labelClr = Color(0xFF1A2E2E);
 
   @override
   void initState() {
     super.initState();
-    _minPrice.text = "0";
-    _maxPrice.text = "0";
-    selectedCity = widget.existing["city"] ?? "None";
-    selectedArea = widget.existing["area"] ?? "None";;
+    _selectedCity = widget.existing['city'] as String?;
+    _selectedArea = widget.existing['area'] as String?;
+    _priceSort = (widget.existing['priceSort'] as String?) ?? 'low';
+    _minCtrl.text = widget.existing['minPrice']?.toString() ?? '';
+    _maxCtrl.text = widget.existing['maxPrice']?.toString() ?? '';
+  }
+
+  @override
+  void dispose() {
+    _minCtrl.dispose();
+    _maxCtrl.dispose();
+    super.dispose();
+  }
+
+  void _apply() {
+    Navigator.pop(context, {
+      'priceSort': _priceSort,
+      if (_selectedCity != null) 'city': _selectedCity,
+      if (_selectedArea != null && widget.category == 'land')
+        'area': _selectedArea,
+      if (double.tryParse(_minCtrl.text) != null)
+        'minPrice': double.parse(_minCtrl.text),
+      if (double.tryParse(_maxCtrl.text) != null)
+        'maxPrice': double.parse(_maxCtrl.text),
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      child: ListView(
-        controller: widget.controller,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-
-          const Text(
-            "FILTERS",
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.2,
+          const SizedBox(height: 10),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
             ),
           ),
+          const SizedBox(height: 6),
 
-          const SizedBox(height: 25),
-
-          /// ================= PRICE DROPDOWN =================
-          ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            childrenPadding: const EdgeInsets.only(bottom: 10),
-            title: const Text(
-              "By Price",
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-              ),
-            ),
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _minPrice,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: "Min",
-                        prefixText: "Rs ",
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 14,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade400),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(
-                            color: Colors.black87,
-                            width: 1.4,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _maxPrice,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: "Max",
-                        prefixText: "Rs ",
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 14,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade400),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(
-                            color: Colors.black87,
-                            width: 1.4,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-
-          /// ================= CITY DROPDOWN =================
-          ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            title: const Text(
-              "By City",
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            children: [
-              DropdownButtonFormField<String>(
-                value: selectedCity,
-                decoration: InputDecoration(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 14,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: Colors.grey.shade400),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(
-                      color: Colors.black87,
-                      width: 1.4,
-                    ),
-                  ),
-                ),
-                items: cities.map((city) {
-                  return DropdownMenuItem(
-                    value: city,
-                    child: Text(city),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  setState(() => selectedCity = value);
-                },
-              ),
-              const SizedBox(height: 15),
-            ],
-          ),
-
-          /// ================= AREA DROPDOWN (LAND ONLY) =================
-          if (widget.category == "land")
-            ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              title: const Text(
-                "By Area",
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 12, 0),
+            child: Row(
               children: [
-                DropdownButtonFormField<String>(
-                  value: selectedArea,
-                  decoration: InputDecoration(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 14,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: Colors.grey.shade400),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(
-                        color: Colors.black87,
-                        width: 1.4,
-                      ),
-                    ),
+                const Text(
+                  'Filter',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: _labelClr,
                   ),
-                  items: areas.map((area) {
-                    return DropdownMenuItem(
-                      value: area,
-                      child: Text(area),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() => selectedArea = value);
-                  },
                 ),
-                const SizedBox(height: 15),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.grey),
+                  onPressed: () => Navigator.pop(context),
+                ),
               ],
             ),
+          ),
+          const Divider(height: 1),
 
-          const SizedBox(height: 35),
-
-          /// ================= APPLY BUTTON =================
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          Expanded(
+            child: ListView(
+              controller: widget.controller,
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              children: [
+                _sectionLabel('Price'),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    _toggleBtn('Low to high', 'low', flex: 1),
+                    const SizedBox(width: 10),
+                    _toggleBtn('High to low', 'high', flex: 1),
+                  ],
                 ),
-              ),
-              onPressed: () {
-                final min = double.tryParse(_minPrice.text);
-                final max = double.tryParse(_maxPrice.text);
+                const SizedBox(height: 20),
 
-                Navigator.pop(context, {
-                  if (min != null) "minPrice": min,
-                  if (max != null) "maxPrice": max,
-                  if (selectedCity != null && selectedCity != "None")
-                    "city": selectedCity,
-                  if (selectedArea != null && selectedArea != "None")
-                    "area": selectedArea,
-                });
-              },
-              child: const Text(
-                "View Results",
-                style: TextStyle(fontSize: 16),
+                _sectionLabel('Price Range'),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: _priceField(_minCtrl, 'Min (Rs)')),
+                    const SizedBox(width: 12),
+                    Expanded(child: _priceField(_maxCtrl, 'Max (Rs)')),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                _sectionLabel('City'),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _cities
+                      .map(
+                        (c) => _selectChip(
+                          label: c,
+                          selected: _selectedCity == c,
+                          onTap: () => setState(
+                            () => _selectedCity = _selectedCity == c ? null : c,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+                const SizedBox(height: 20),
+
+                if (widget.category == 'land') ...[
+                  _sectionLabel('Plot Area'),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _areas
+                        .map(
+                          (a) => _selectChip(
+                            label: a,
+                            selected: _selectedArea == a,
+                            onTap: () => setState(
+                              () =>
+                                  _selectedArea = _selectedArea == a ? null : a,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+            child: SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: _apply,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _teal,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  'Apply Now',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String text) => Text(
+    text,
+    style: const TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w700,
+      color: _labelClr,
+    ),
+  );
+
+  Widget _toggleBtn(String label, String value, {int flex = 1}) {
+    final sel = _priceSort == value;
+    return Expanded(
+      flex: flex,
+      child: GestureDetector(
+        onTap: () => setState(() => _priceSort = value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: sel ? _teal : _chipBg,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: sel ? Colors.white : Colors.grey[600],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _selectChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? _teal : _chipBg,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: selected ? _teal : Colors.grey.shade200),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            color: selected ? Colors.white : Colors.grey[700],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _priceField(TextEditingController ctrl, String hint) {
+    return TextField(
+      controller: ctrl,
+      keyboardType: TextInputType.number,
+      style: const TextStyle(fontSize: 13),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
+        filled: true,
+        fillColor: _chipBg,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _teal, width: 1.5),
+        ),
       ),
     );
   }

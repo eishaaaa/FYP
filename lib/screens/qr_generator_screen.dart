@@ -205,7 +205,7 @@ class _QRGeneratorScreenState extends State<QRGeneratorScreen> {
                       size: 250,
                       backgroundColor: Colors.white,
                       errorCorrectionLevel: QrErrorCorrectLevel.H,
-                      embeddedImage: const AssetImage('assets/logo.png'),
+                      embeddedImage: const AssetImage('assets/logos.png'),
                       embeddedImageStyle: const QrEmbeddedImageStyle(
                         size: Size(40, 40),
                       ),
@@ -297,7 +297,7 @@ class _QRGeneratorScreenState extends State<QRGeneratorScreen> {
                   icon: const Icon(Icons.share),
                   label: const Text('Share QR Code'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
+                    backgroundColor: const Color(0xFF1A4F5C),
                     foregroundColor: Colors.white,
                     minimumSize: const Size.fromHeight(50),
                   ),
