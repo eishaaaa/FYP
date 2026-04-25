@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:web3dart/web3dart.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -11,6 +12,38 @@ import '../blockchain/contract_config.dart';
 import '../blockchain/explorer_service.dart';
 import '../screens/transaction_model.dart';
 
+// ─── Design Tokens ──────────────────────────────────────────
+class _C {
+  static const bg         = Color(0xFFF8FAFB);
+  static const surface    = Color(0xFFFFFFFF);
+  static const primary    = Color(0xFF00C896);   // emerald‑teal
+  static const primaryDk  = Color(0xFF009E78);
+  static const accent     = Color(0xFF6C63FF);   // indigo accent
+  static const textDark   = Color(0xFF0D1B2A);
+  static const textMid    = Color(0xFF4A5568);
+  static const textLight  = Color(0xFF9AA5B4);
+  static const sent       = Color(0xFFFF5C6A);
+  static const received   = Color(0xFF00C896);
+  static const nft        = Color(0xFF6C63FF);
+  static const contract   = Color(0xFFFF9F43);
+  static const cardBorder = Color(0xFFE8EFF5);
+  static const shimmer    = Color(0xFFEDF2F7);
+}
+
+// ─── Shadows ────────────────────────────────────────────────
+BoxDecoration _card({double radius = 20}) => BoxDecoration(
+  color: _C.surface,
+  borderRadius: BorderRadius.circular(radius),
+  border: Border.all(color: _C.cardBorder, width: 1),
+  boxShadow: [
+    BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4)),
+    BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4,  offset: const Offset(0, 1)),
+  ],
+);
+
+// ════════════════════════════════════════════════════════════
+// WIDGET
+// ════════════════════════════════════════════════════════════
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
 
@@ -18,31 +51,35 @@ class WalletScreen extends StatefulWidget {
   State<WalletScreen> createState() => _WalletScreenState();
 }
 
-class _WalletScreenState extends State<WalletScreen> {
+class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderStateMixin {
   // ─── Services ───────────────────────────────────────────
   final SimpleWalletService _walletService = SimpleWalletService();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final ExplorerService _explorer = ExplorerService();
-  late Web3Client _client;
+  final FirebaseAuth       _auth           = FirebaseAuth.instance;
+  final FirebaseFirestore  _firestore      = FirebaseFirestore.instance;
+  final ExplorerService    _explorer       = ExplorerService();
+  late  Web3Client         _client;
 
   // ─── State ──────────────────────────────────────────────
   String? _address;
   String? _userName;
-  double _balance = 0.0;
-  bool _connecting = false;
-  bool _loading = false;
+  double  _balance    = 0.0;
+  bool    _connecting = false;
+  bool    _loading    = false;
+  bool    _hideBalance = false;
   List<TransactionModel> _transactions = [];
-  int _txCount = 0;
-  int _nftCount = 0;
+  int     _txCount  = 0;
+  int     _nftCount = 0;
 
-  // ─── Amoy network info (mirrors wallet_service.dart) ────
+  late AnimationController _pulseCtrl;
+  late Animation<double>   _pulseAnim;
+
+  // ─── Amoy network info ──────────────────────────────────
   static final _amoyNetwork = ReownAppKitModalNetworkInfo(
-    name: 'Polygon Amoy',
-    chainId: '80002',
-    currency: 'MATIC',
-    rpcUrl: ContractConfig.rpcUrl,
-    explorerUrl: 'https://amoy.polygonscan.com',
+    name:         'Polygon Amoy',
+    chainId:      '80002',
+    currency:     'MATIC',
+    rpcUrl:       ContractConfig.rpcUrl,
+    explorerUrl:  'https://amoy.polygonscan.com',
     isTestNetwork: true,
   );
 
@@ -54,16 +91,13 @@ class _WalletScreenState extends State<WalletScreen> {
     super.initState();
     _client = Web3Client(ContractConfig.rpcUrl, http.Client());
     _checkExistingConnection();
+
+    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 0.8, end: 1.0).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // init() must run first — _modal is late and uninitialized until then
-      if (!_walletService.isInitialized) {
-        await _walletService.init(context);
-      }
-
-      // Safe to access appKitModal now
+      if (!_walletService.isInitialized) await _walletService.init(context);
       _walletService.appKitModal.addListener(_onWalletNotify);
-
-      // Auto-connect: restore previous WalletConnect session if it exists
       if (_walletService.appKitModal.isConnected &&
           _walletService.isConnected &&
           _walletService.address != null) {
@@ -78,6 +112,7 @@ class _WalletScreenState extends State<WalletScreen> {
   @override
   void dispose() {
     _walletService.appKitModal.removeListener(_onWalletNotify);
+    _pulseCtrl.dispose();
     super.dispose();
   }
 
@@ -85,8 +120,7 @@ class _WalletScreenState extends State<WalletScreen> {
     if (!mounted) return;
     setState(() {
       if (!_walletService.appKitModal.isConnected || !_walletService.isConnected) {
-        _address = null;
-        _balance = 0.0;
+        _address = null; _balance = 0.0;
       } else {
         _address = _walletService.address;
       }
@@ -96,37 +130,26 @@ class _WalletScreenState extends State<WalletScreen> {
   // ════════════════════════════════════════════════════════
   // AMOY CHAIN ENFORCEMENT
   // ════════════════════════════════════════════════════════
-
-  /// Switches MetaMask to Polygon Amoy using the already-registered
-  /// network in wallet_service.dart. No raw RPC needed.
   Future<void> _enforceAmoyNetwork() async {
     try {
-      await _walletService.appKitModal.selectChain(
-        _amoyNetwork,
-        switchChain: true,
-      );
+      await _walletService.appKitModal.selectChain(_amoyNetwork, switchChain: true);
       debugPrint("✅ Switched to Polygon Amoy (chain 80002)");
     } catch (e) {
       debugPrint("⚠️ Could not switch to Amoy: $e");
-      // Non-fatal — user may have already approved Amoy via the modal
     }
   }
 
   // ════════════════════════════════════════════════════════
   // WALLET OPERATIONS
   // ════════════════════════════════════════════════════════
-
   Future<void> _checkExistingConnection() async {
     final user = _auth.currentUser;
     if (user == null) return;
-
     final doc = await _firestore.collection("users").doc(user.uid).get();
     if (!doc.exists) return;
-
     final data = doc.data();
-    _address = data?["walletAddress"];
+    _address  = data?["walletAddress"];
     _userName = data?["name"];
-
     if (_address != null) await _loadAllData();
     if (mounted) setState(() {});
   }
@@ -134,40 +157,30 @@ class _WalletScreenState extends State<WalletScreen> {
   Future<void> _connect() async {
     if (_connecting) return;
     setState(() => _connecting = true);
-
     try {
-      if (!_walletService.isInitialized) {
-        await _walletService.init(context);
-      }
-
-      final address = await _walletService
-          .connect(context)
+      if (!_walletService.isInitialized) await _walletService.init(context);
+      final address = await _walletService.connect(context)
           .timeout(const Duration(seconds: 25), onTimeout: () => null);
-
-      // Allow modal state to settle
       await Future.delayed(const Duration(milliseconds: 500));
-
-      if (!_walletService.appKitModal.isConnected ||
-          !_walletService.isConnected ||
-          address == null) {
+      if (!_walletService.appKitModal.isConnected || !_walletService.isConnected || address == null) {
         throw Exception("Wallet connection failed or cancelled");
       }
-
-      // 🔑 Force Polygon Amoy — fixes "Invalid Id" / wrong-network errors
       await _enforceAmoyNetwork();
-
       final user = _auth.currentUser;
       if (user != null) await _saveWalletToFirestore(user.uid, address);
-
       if (!mounted) return;
       setState(() => _address = address);
-
       await _loadAllData();
     } catch (e) {
       debugPrint("Connect error: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Wallet connection failed or timed out")),
+          SnackBar(
+            content: const Text("Wallet connection failed or timed out"),
+            backgroundColor: _C.sent,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
         );
       }
     } finally {
@@ -178,90 +191,55 @@ class _WalletScreenState extends State<WalletScreen> {
   Future<void> _disconnect() async {
     if (_loading || _connecting) return;
     setState(() => _loading = true);
-
     try {
       if (_walletService.isConnected) await _walletService.disconnect();
       setState(() {
-        _address = null;
-        _balance = 0.0;
-        _transactions.clear();
-        _txCount = 0;
-        _nftCount = 0;
+        _address = null; _balance = 0.0;
+        _transactions.clear(); _txCount = 0; _nftCount = 0;
       });
-    } catch (e) {
-      debugPrint("Disconnect error: $e");
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    } catch (e) { debugPrint("Disconnect error: $e"); }
+    finally { if (mounted) setState(() => _loading = false); }
   }
 
   Future<void> _switchAccount() async {
     if (_loading || _connecting) return;
     setState(() => _connecting = true);
-
     try {
-      try {
-        await _walletService.disconnect();
-      } catch (_) {}
+      try { await _walletService.disconnect(); } catch (_) {}
       await Future.delayed(const Duration(milliseconds: 500));
-
       if (!mounted) return;
-
       final newAddress = await _walletService.connect(context);
       if (newAddress == null) return;
-
-      // 🔑 Re-enforce Amoy after account switch
       await _enforceAmoyNetwork();
-
       final user = _auth.currentUser;
       if (user != null) await _saveWalletToFirestore(user.uid, newAddress);
-
       if (!mounted) return;
-      setState(() {
-        _address = newAddress;
-        _loading = true;
-      });
-
+      setState(() { _address = newAddress; _loading = true; });
       await _loadAllData();
-    } catch (e) {
-      debugPrint("Switch error: $e");
-    } finally {
-      if (mounted) setState(() { _connecting = false; _loading = false; });
-    }
+    } catch (e) { debugPrint("Switch error: $e"); }
+    finally { if (mounted) setState(() { _connecting = false; _loading = false; }); }
   }
 
   Future<void> _removeWallet() async {
     if (_loading || _connecting) return;
     setState(() => _loading = true);
-
     try {
       final user = _auth.currentUser;
       if (user == null) return;
-
       await _walletService.disconnect();
-      await _firestore
-          .collection("users")
-          .doc(user.uid)
+      await _firestore.collection("users").doc(user.uid)
           .update({"walletAddress": FieldValue.delete()});
-
       setState(() {
-        _address = null;
-        _balance = 0.0;
-        _transactions.clear();
-        _txCount = 0;
-        _nftCount = 0;
+        _address = null; _balance = 0.0;
+        _transactions.clear(); _txCount = 0; _nftCount = 0;
       });
-    } catch (e) {
-      debugPrint("Remove error: $e");
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    } catch (e) { debugPrint("Remove error: $e"); }
+    finally { if (mounted) setState(() => _loading = false); }
   }
 
   // ════════════════════════════════════════════════════════
   // DATA LOADING
   // ════════════════════════════════════════════════════════
-
   bool get _isWalletReady =>
       _walletService.isConnected &&
           _walletService.appKitModal.isConnected &&
@@ -270,58 +248,38 @@ class _WalletScreenState extends State<WalletScreen> {
   Future<void> _loadAllData() async {
     if (_address == null) return;
     setState(() => _loading = true);
-
     try {
       await _loadBalance();
-
       final normalTxs = await _explorer.getTransactions(_address!);
-      final nftTxs = await _explorer.getNFTTransactions(_address!);
-
+      final nftTxs    = await _explorer.getNFTTransactions(_address!);
       List<TransactionModel> firestoreTxs = [];
       final user = _auth.currentUser;
       if (user != null) {
         final snap = await _firestore
-            .collection("users")
-            .doc(user.uid)
-            .collection("transactions")
-            .orderBy("time", descending: true)
-            .limit(10)
-            .get();
-
+            .collection("users").doc(user.uid).collection("transactions")
+            .orderBy("time", descending: true).limit(10).get();
         firestoreTxs = snap.docs.map((doc) {
           final d = doc.data();
           return TransactionModel(
-            type: d["type"] ?? "sent",
-            title: d["title"] ?? "Transaction",
-            to: d["to"] ?? "",
-            value: d["value"]?.toString() ?? "0",
-            gas: d["gas"]?.toString() ?? "0",
-            time: d["time"]?.toString() ?? "0",
-            success: true,
-            hash: d["hash"] ?? "",
+            type: d["type"] ?? "sent", title: d["title"] ?? "Transaction",
+            to: d["to"] ?? "", value: d["value"]?.toString() ?? "0",
+            gas: d["gas"]?.toString() ?? "0", time: d["time"]?.toString() ?? "0",
+            success: true, hash: d["hash"] ?? "",
           );
         }).toList();
       }
-
       final seen = <String>{};
       final dedupedTxs = [...normalTxs, ...nftTxs, ...firestoreTxs]
-          .where((tx) => tx.hash.isNotEmpty && seen.add(tx.hash))
-          .toList()
+          .where((tx) => tx.hash.isNotEmpty && seen.add(tx.hash)).toList()
         ..sort((a, b) => int.parse(b.time).compareTo(int.parse(a.time)));
-
       setState(() {
         _transactions = dedupedTxs.take(15).toList();
-        _txCount = normalTxs.length;
-        _nftCount =
-            nftTxs.length + firestoreTxs.where((tx) => tx.type == "nft").length;
+        _txCount  = normalTxs.length;
+        _nftCount = nftTxs.length + firestoreTxs.where((tx) => tx.type == "nft").length;
       });
     } catch (e) {
       debugPrint("Load data error: $e");
-      setState(() {
-        _transactions = [];
-        _txCount = 0;
-        _nftCount = 0;
-      });
+      setState(() { _transactions = []; _txCount = 0; _nftCount = 0; });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -333,26 +291,20 @@ class _WalletScreenState extends State<WalletScreen> {
       final ethAddress = EthereumAddress.fromHex(_address!);
       final balanceWei = await _client.getBalance(ethAddress);
       _balance = balanceWei.getValueInUnit(EtherUnit.ether);
-    } catch (e) {
-      debugPrint("Balance error: $e");
-    }
+    } catch (e) { debugPrint("Balance error: $e"); }
   }
 
   // ════════════════════════════════════════════════════════
   // FIRESTORE HELPERS
   // ════════════════════════════════════════════════════════
-
   Future<void> _saveWalletToFirestore(String uid, String newAddress) async {
-    final userRef = _firestore.collection("users").doc(uid);
-    final doc = await userRef.get();
+    final userRef  = _firestore.collection("users").doc(uid);
+    final doc      = await userRef.get();
     final oldAddress = doc.data()?["walletAddress"];
-
     await userRef.set({"walletAddress": newAddress}, SetOptions(merge: true));
-
     if (oldAddress != null && oldAddress != newAddress) {
       await userRef.collection("walletHistory").add({
-        "oldWallet": oldAddress,
-        "newWallet": newAddress,
+        "oldWallet": oldAddress, "newWallet": newAddress,
         "changedAt": FieldValue.serverTimestamp(),
       });
     }
@@ -361,8 +313,7 @@ class _WalletScreenState extends State<WalletScreen> {
   // ════════════════════════════════════════════════════════
   // UI HELPERS
   // ════════════════════════════════════════════════════════
-
-  double _convertPolToPkr(double polAmount) => polAmount * 280.0;
+  double _convertPolToPkr(double pol) => pol * 280.0;
 
   String _shorten(String addr) {
     if (addr.isEmpty) return "N/A";
@@ -370,26 +321,32 @@ class _WalletScreenState extends State<WalletScreen> {
     return "${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}";
   }
 
-  void _confirmAction({
-    required String title,
-    required Future<void> Function() onConfirm,
-  }) {
+  String _formatTime(String rawTime) {
+    final time = DateTime.fromMillisecondsSinceEpoch(int.parse(rawTime) * 1000);
+    final diff = DateTime.now().difference(time);
+    if (diff.inMinutes < 60) return "${diff.inMinutes}m ago";
+    if (diff.inHours   < 24) return "${diff.inHours}h ago";
+    return "${diff.inDays}d ago";
+  }
+
+  void _confirmAction({required String title, required Future<void> Function() onConfirm}) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: const Text("Are you sure you want to continue?"),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _C.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(title, style: const TextStyle(color: _C.textDark, fontWeight: FontWeight.w700)),
+        content: const Text("Are you sure you want to continue?", style: TextStyle(color: _C.textMid)),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx),
+              child: const Text("Cancel", style: TextStyle(color: _C.textMid))),
           ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await onConfirm();
-            },
-            child: const Text("OK"),
+            onPressed: () async { Navigator.pop(ctx); await onConfirm(); },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _C.primary, foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text("Confirm"),
           ),
         ],
       ),
@@ -399,69 +356,154 @@ class _WalletScreenState extends State<WalletScreen> {
   // ════════════════════════════════════════════════════════
   // BUILD
   // ════════════════════════════════════════════════════════
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Wallet"),
-        actions: [
-          if (_address != null)
-            IconButton(
-              icon: const Icon(Icons.more_vert),
-              onPressed: _showWalletOptions,
-            ),
-        ],
-      ),
+      backgroundColor: _C.bg,
+      appBar: _buildAppBar(),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? _buildSkeleton()
           : !_isWalletReady
           ? _buildConnectView()
           : _buildWalletView(),
     );
   }
 
-  // ─── Connect View ────────────────────────────────────────
-  Widget _buildConnectView() {
-    return Center(
-      child: Column(
+  // ─── AppBar ──────────────────────────────────────────────
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      backgroundColor: _C.surface,
+      elevation: 0,
+      centerTitle: true,
+      systemOverlayStyle: SystemUiOverlayStyle.dark,
+      title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.account_balance_wallet_outlined,
-              size: 72, color: Colors.deepPurple),
-          const SizedBox(height: 24),
-          const Text("Connect your wallet",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          const Text(
-            "Link a Web3 wallet to view your\nbalance and transactions.",
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
+          Container(
+            width: 8, height: 8,
+            decoration: const BoxDecoration(color: _C.primary, shape: BoxShape.circle),
           ),
-          const SizedBox(height: 32),
-          SizedBox(
-            width: 220,
-            child: ElevatedButton.icon(
-              onPressed: (_connecting || _loading) ? null : _connect,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              icon: _connecting
-                  ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white),
-              )
-                  : const Icon(Icons.account_balance_wallet),
-              label: Text(_connecting ? "Opening wallet..." : "Connect Wallet"),
+          const SizedBox(width: 8),
+          const Text(
+            "Wallet",
+            style: TextStyle(
+              color: _C.textDark, fontWeight: FontWeight.w700,
+              fontSize: 18, letterSpacing: -0.3,
             ),
           ),
         ],
+      ),
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(1),
+        child: Container(color: _C.cardBorder, height: 1),
+      ),
+      actions: [
+        if (_address != null)
+          IconButton(
+            icon: const Icon(Icons.more_vert, color: _C.textDark),
+            onPressed: _showWalletOptions,
+          ),
+      ],
+    );
+  }
+
+  // ─── Loading Skeleton ────────────────────────────────────
+  Widget _buildSkeleton() {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        _shimmerBox(height: 200, radius: 24),
+        const SizedBox(height: 16),
+        Row(children: [
+          Expanded(child: _shimmerBox(height: 90)),
+          const SizedBox(width: 12),
+          Expanded(child: _shimmerBox(height: 90)),
+        ]),
+        const SizedBox(height: 16),
+        _shimmerBox(height: 60),
+        const SizedBox(height: 8),
+        _shimmerBox(height: 60),
+        const SizedBox(height: 8),
+        _shimmerBox(height: 60),
+      ],
+    );
+  }
+
+  Widget _shimmerBox({double height = 80, double radius = 16}) {
+    return AnimatedBuilder(
+      animation: _pulseAnim,
+      builder: (_, __) => Opacity(
+        opacity: _pulseAnim.value,
+        child: Container(
+          height: height,
+          decoration: BoxDecoration(
+            color: _C.shimmer,
+            borderRadius: BorderRadius.circular(radius),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── Connect View ────────────────────────────────────────
+  Widget _buildConnectView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Icon container
+            Container(
+              width: 100, height: 100,
+              decoration: BoxDecoration(
+                color: _C.primary.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.account_balance_wallet_outlined,
+                  size: 48, color: _C.primary),
+            ),
+            const SizedBox(height: 28),
+            const Text(
+              "Connect your wallet",
+              style: TextStyle(
+                fontSize: 22, fontWeight: FontWeight.w800,
+                color: _C.textDark, letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              "Link a Web3 wallet to view your balance, NFTs and transactions.",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _C.textMid, fontSize: 14, height: 1.5),
+            ),
+            const SizedBox(height: 36),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: (_connecting || _loading) ? null : _connect,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _C.primary,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: _C.primary.withOpacity(0.5),
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                icon: _connecting
+                    ? const SizedBox(
+                  width: 18, height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+                    : const Icon(Icons.account_balance_wallet, size: 20),
+                label: Text(
+                  _connecting ? "Opening wallet…" : "Connect Wallet",
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -469,14 +511,15 @@ class _WalletScreenState extends State<WalletScreen> {
   // ─── Wallet View ─────────────────────────────────────────
   Widget _buildWalletView() {
     return RefreshIndicator(
+      color: _C.primary,
       onRefresh: _loadAllData,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
         children: [
           _buildBalanceCard(),
           const SizedBox(height: 16),
-          _buildStats(),
-          const SizedBox(height: 16),
+          _buildStatsRow(),
+          const SizedBox(height: 24),
           _buildTransactions(),
         ],
       ),
@@ -485,76 +528,202 @@ class _WalletScreenState extends State<WalletScreen> {
 
   // ─── Balance Card ────────────────────────────────────────
   Widget _buildBalanceCard() {
-    final pkrBalance = _convertPolToPkr(_balance);
+    final pkr = _convertPolToPkr(_balance);
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(colors: [Colors.deepPurple, Colors.blue]),
+        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF00C896), Color(0xFF00A878)],
+        ),
+        boxShadow: [
+          BoxShadow(color: _C.primary.withOpacity(0.35), blurRadius: 24, offset: const Offset(0, 8)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Connected User:", style: TextStyle(color: Colors.white70)),
-          const SizedBox(height: 4),
+          // User row
           Row(
             children: [
-              Text(
-                _userName ?? "User",
-                style: const TextStyle(
-                    fontSize: 20,
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(width: 8),
               Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                width: 42, height: 42,
                 decoration: BoxDecoration(
-                  color: Colors.green,
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white.withOpacity(0.25),
+                  shape: BoxShape.circle,
                 ),
-                child: const Text("Verified",
-                    style: TextStyle(color: Colors.white, fontSize: 12)),
+                child: const Icon(Icons.person, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _userName ?? "User",
+                      style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    GestureDetector(
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: _address ?? ""));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: const Text("Address copied"),
+                            backgroundColor: Colors.black87,
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 1),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        );
+                      },
+                      child: Row(
+                        children: [
+                          Text(
+                            _shorten(_address ?? ""),
+                            style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.copy, size: 12, color: Colors.white.withOpacity(0.7)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Verified badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withOpacity(0.4)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.verified, size: 12, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text("Verified", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                  ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Text(_shorten(_address!),
-              style: const TextStyle(color: Colors.white70)),
-          const SizedBox(height: 16),
-          Text(
-            "${_balance.toStringAsFixed(4)} POL",
-            style: const TextStyle(
-                fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold),
+
+          const SizedBox(height: 28),
+          const Text(
+            "TOTAL BALANCE",
+            style: TextStyle(color: Colors.white60, fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 6),
-          Text("₨${pkrBalance.toStringAsFixed(2)}",
-              style: const TextStyle(color: Colors.white70)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  _hideBalance ? "••••••• POL" : "${_balance.toStringAsFixed(4)} POL",
+                  style: const TextStyle(
+                    color: Colors.white, fontSize: 30,
+                    fontWeight: FontWeight.w800, letterSpacing: -0.8,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => setState(() => _hideBalance = !_hideBalance),
+                child: Icon(
+                  _hideBalance ? Icons.visibility_off : Icons.visibility,
+                  color: Colors.white70, size: 20,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            "≈ ₨${pkr.toStringAsFixed(2)} PKR",
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Network pill
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withOpacity(0.3)),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.circle, size: 7, color: Colors.white),
+                SizedBox(width: 6),
+                Text(
+                  "Polygon Amoy",
+                  style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  // ─── Stats ───────────────────────────────────────────────
-  Widget _buildStats() {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            Column(children: [
-              Text("$_txCount", style: const TextStyle(fontSize: 18)),
-              const Text("Transactions"),
-            ]),
-            Column(children: [
-              Text("$_nftCount", style: const TextStyle(fontSize: 18)),
-              const Text("NFTs"),
-            ]),
-          ],
-        ),
+  // ─── Stats Row ───────────────────────────────────────────
+  Widget _buildStatsRow() {
+    return Row(
+      children: [
+        Expanded(child: _buildStatCard(
+          label: "Transactions",
+          value: "$_txCount",
+          icon: Icons.swap_horiz_rounded,
+          iconColor: _C.accent,
+          iconBg: _C.accent.withOpacity(0.1),
+        )),
+        const SizedBox(width: 12),
+        Expanded(child: _buildStatCard(
+          label: "NFTs",
+          value: "$_nftCount",
+          icon: Icons.image_rounded,
+          iconColor: _C.primary,
+          iconBg: _C.primary.withOpacity(0.1),
+        )),
+      ],
+    );
+  }
+
+  Widget _buildStatCard({
+    required String label,
+    required String value,
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBg,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: _card(),
+      child: Row(
+        children: [
+          Container(
+            width: 44, height: 44,
+            decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(12)),
+            child: Icon(icon, color: iconColor, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: _C.textDark, letterSpacing: -0.5)),
+              Text(label, style: const TextStyle(fontSize: 12, color: _C.textLight, fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -562,136 +731,141 @@ class _WalletScreenState extends State<WalletScreen> {
   // ─── Transaction List ────────────────────────────────────
   Widget _buildTransactions() {
     if (_transactions.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(20),
-          child: Text("No transactions found"),
-        ),
+      return Column(
+        children: [
+          const Row(
+            children: [
+              Text("Recent Activity", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _C.textDark)),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.all(32),
+            decoration: _card(),
+            child: Column(
+              children: [
+                Container(
+                  width: 64, height: 64,
+                  decoration: BoxDecoration(color: _C.shimmer, borderRadius: BorderRadius.circular(16)),
+                  child: const Icon(Icons.receipt_long_outlined, color: _C.textLight, size: 32),
+                ),
+                const SizedBox(height: 12),
+                const Text("No transactions yet", style: TextStyle(color: _C.textMid, fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+        ],
       );
     }
 
     return Column(
-      children: _transactions.map((tx) {
-        final time =
-        DateTime.fromMillisecondsSinceEpoch(int.parse(tx.time) * 1000);
-        final diff = DateTime.now().difference(time);
-        final formattedTime = diff.inMinutes < 60
-            ? "${diff.inMinutes} min ago"
-            : diff.inHours < 24
-            ? "${diff.inHours} hr ago"
-            : "${diff.inDays} d ago";
-
-        final isSent = tx.type == "sent";
-        final isNft = tx.type == "nft";
-        final isContract = tx.type == "contract";
-
-        return ListTile(
-          leading: Icon(
-            isNft
-                ? Icons.image
-                : isContract
-                ? Icons.code
-                : isSent
-                ? Icons.arrow_upward
-                : Icons.arrow_downward,
-            color: isNft
-                ? Colors.blue
-                : isContract
-                ? Colors.orange
-                : isSent
-                ? Colors.red
-                : Colors.green,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("Recent Activity", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _C.textDark)),
+            Text("${_transactions.length} items", style: const TextStyle(fontSize: 12, color: _C.textLight)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: _card(),
+          child: ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _transactions.length,
+            separatorBuilder: (_, __) => Divider(height: 1, color: _C.cardBorder, indent: 72),
+            itemBuilder: (_, i) => _buildTxTile(_transactions[i]),
           ),
-          title: Text(
-            isNft
-                ? tx.title
-                : isContract
-                ? "Contract Interaction"
-                : isSent
-                ? "Sent ${tx.value} POL"
-                : "Received ${tx.value} POL",
-          ),
-          subtitle: Text(_shorten(tx.to)),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(formattedTime, style: const TextStyle(fontSize: 12)),
-              const SizedBox(height: 2),
-              InkWell(
-                onTap: () async {
-                  final url = Uri.parse(
-                      "https://amoy.polygonscan.com/tx/${tx.hash}");
-                  if (await canLaunchUrl(url)) {
-                    await launchUrl(url, mode: LaunchMode.externalApplication);
-                  }
-                },
-                child: const Text("View on Explorer",
-                    style: TextStyle(color: Colors.blue, fontSize: 10)),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
+        ),
+      ],
     );
   }
 
-  // ─── Wallet Options Bottom Sheet ─────────────────────────
-  void _showWalletOptions() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+  Widget _buildTxTile(TransactionModel tx) {
+    final isSent     = tx.type == "sent";
+    final isNft      = tx.type == "nft";
+    final isContract = tx.type == "contract";
+
+    final Color iconColor = isNft      ? _C.nft
+        : isContract ? _C.contract
+        : isSent     ? _C.sent
+        :              _C.received;
+
+    final IconData iconData = isNft      ? Icons.image_rounded
+        : isContract ? Icons.code
+        : isSent     ? Icons.arrow_upward_rounded
+        :              Icons.arrow_downward_rounded;
+
+    final String label = isNft      ? tx.title
+        : isContract ? "Contract Interaction"
+        : isSent     ? "Sent POL"
+        :              "Received POL";
+
+    final String amountStr = (isNft || isContract)
+        ? (isNft ? "NFT" : "Contract")
+        : "${isSent ? '−' : '+'}${tx.value} POL";
+
+    return InkWell(
+      onTap: () async {
+        final url = Uri.parse("https://amoy.polygonscan.com/tx/${tx.hash}");
+        if (await canLaunchUrl(url)) launchUrl(url, mode: LaunchMode.externalApplication);
+      },
+      borderRadius: BorderRadius.circular(0),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
           children: [
-            Row(
+            // Icon
+            Container(
+              width: 44, height: 44,
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(iconData, color: iconColor, size: 20),
+            ),
+            const SizedBox(width: 12),
+
+            // Labels
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: _C.textDark)),
+                  const SizedBox(height: 2),
+                  Text(_shorten(tx.to), style: const TextStyle(fontSize: 12, color: _C.textLight)),
+                ],
+              ),
+            ),
+
+            // Amount + time
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                const Icon(Icons.account_balance_wallet),
-                const SizedBox(width: 10),
-                Expanded(child: Text(_shorten(_address!))),
-                Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                      color: Colors.green,
-                      borderRadius: BorderRadius.circular(12)),
-                  child: const Text("Verified",
-                      style: TextStyle(color: Colors.white, fontSize: 12)),
+                Text(
+                  amountStr,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: isNft      ? _C.nft
+                        : isContract ? _C.contract
+                        : isSent     ? _C.sent
+                        :              _C.received,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(_formatTime(tx.time), style: const TextStyle(fontSize: 11, color: _C.textLight)),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Icon(Icons.open_in_new, size: 10, color: _C.textLight),
+                    const SizedBox(width: 2),
+                    const Text("Explorer", style: TextStyle(fontSize: 10, color: _C.textLight)),
+                  ],
                 ),
               ],
-            ),
-            const SizedBox(height: 20),
-            _buildActionButton(
-              text: "Switch Account",
-              color: Colors.blue,
-              onTap: () {
-                Navigator.pop(context);
-                _confirmAction(
-                    title: "Switch Account?", onConfirm: _switchAccount);
-              },
-            ),
-            const SizedBox(height: 10),
-            _buildActionButton(
-              text: "Disconnect Wallet",
-              color: Colors.red,
-              onTap: () {
-                Navigator.pop(context);
-                _confirmAction(
-                    title: "Disconnect Wallet?", onConfirm: _disconnect);
-              },
-            ),
-            const SizedBox(height: 10),
-            _buildActionButton(
-              text: "Remove Wallet",
-              color: Colors.red,
-              onTap: () {
-                Navigator.pop(context);
-                _confirmAction(
-                    title: "Remove Wallet permanently?",
-                    onConfirm: _removeWallet);
-              },
             ),
           ],
         ),
@@ -699,22 +873,110 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
+  // ─── Wallet Options Bottom Sheet ─────────────────────────
+  void _showWalletOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _C.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Drag handle
+              Container(
+                width: 36, height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(color: _C.cardBorder, borderRadius: BorderRadius.circular(2)),
+              ),
+
+              // Address row
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: _card(radius: 16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40, height: 40,
+                      decoration: BoxDecoration(
+                        color: _C.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.account_balance_wallet, color: _C.primary, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _shorten(_address!),
+                        style: const TextStyle(fontWeight: FontWeight.w600, color: _C.textDark),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _C.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.verified, size: 12, color: _C.primary),
+                          SizedBox(width: 4),
+                          Text("Verified", style: TextStyle(color: _C.primary, fontSize: 11, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              _buildActionButton(text: "Switch Account", icon: Icons.swap_horiz_rounded, color: _C.accent, onTap: () {
+                Navigator.pop(ctx);
+                _confirmAction(title: "Switch Account?", onConfirm: _switchAccount);
+              }),
+              const SizedBox(height: 10),
+              _buildActionButton(text: "Disconnect Wallet", icon: Icons.link_off_rounded, color: _C.sent, onTap: () {
+                Navigator.pop(ctx);
+                _confirmAction(title: "Disconnect Wallet?", onConfirm: _disconnect);
+              }),
+              const SizedBox(height: 10),
+              _buildActionButton(text: "Remove Wallet", icon: Icons.delete_outline_rounded, color: Colors.red.shade700, onTap: () {
+                Navigator.pop(ctx);
+                _confirmAction(title: "Remove Wallet permanently?", onConfirm: _removeWallet);
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildActionButton({
-    required String text,
-    required Color color,
+    required String   text,
+    required IconData icon,
+    required Color    color,
     required VoidCallback onTap,
   }) {
     return SizedBox(
       width: double.infinity,
-      child: ElevatedButton(
+      child: ElevatedButton.icon(
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
-          backgroundColor: color,
+          backgroundColor: color.withOpacity(0.08),
+          foregroundColor: color,
+          elevation: 0,
           padding: const EdgeInsets.symmetric(vertical: 14),
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: color.withOpacity(0.2)),
+          ),
         ),
-        child: Text(text, style: const TextStyle(color: Colors.white)),
+        icon: Icon(icon, size: 18),
+        label: Text(text, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
       ),
     );
   }
