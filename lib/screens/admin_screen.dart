@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'auth_screens.dart';
+import '../blockchain/blockchain_service.dart';
 
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
@@ -730,6 +731,8 @@ class AssetModeration extends StatefulWidget {
 
 class _AssetModerationState extends State<AssetModeration> {
   bool _showVerified = false;
+  final _blockchainService = BlockchainServiceEnhanced();
+
 
   @override
   Widget build(BuildContext context) {
@@ -973,23 +976,42 @@ class _AssetModerationState extends State<AssetModeration> {
                               else
                                 SizedBox(
                                   width: double.infinity,
-                                  child: OutlinedButton.icon(
-                                    onPressed: () =>
-                                        _revokeVerification(assetId),
-                                    icon: const Icon(
-                                        Icons.remove_circle_outline_rounded,
-                                        size: 18),
-                                    label: const Text('Revoke Verification'),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.orange,
-                                      side: const BorderSide(
-                                          color: Colors.orange),
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                          BorderRadius.circular(12)),
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
-                                    ),
+                                  child: Column(
+                                    children: [
+                                      if (asset['category']?.toString().toLowerCase() == 'electronics' && 
+                                          (asset['currentOwnerAddress'] == null || asset['currentOwnerAddress'].toString().isEmpty))
+                                        Padding(
+                                          padding: const EdgeInsets.only(bottom: 10),
+                                          child: SizedBox(
+                                            width: double.infinity,
+                                            child: ElevatedButton.icon(
+                                              onPressed: () => _transferToSupplier(assetId, asset),
+                                              icon: const Icon(Icons.local_shipping_rounded, size: 18),
+                                              label: const Text('Transfer to Supplier'),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.orange,
+                                                foregroundColor: Colors.white,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: OutlinedButton.icon(
+                                          onPressed: () => _revokeVerification(assetId),
+                                          icon: const Icon(Icons.remove_circle_outline_rounded, size: 18),
+                                          label: const Text('Revoke Verification'),
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: Colors.orange,
+                                            side: const BorderSide(color: Colors.orange),
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                            padding: const EdgeInsets.symmetric(vertical: 12),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                             ],
@@ -1010,16 +1032,33 @@ class _AssetModerationState extends State<AssetModeration> {
   Future<void> _approveAsset(
       String assetId, Map<String, dynamic> assetData) async {
     try {
+      // 1. Update Firebase
       await db.collection('assets').doc(assetId).update({
         'verified': true,
         'isMinted': true,
         'verifiedAt': FieldValue.serverTimestamp(),
       });
+
+      // 2. Trigger Blockchain Verification (Fixes 'Pending' status)
+      final tokenId = assetData['blockchainTokenId'];
+      if (tokenId != null) {
+        final category = assetData['category']?.toString().toLowerCase() ?? '';
+        final id = (tokenId is int) ? tokenId : int.tryParse(tokenId.toString());
+        
+        if (id != null) {
+          if (category == 'land') {
+            await _blockchainService.verifyProperty(id);
+          } else {
+            await _blockchainService.verifyDevice(id);
+          }
+        }
+      }
+
       if (mounted) {
-        _showSnack('✅ Asset approved!', color: Colors.green);
+        _showSnack('✅ Asset approved & verified on blockchain!', color: Colors.green);
       }
     } catch (e) {
-      if (mounted) _showSnack('Error: $e', color: Colors.red);
+      if (mounted) _showSnack('Error during verification: $e', color: Colors.red);
     }
   }
 
@@ -1063,6 +1102,80 @@ class _AssetModerationState extends State<AssetModeration> {
       'isMinted': false,
     });
     if (mounted) _showSnack('Verification revoked', color: Colors.orange);
+  }
+
+  Future<void> _transferToSupplier(String assetId, Map<String, dynamic> assetData) async {
+    // 1. Fetch Suppliers
+    final suppliersQuery = await db.collection('users')
+        .where('role', isGreaterThanOrEqualTo: 'supplier')
+        .where('role', isLessThanOrEqualTo: 'supplier\uf8ff')
+        .get();
+    
+    if (suppliersQuery.docs.isEmpty) {
+      _showSnack('No suppliers found in the system.', color: Colors.orange);
+      return;
+    }
+
+    if (!mounted) return;
+
+    // 2. Show Picker
+    final supplier = await showDialog<QueryDocumentSnapshot>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Select Supplier'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: suppliersQuery.docs.length,
+            itemBuilder: (_, i) {
+              final s = suppliersQuery.docs[i].data() as Map<String, dynamic>;
+              return ListTile(
+                title: Text(s['name'] ?? 'Unknown'),
+                subtitle: Text(s['email'] ?? ''),
+                onTap: () => Navigator.pop(ctx, suppliersQuery.docs[i]),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    if (supplier == null) return;
+
+    try {
+      final sData = supplier.data() as Map<String, dynamic>;
+      final address = sData['walletAddress'] ?? sData['address'];
+      
+      if (address == null || address.toString().isEmpty) {
+        _showSnack('Supplier has no wallet address linked.', color: Colors.red);
+        return;
+      }
+
+      final tokenId = assetData['blockchainTokenId'];
+      if (tokenId == null) throw 'Missing Blockchain Token ID';
+
+      _showSnack('⏳ Processing blockchain transfer...');
+      
+      // Execute Transfer
+      final tx = await _blockchainService.transferElectronics(
+        toAddress: address,
+        tokenId: (tokenId is int) ? tokenId : int.parse(tokenId.toString()),
+      );
+
+      if (tx != null) {
+        // Update Firestore
+        await db.collection('assets').doc(assetId).update({
+          'currentOwnerAddress': address,
+          'supplierUid': supplier.id,
+          'status': 'InTransit', // Moving from Dell to Supplier
+        });
+        
+        _showSnack('✅ Successfully transferred to ${sData['name']}!', color: Colors.green);
+      }
+    } catch (e) {
+      _showSnack('Transfer failed: $e', color: Colors.red);
+    }
   }
 
   void _showSnack(String msg, {Color? color}) {

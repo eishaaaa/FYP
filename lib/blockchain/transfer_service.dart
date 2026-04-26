@@ -130,7 +130,7 @@ class TransferService {
   }) async {
     try {
       // Execute blockchain transfer
-      final txHash = await _blockchain.transferElectronic(
+      final txHash = await _blockchain.transferElectronics(
         toAddress: receiverAddress,
         tokenId: tokenId,
       );
