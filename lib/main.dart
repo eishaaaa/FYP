@@ -13,7 +13,7 @@ import 'screens/user_screens.dart';
 import 'screens/supplier_screens.dart';
 import 'screens/admin_screen.dart';
 import 'screens/transfer_screen.dart';
-import 'services/push_notification_service.dart';
+// import 'services/push_notification_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN 2 — TEAL PALETTE (single source of truth for the whole app)

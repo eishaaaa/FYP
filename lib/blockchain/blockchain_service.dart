@@ -15,8 +15,8 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:web3dart/web3dart.dart';
 import 'package:reown_appkit/reown_appkit.dart';
-import 'package:crypto/crypto.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+// import 'package:crypto/crypto.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 
 import 'wallet_service.dart';
 import 'contract_config.dart';
@@ -176,7 +176,7 @@ class BlockchainServiceEnhanced {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // GLOBAL HELPERS
+  // ─── HELPERS ───────────────────────────────────────────────────────────────
   // ═══════════════════════════════════════════════════════════
 
   /// Fetch the *current* owner of a token from the blockchain.
@@ -262,33 +262,6 @@ class BlockchainServiceEnhanced {
     }
   }
 
-  Future<String?> transferElectronic({
-    required String toAddress,
-    required int tokenId,
-  }) async {
-    await init();
-
-    // FIX: ERC-721 ABI has TWO safeTransferFrom overloads:
-    //   (address, address, uint256)        <- 3 params, we want this
-    //   (address, address, uint256, bytes) <- 4 params, causes "Too many elements"
-    // Pick the 3-parameter version explicitly.
-    final overloads = _electronicsContract.findFunctionsByName('safeTransferFrom');
-    final function = overloads.firstWhere(
-          (f) => f.parameters.length == 3,
-      orElse: () => overloads.first,
-    );
-
-    final transaction = Transaction.callContract(
-      contract: _electronicsContract,
-      function: function,
-      parameters: [
-        EthereumAddress.fromHex(connectedAddress!),
-        EthereumAddress.fromHex(toAddress),
-        BigInt.from(tokenId),
-      ],
-    );
-    return await _sendTransaction(transaction);
-  }
 
   Future<String?> submitElectronicsReview({required int tokenId, required String reviewText}) async {
     await init();
@@ -675,5 +648,60 @@ class BlockchainServiceEnhanced {
       debugPrint('Healing error: $e');
       return true; // Fail safe
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // ADMIN & SUPPLY CHAIN ACTIONS
+  // ═══════════════════════════════════════════════════════════
+
+  /// Verifies an electronic device on-chain. Required to flip 'isVerified' to true.
+  Future<String?> verifyDevice(int tokenId) async {
+    await init();
+    final function = _electronicsContract.function('verifyDevice');
+    final transaction = Transaction.callContract(
+      contract: _electronicsContract,
+      function: function,
+      parameters: [BigInt.from(tokenId)],
+    );
+    return await _sendTransaction(transaction);
+  }
+
+  /// Verifies a land property on-chain.
+  Future<String?> verifyProperty(int propertyId) async {
+    await init();
+    final function = _landContract.function('verifyProperty');
+    final transaction = Transaction.callContract(
+      contract: _landContract,
+      function: function,
+      parameters: [BigInt.from(propertyId)],
+    );
+    return await _sendTransaction(transaction);
+  }
+
+  /// Transfers an electronics NFT from the current owner (Admin/Dell) to a Supplier.
+  Future<String?> transferElectronics({
+    required String toAddress,
+    required int tokenId,
+  }) async {
+    await init();
+    
+    // FIX: ERC-721 ABI has overloads for safeTransferFrom. 
+    // Pick the one with 3 parameters: (address from, address to, uint256 tokenId)
+    final overloads = _electronicsContract.findFunctionsByName('safeTransferFrom');
+    final function = overloads.firstWhere(
+      (f) => f.parameters.length == 3,
+      orElse: () => overloads.first,
+    );
+
+    final transaction = Transaction.callContract(
+      contract: _electronicsContract,
+      function: function,
+      parameters: [
+        EthereumAddress.fromHex(connectedAddress!),
+        EthereumAddress.fromHex(toAddress),
+        BigInt.from(tokenId),
+      ],
+    );
+    return await _sendTransaction(transaction);
   }
 }

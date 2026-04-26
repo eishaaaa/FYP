@@ -146,6 +146,11 @@ class _TransferScreenState extends State<TransferScreen> {
     });
 
     try {
+      // Flag asset as syncing to prevent race conditions in the UI
+      await _db.collection('assets').doc(widget.assetId).update({
+        'isSyncingWithBlockchain': true,
+      });
+
       String? txHash;
 
       if (widget.assetType == AssetType.electronics) {
@@ -153,7 +158,7 @@ class _TransferScreenState extends State<TransferScreen> {
         if (id == null) throw Exception('Missing tokenId for electronics transfer');
         setState(() => _statusMessage =
         'Sending NFT transfer to blockchain…\nPlease approve in your wallet.');
-        txHash = await _bs.transferElectronic(toAddress: _buyerWalletAddress!, tokenId: id);
+        txHash = await _bs.transferElectronics(toAddress: _buyerWalletAddress!, tokenId: id);
       } else {
         final pid = widget.propertyId;
         final amount = widget.fractionAmount ?? 1;
@@ -226,6 +231,13 @@ class _TransferScreenState extends State<TransferScreen> {
         Navigator.pop(context, true);
       }
     } catch (e) {
+      // Revert syncing flag on error
+      try {
+        await _db.collection('assets').doc(widget.assetId).update({
+          'isSyncingWithBlockchain': false,
+        });
+      } catch (_) {}
+
       setState(() {
         _transferring = false;
         _errorMessage = e.toString().replaceFirst('Exception: ', '');
@@ -277,6 +289,7 @@ class _TransferScreenState extends State<TransferScreen> {
       'transferredAt': FieldValue.serverTimestamp(),
       'txHash': _txHash,
       'isListedForResale': false,
+      'isSyncingWithBlockchain': false,
     });
 
     final txRef = _db.collection('transactions').doc(widget.transactionId);

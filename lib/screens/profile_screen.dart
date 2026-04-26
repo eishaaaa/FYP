@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../blockchain/ipfs_service.dart';   // ← your existing service
+import '../blockchain/blockchain_service.dart';
 import 'shared_screens.dart';
 import 'asset_screen.dart';
 import 'stolen_report_screen.dart';
@@ -547,6 +548,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ]),
 
+                      if (role == 'admin') ...[
+                        const SizedBox(height: 12),
+                        _card(children: [
+                          _menuTile(
+                            icon: Icons.admin_panel_settings_rounded,
+                            label: 'Admin Tools',
+                            iconColor: const Color(0xFF673AB7),
+                            showDivider: false,
+                            onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const AdminPanelScreen())),
+                          ),
+                        ]),
+                      ],
+
                       const SizedBox(height: 24),
 
                       // Logout
@@ -889,6 +906,144 @@ class TermsScreen extends StatelessWidget {
         child: Text(
           'Your terms and privacy policy content goes here. '
               'Replace this placeholder with your real legal text.',
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN PANEL SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+class AdminPanelScreen extends StatefulWidget {
+  const AdminPanelScreen({super.key});
+
+  @override
+  State<AdminPanelScreen> createState() => _AdminPanelScreenState();
+}
+
+class _AdminPanelScreenState extends State<AdminPanelScreen> {
+  final _addressCtrl = TextEditingController();
+  final _bs = BlockchainServiceEnhanced();
+  bool _loading = false;
+  String _roleType = 'VENDOR_ROLE';
+
+  Future<void> _grantRole() async {
+    final addr = _addressCtrl.text.trim();
+    if (addr.isEmpty || !addr.startsWith('0x')) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid Wallet Address')));
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      if (_roleType == 'VENDOR_ROLE') {
+        await _bs.grantVendorRole(addr);
+      } else {
+        await _bs.grantRetailerRole(addr);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$_roleType granted successfully to $addr')));
+        _addressCtrl.clear();
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        title: const Text('Admin Tools',
+            style: TextStyle(
+                color: Color(0xFF1A1A2E),
+                fontSize: 17,
+                fontWeight: FontWeight.w600)),
+        leading: IconButton(
+          icon: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+                color: const Color(0xFFF0F4F4),
+                borderRadius: BorderRadius.circular(10)),
+            child: const Icon(Icons.chevron_left_rounded,
+                color: Color(0xFF1A1A2E), size: 24),
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      backgroundColor: const Color(0xFFF5F7FA),
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2))
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Grant Roles', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  const Text('Assign VENDOR or RETAILER roles to specific wallet addresses to authorize them to receive products.', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: _addressCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'Wallet Address (0x...)',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: _roleType,
+                    items: const [
+                      DropdownMenuItem(value: 'VENDOR_ROLE', child: Text('VENDOR_ROLE')),
+                      DropdownMenuItem(value: 'RETAILER_ROLE', child: Text('RETAILER_ROLE')),
+                    ],
+                    onChanged: (v) => setState(() => _roleType = v!),
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: _loading ? null : _grantRole,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2D8C8C),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: _loading
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text('Grant Role', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

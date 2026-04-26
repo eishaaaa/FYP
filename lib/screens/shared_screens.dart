@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
-import 'auth_screens.dart';
+// import 'auth_screens.dart';
 import 'asset_detail_screen.dart';
 import 'chat_screen.dart';
 import 'transfer_screen.dart';

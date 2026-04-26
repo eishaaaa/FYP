@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:ui' as ui;
-import 'dart:typed_data';
+// import 'dart:typed_data';
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';

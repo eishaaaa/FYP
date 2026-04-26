@@ -7,23 +7,24 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:uuid/uuid.dart';
-import 'package:intl/intl.dart';
+// import 'package:intl/intl.dart';
 import 'package:image/image.dart' as img;
 
 // Internal Imports
-import 'chat_screen.dart';
+// import 'chat_screen.dart';
 import 'chat_list_screen.dart';
 import 'profile_screen.dart';
 import 'asset_screen.dart';
 import 'notification_screen.dart';
 import 'shared_screens.dart';
-import 'chat_list_screen.dart';
 import 'qr_generator_screen.dart';
 import 'qr_scanner_enhanced.dart';
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
 import 'wallet_screen.dart';
-import 'transaction_model.dart';
+import '../widgets/hand_help_tooltip.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+// import 'transaction_model.dart';
 
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
@@ -199,16 +200,27 @@ class SupplierHomeScreen extends StatefulWidget {
 class _SupplierHomeScreenState extends State<SupplierHomeScreen> {
   int _selectedIndex = 0;
   late final List<Widget> _pages;
+  bool _showHelp = false;
 
   @override
   void initState() {
     super.initState();
+    _checkHelpStatus();
     _pages = <Widget>[
-      SupplierHome(type: widget.type),
+      SupplierHome(type: widget.type, showHelp: () => _showHelp),
       const QRScannerEnhanced(),
       const MyAssetsScreen(),
       const ProfileScreen(),
     ];
+  }
+
+  Future<void> _checkHelpStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final seen = prefs.getBool('seen_supplier_help') ?? false;
+    if (!seen) {
+      if (mounted) setState(() => _showHelp = true);
+      await prefs.setBool('seen_supplier_help', true);
+    }
   }
 
   void _onTap(int idx) => setState(() => _selectedIndex = idx);
@@ -235,7 +247,8 @@ class _SupplierHomeScreenState extends State<SupplierHomeScreen> {
 
 class SupplierHome extends StatelessWidget {
   final String type;
-  const SupplierHome({super.key, required this.type});
+  final bool Function() showHelp;
+  const SupplierHome({super.key, required this.type, required this.showHelp});
 
   @override
   Widget build(BuildContext context) {
@@ -324,14 +337,19 @@ class SupplierHome extends StatelessWidget {
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatListScreen())),
           ),
           const SizedBox(height: 12),
-          FloatingActionButton.extended(
-            heroTag: 'add_asset_fab',
-            backgroundColor: const Color(0xFF2A7F8F),
-            foregroundColor: Colors.white,
-            elevation: 2,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add Asset', style: TextStyle(fontWeight: FontWeight.w600)),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddAssetScreen(type: type))),
+          HandHelpTooltip(
+            message: 'Click here to add your first asset!',
+            show: showHelp(),
+            offset: const Offset(-100, -10),
+            child: FloatingActionButton.extended(
+              heroTag: 'add_asset_fab',
+              backgroundColor: const Color(0xFF2A7F8F),
+              foregroundColor: Colors.white,
+              elevation: 2,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Add Asset', style: TextStyle(fontWeight: FontWeight.w600)),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddAssetScreen(type: type))),
+            ),
           ),
         ],
       ),

@@ -1,6 +1,6 @@
 // lib/screens/user_screens.dart
 import 'dart:async';
-import 'dart:convert';
+// import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -14,6 +14,9 @@ import 'notification_screen.dart';
 import 'resale_listing_sheet.dart';
 import 'asset_detail_screen.dart';
 import 'profile_screen.dart';
+import 'package:showcaseview/showcaseview.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../widgets/hand_help_tooltip.dart';
 
 final db = FirebaseFirestore.instance;
 
@@ -33,6 +36,31 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   String _category = "land";
   String _search = "";
   Map<String, dynamic> _filters = {};
+
+  final GlobalKey _chatKey = GlobalKey();
+  final GlobalKey _searchKey = GlobalKey();
+  final GlobalKey _scanKey = GlobalKey();
+  bool _showHandHelp = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkFirstLaunch();
+    });
+  }
+
+  Future<void> _checkFirstLaunch() async {
+    final prefs = await SharedPreferences.getInstance();
+    bool isFirstLaunch = prefs.getBool('onboarding_home_completed') ?? false;
+    if (!isFirstLaunch) {
+      if (mounted) {
+        setState(() => _showHandHelp = true);
+        ShowCaseWidget.of(context).startShowCase([_chatKey, _searchKey, _scanKey]);
+        await prefs.setBool('onboarding_home_completed', true);
+      }
+    }
+  }
 
   void _openFilters() async {
     final result = await showModalBottomSheet<Map<String, dynamic>>(
@@ -66,7 +94,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ShowCaseWidget(
+      builder: (context) => Scaffold(
       appBar: _index == 3
           ? null
           : _index == 2
@@ -128,12 +157,21 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               ],
             ),
       floatingActionButton: _index == 0
-          ? FloatingActionButton(
-              heroTag: 'chat_fab',
-              child: const Icon(Icons.chat),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ChatListScreen()),
+          ? HandHelpTooltip(
+              message: 'Need help? Chat with us!',
+              show: _showHandHelp,
+              offset: const Offset(-80, -10),
+              child: Showcase(
+                key: _chatKey,
+                description: 'Tap here to chat with suppliers or customers.',
+                child: FloatingActionButton(
+                  heroTag: 'chat_fab',
+                  child: const Icon(Icons.chat),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ChatListScreen()),
+                  ),
+                ),
               ),
             )
           : null,
@@ -141,17 +179,21 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         currentIndex: _index,
         onTap: _nav,
         type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
+        items: [
+          const BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
           BottomNavigationBarItem(
-            icon: Icon(Icons.qr_code_scanner),
+            icon: Showcase(
+              key: _scanKey,
+              description: 'Scan an asset QR code to verify its authenticity.',
+              child: const Icon(Icons.qr_code_scanner),
+            ),
             label: "Scan",
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.inventory),
             label: "My Assets",
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
+          const BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
         ],
       ),
       body: IndexedStack(
@@ -162,6 +204,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           const MyAssetsScreen(),
           ProfileScreen(),
         ],
+      ),
       ),
     );
   }
@@ -203,19 +246,23 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                       color: const Color(0xFFF5F7F8),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: TextField(
-                      onChanged: (v) =>
-                          setState(() => _search = v.trim().toLowerCase()),
-                      decoration: const InputDecoration(
-                        hintText: 'Search your home...',
-                        hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
-                        prefixIcon: Icon(
-                          Icons.search,
-                          color: Colors.grey,
-                          size: 20,
+                    child: Showcase(
+                      key: _searchKey,
+                      description: 'Search for properties or devices here.',
+                      child: TextField(
+                        onChanged: (v) =>
+                            setState(() => _search = v.trim().toLowerCase()),
+                        decoration: const InputDecoration(
+                          hintText: 'Search your home...',
+                          hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
+                          prefixIcon: Icon(
+                            Icons.search,
+                            color: Colors.grey,
+                            size: 20,
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(vertical: 15),
                         ),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 15),
                       ),
                     ),
                   ),
@@ -753,6 +800,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
               ? transferredAt
               : null;
           final fractionAmount = asset['fractionAmount'] as int?;
+          final isSyncing = asset['isSyncingWithBlockchain'] == true;
 
           return _SafeCard(
             key: ValueKey(assetId),
@@ -832,16 +880,17 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                 vertical: 10,
                               ),
                               decoration: BoxDecoration(
-                                color: tokenId != null
-                                    ? const Color(0xFF1A4F5C)
-                                    : Colors.grey.shade200,
+                                color: isSyncing 
+                                    ? Colors.orange.shade600
+                                    : tokenId != null
+                                        ? const Color(0xFF1A4F5C)
+                                        : Colors.grey.shade200,
                                 borderRadius: BorderRadius.circular(18),
-                                boxShadow: tokenId != null
+                                boxShadow: isSyncing || tokenId != null
                                     ? [
                                         BoxShadow(
-                                          color: const Color(
-                                            0xFF1A4F5C,
-                                          ).withOpacity(0.18),
+                                          color: (isSyncing ? Colors.orange.shade600 : const Color(0xFF1A4F5C))
+                                              .withOpacity(0.18),
                                           blurRadius: 10,
                                           offset: const Offset(0, 4),
                                         ),
@@ -851,20 +900,26 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(
-                                    tokenId != null
-                                        ? Icons.verified
-                                        : Icons.schedule_rounded,
-                                    size: 14,
-                                    color: tokenId != null
-                                        ? Colors.white
-                                        : Colors.grey.shade700,
-                                  ),
+                                  if (isSyncing)
+                                    const SizedBox(
+                                      width: 14, height: 14,
+                                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                    )
+                                  else
+                                    Icon(
+                                      tokenId != null
+                                          ? Icons.verified
+                                          : Icons.schedule_rounded,
+                                      size: 14,
+                                      color: tokenId != null
+                                          ? Colors.white
+                                          : Colors.grey.shade700,
+                                    ),
                                   const SizedBox(width: 6),
                                   Text(
-                                    tokenId != null ? 'NFT' : 'Pending',
+                                    isSyncing ? 'Syncing...' : (tokenId != null ? 'NFT' : 'Pending'),
                                     style: TextStyle(
-                                      color: tokenId != null
+                                      color: (isSyncing || tokenId != null)
                                           ? Colors.white
                                           : Colors.grey.shade700,
                                       fontSize: 11,

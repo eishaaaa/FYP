@@ -146,6 +146,23 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
         }
       }
 
+      // --- SECURITY & SELF-HEALING ---
+      bool isHealthy = await _blockchainService.verifyAndHealAsset(
+        type: type,
+        blockchainId: blockchainId,
+        firestoreDocId: firebaseId,
+        firestore: FirebaseFirestore.instance,
+      );
+      if (!isHealthy && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Security Check: Syncing secure data from blockchain...'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+      // -------------------------------
+
       if (!mounted) return;
 
       // 6. Show Success Dialog
@@ -317,6 +334,10 @@ class VerificationResultDialog extends StatelessWidget {
               _buildDetailRow('Brand', blockchainData['brand'] ?? '-'),
               _buildDetailRow('Model', blockchainData['model'] ?? '-'),
               _buildDetailRow('Serial', blockchainData['serialNumber'] ?? '-'),
+              const SizedBox(height: 12),
+              const Text('Verified Provenance Path:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+              const SizedBox(height: 8),
+              _buildProvenanceTimeline(blockchainData['status'] ?? 0, blockchainData['ownerCount'] ?? 0),
             ] else ...[
               _buildDetailRow('Location', blockchainData['location'] ?? '-'),
               _buildDetailRow('City', blockchainData['city'] ?? '-'),
@@ -393,5 +414,63 @@ class VerificationResultDialog extends StatelessWidget {
   String _shortenAddress(String address) {
     if (address.length <= 10) return address;
     return '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
+  }
+
+  Widget _buildProvenanceTimeline(int status, int ownerCount) {
+    // status: 0 = InTransit, 1 = InStock, 2 = Sold
+    List<Widget> steps = [];
+    
+    // Step 1: Manufacturer
+    steps.add(_buildTimelineStep('Manufacturer', 'Minted & Sealed', true));
+    
+    // Step 2: Logistics / Vendor
+    bool isAtVendor = status >= 0; // Always true if minted
+    steps.add(_buildTimelineStep('Vendor', 'In Transit (Sealed)', isAtVendor));
+    
+    // Step 3: Retailer
+    bool isAtRetailer = status >= 1;
+    steps.add(_buildTimelineStep('Retailer', 'In Stock (Sealed)', isAtRetailer));
+    
+    // Step 4: Customer
+    bool isSold = status == 2;
+    String customerLabel = isSold ? (ownerCount <= 1 ? '1st Owner' : 'Owner #$ownerCount') : 'Unsold';
+    steps.add(_buildTimelineStep('Customer', customerLabel, isSold, isLast: true));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: steps,
+    );
+  }
+
+  Widget _buildTimelineStep(String title, String subtitle, bool isCompleted, {bool isLast = false}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          children: [
+            Icon(
+              isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+              color: isCompleted ? Colors.green : Colors.grey,
+              size: 20,
+            ),
+            if (!isLast)
+              Container(
+                width: 2,
+                height: 24,
+                color: isCompleted ? Colors.green : Colors.grey[300],
+              ),
+          ],
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: isCompleted ? Colors.black87 : Colors.grey)),
+            Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+            if (!isLast) const SizedBox(height: 12),
+          ],
+        ),
+      ],
+    );
   }
 }

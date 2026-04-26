@@ -248,11 +248,12 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
   // Guard against double-tap opening two resale sheets simultaneously
   bool _listingInProgress = false;
 
-  late Future<Map<String, dynamic?>> _loadFuture;
+  late Future<Map<String, dynamic>> _loadFuture;
   Map<String, dynamic>? _blockchainData;
   Map<String, dynamic>? _ipfsData;
+  bool _isDataHealthy = true;
 
-  Future<Map<String, dynamic?>> _load() async {
+  Future<Map<String, dynamic>> _load() async {
     final assetSnap = await db.collection('assets').doc(widget.assetId).get();
     final role = await fetchCurrentRole();
 
@@ -290,7 +291,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
 
       if (txQuery.docs.isNotEmpty) {
         activeTx = txQuery.docs.first.data();
-        activeTx!['transactionId'] = txQuery.docs.first.id;
+        activeTx['transactionId'] = txQuery.docs.first.id;
       }
     }
 
@@ -312,6 +313,14 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
       }
 
       if (_blockchainData != null) {
+        // SECURITY & SELF-HEALING: Verify Firestore vs Blockchain
+        _isDataHealthy = await _blockchainService.verifyAndHealAsset(
+          type: category,
+          blockchainId: tokenId,
+          firestoreDocId: widget.assetId,
+          firestore: db,
+        );
+
         final ipfsHash =
             _blockchainData!['ipfsMetadata'] ?? _blockchainData!['tokenURI'];
         if (ipfsHash != null && ipfsHash.isNotEmpty) {
@@ -349,7 +358,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
           ),
         ],
       ),
-      body: FutureBuilder<Map<String, dynamic?>>(
+      body: FutureBuilder<Map<String, dynamic>>(
         future: _loadFuture,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
@@ -747,6 +756,13 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                       ? '✅ Verified'
                       : '⏳ Pending',
                 ),
+                _buildDetailRow(
+                  'Integrity',
+                  _isDataHealthy
+                      ? '🛡️ Blockchain Secured'
+                      : '⚠️ Syncing with Blockchain',
+                      color: _isDataHealthy ? const Color(0xFF2A7F8F) : Colors.orange,
+                ),
               ] else if (category == 'land') ...[
                 _buildDetailRow(
                   'Location',
@@ -769,6 +785,13 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                     'Original Owner',
                     '${_blockchainData!['originalOwner'].toString().substring(0, 10)}...',
                   ),
+                _buildDetailRow(
+                  'Integrity',
+                  _isDataHealthy
+                      ? '🛡️ Blockchain Secured'
+                      : '⚠️ Syncing with Blockchain',
+                  color: _isDataHealthy ? const Color(0xFF2A7F8F) : Colors.orange,
+                ),
               ],
               if (_ipfsData != null) ...[
                 const SizedBox(height: 8),
@@ -1259,7 +1282,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildDetailRow(String label, String value, {Color? color}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -1278,7 +1301,10 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: color ?? Colors.black87,
+              ),
             ),
           ),
         ],

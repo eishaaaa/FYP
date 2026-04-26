@@ -79,6 +79,19 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
         );
       }
       await _checkExistingRequest();
+      
+      // --- SECURITY & SELF-HEALING ---
+      bool isHealthy = await _blockchainService.verifyAndHealAsset(
+        type: 'land',
+        blockchainId: widget.blockchainPropertyId,
+        firestoreDocId: widget.assetId,
+        firestore: _db,
+      );
+      if (!isHealthy && mounted) {
+        _showSnack('Security Update: Asset data synchronized with Blockchain', color: Colors.blueAccent);
+      }
+      // -------------------------------
+
       setState(() {
         _propertyData = property;
         _loading      = false;
