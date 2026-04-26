@@ -16,6 +16,7 @@ import 'package:http/http.dart' as http;
 import 'package:web3dart/web3dart.dart';
 import 'package:reown_appkit/reown_appkit.dart';
 import 'package:crypto/crypto.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'wallet_service.dart';
 import 'contract_config.dart';
@@ -252,6 +253,8 @@ class BlockchainServiceEnhanced {
         'mintedAt': (deviceData[4] as BigInt).toInt(),
         'originalOwner': (deviceData[5] as EthereumAddress).toString(),
         'isVerified': deviceData[6],
+        'status': deviceData.length > 7 ? (deviceData[7] as BigInt).toInt() : 0,
+        'ownerCount': deviceData.length > 8 ? (deviceData[8] as BigInt).toInt() : 0,
       };
     } catch (e) {
       debugPrint('Error getDevice: $e');
@@ -297,6 +300,28 @@ class BlockchainServiceEnhanced {
       contract: _electronicsContract,
       function: function,
       parameters: [BigInt.from(tokenId), reviewHash],
+    );
+    return await _sendTransaction(transaction);
+  }
+
+  Future<String?> grantVendorRole(String address) async {
+    await init();
+    final function = _electronicsContract.function('addVendor');
+    final transaction = Transaction.callContract(
+      contract: _electronicsContract,
+      function: function,
+      parameters: [EthereumAddress.fromHex(address)],
+    );
+    return await _sendTransaction(transaction);
+  }
+
+  Future<String?> grantRetailerRole(String address) async {
+    await init();
+    final function = _electronicsContract.function('addRetailer');
+    final transaction = Transaction.callContract(
+      contract: _electronicsContract,
+      function: function,
+      parameters: [EthereumAddress.fromHex(address)],
     );
     return await _sendTransaction(transaction);
   }
@@ -561,5 +586,94 @@ class BlockchainServiceEnhanced {
       await Future.delayed(const Duration(seconds: 2));
     }
     return false;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // SECURITY & SELF-HEALING
+  // ═══════════════════════════════════════════════════════════
+
+  /// Verifies Firestore data against Blockchain truth and heals if tampered.
+  /// Returns true if data was healthy, false if a healing operation was performed.
+  Future<bool> verifyAndHealAsset({
+    required String type,
+    required int blockchainId,
+    required String firestoreDocId,
+    required FirebaseFirestore firestore,
+  }) async {
+    try {
+      await init();
+      final docRef = firestore.collection('assets').doc(firestoreDocId);
+      final docSnap = await docRef.get();
+      if (!docSnap.exists) return true;
+
+      final data = docSnap.data()!;
+      bool isTampered = false;
+      Map<String, dynamic> updates = {};
+
+      if (type == 'electronics') {
+        final device = await getDevice(blockchainId);
+        if (device == null) return true;
+        
+        // Check Owner
+        final currentOwner = await getOwnerOf(type, blockchainId);
+        if (currentOwner != null && data['currentOwnerAddress']?.toString().toLowerCase() != currentOwner.toLowerCase()) {
+          isTampered = true;
+          updates['currentOwnerAddress'] = currentOwner;
+        }
+
+        // Check Serial
+        if (data['serialNumber'] != device['serialNumber']) {
+          isTampered = true;
+          updates['serialNumber'] = device['serialNumber'];
+        }
+
+        // Check tokenURI / IPFS
+        try {
+          final uriFunction = _electronicsContract.function('tokenURI');
+          final uriResult = await _client.call(
+            contract: _electronicsContract,
+            function: uriFunction,
+            params: [BigInt.from(blockchainId)],
+          );
+          final tokenURI = uriResult.first as String;
+          if (data['ipfsMetadata'] != null && data['ipfsMetadata'] != tokenURI) {
+            isTampered = true;
+            updates['ipfsMetadata'] = tokenURI;
+          }
+        } catch (e) {
+          debugPrint('Could not fetch tokenURI: $e');
+        }
+      } else if (type == 'land') {
+        final property = await getLandProperty(blockchainId);
+        if (property == null) return true;
+
+        // Check Price
+        final chainPriceEther = double.parse(weiToEther(property['pricePerFraction']));
+        final dbPrice = (data['pricePerFraction'] ?? 0).toDouble();
+        
+        // Allow tiny precision diffs, but flag major tampering
+        if ((chainPriceEther - dbPrice).abs() > 0.0001) {
+          isTampered = true;
+          updates['pricePerFraction'] = chainPriceEther;
+        }
+
+        // Check Total Fractions
+        if (data['totalFractions'] != property['totalFractions']) {
+          isTampered = true;
+          updates['totalFractions'] = property['totalFractions'];
+        }
+      }
+
+      if (isTampered) {
+        debugPrint('⚠️ SECURITY ALERT: Tampered data detected for $firestoreDocId. Healing from blockchain...');
+        await docRef.update(updates);
+        return false; // Healing performed
+      }
+
+      return true; // Healthy
+    } catch (e) {
+      debugPrint('Healing error: $e');
+      return true; // Fail safe
+    }
   }
 }

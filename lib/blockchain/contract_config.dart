@@ -6,8 +6,8 @@ class ContractConfig {
 
   static const String rpcUrl = 'https://polygon-amoy.drpc.org';
 
-  static const String _rawElectronicsAddr = '0x166163be328C1fe59674dE74Aa7F6291286c9097';
-  static const String _rawLandAddr = '0xF157e2e251a3CC33b514339c75Cd13B94c5297A1';
+  static const String _rawElectronicsAddr = '0x1799Bbec3d1FA0B549d5f37D848336244391c8a3';
+  static const String _rawLandAddr = '0x6ed49d1af167f6c5d4dCCbF83c8Bbf6D0482AbB5';
 
   // CLEAN GETTERS (Automatically removes invisible characters)
   static String get electronicsNFTAddress => _clean(_rawElectronicsAddr);
