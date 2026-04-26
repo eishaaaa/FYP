@@ -69,6 +69,7 @@ dependencies:
   intl: ^0.20.1          # Upgrading this resolves the Reown/PointyCastle conflict
   reown_appkit: ^1.4.0-beta04 # Use a version compatible with intl 0.20
   device_info_plus: ^9.0.0  #download images in phone
+  showcaseview: ^5.0.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
