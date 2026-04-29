@@ -10,7 +10,7 @@ import 'wallet_screen.dart';
 import 'qr_scanner_enhanced.dart';
 import '../blockchain/blockchain_service.dart';
 import '../services/resale_service.dart';
-import 'notification_screen.dart';
+import '../services/push_notification_service.dart';
 import 'resale_listing_sheet.dart';
 import 'asset_detail_screen.dart';
 import 'profile_screen.dart';
@@ -96,115 +96,115 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   Widget build(BuildContext context) {
     return ShowCaseWidget(
       builder: (context) => Scaffold(
-      appBar: _index == 3
-          ? null
-          : _index == 2
-          ? AppBar(
-              leading: IconButton(
-                icon: const Icon(Icons.chevron_left),
-                onPressed: () => setState(() => _index = 0),
+        appBar: _index == 3
+            ? null
+            : _index == 2
+            ? AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.chevron_left),
+            onPressed: () => setState(() => _index = 0),
+          ),
+          title: const Text("My Assets"),
+        )
+            : AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Image.asset('assets/logos.png', fit: BoxFit.contain),
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(
+                Icons.account_balance_wallet_outlined,
+                color: Color(0xFF1A2E2E),
               ),
-              title: const Text("My Assets"),
-            )
-          : AppBar(
-              backgroundColor: Colors.white,
-              elevation: 0,
-              leading: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Image.asset('assets/logos.png', fit: BoxFit.contain),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const WalletScreen()),
               ),
-              actions: [
-                IconButton(
-                  icon: const Icon(
-                    Icons.account_balance_wallet_outlined,
-                    color: Color(0xFF1A2E2E),
-                  ),
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const WalletScreen()),
-                  ),
-                ),
-                StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('notifications')
-                      .where(
-                        'receiverId',
-                        isEqualTo: FirebaseAuth.instance.currentUser?.uid,
-                      )
-                      .where('isRead', isEqualTo: false)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    final unreadCount = snapshot.data?.docs.length ?? 0;
-                    return Badge(
-                      label: Text(unreadCount.toString()),
-                      isLabelVisible: unreadCount > 0,
-                      offset: const Offset(-4, 4),
-                      child: IconButton(
-                        icon: const Icon(
-                          Icons.notifications_none_rounded,
-                          color: Color(0xFF1A2E2E),
-                        ),
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const NotificationsScreen(),
-                          ),
-                        ),
+            ),
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('notifications')
+                  .where(
+                'receiverId',
+                isEqualTo: FirebaseAuth.instance.currentUser?.uid,
+              )
+                  .where('isRead', isEqualTo: false)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final unreadCount = snapshot.data?.docs.length ?? 0;
+                return Badge(
+                  label: Text(unreadCount.toString()),
+                  isLabelVisible: unreadCount > 0,
+                  offset: const Offset(-4, 4),
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.notifications_none_rounded,
+                      color: Color(0xFF1A2E2E),
+                    ),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const NotificationsScreen(),
                       ),
-                    );
-                  },
-                ),
-              ],
-            ),
-      floatingActionButton: _index == 0
-          ? HandHelpTooltip(
-              message: 'Need help? Chat with us!',
-              show: _showHandHelp,
-              offset: const Offset(-80, -10),
-              child: Showcase(
-                key: _chatKey,
-                description: 'Tap here to chat with suppliers or customers.',
-                child: FloatingActionButton(
-                  heroTag: 'chat_fab',
-                  child: const Icon(Icons.chat),
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ChatListScreen()),
+                    ),
                   ),
-                ),
-              ),
-            )
-          : null,
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _index,
-        onTap: _nav,
-        type: BottomNavigationBarType.fixed,
-        items: [
-          const BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
-          BottomNavigationBarItem(
-            icon: Showcase(
-              key: _scanKey,
-              description: 'Scan an asset QR code to verify its authenticity.',
-              child: const Icon(Icons.qr_code_scanner),
+                );
+              },
             ),
-            label: "Scan",
+          ],
+        ),
+        floatingActionButton: _index == 0
+            ? HandHelpTooltip(
+          message: 'Need help? Chat with us!',
+          show: _showHandHelp,
+          offset: const Offset(-80, -10),
+          child: Showcase(
+            key: _chatKey,
+            description: 'Tap here to chat with suppliers or customers.',
+            child: FloatingActionButton(
+              heroTag: 'chat_fab',
+              child: const Icon(Icons.chat),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ChatListScreen()),
+              ),
+            ),
           ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.inventory),
-            label: "My Assets",
-          ),
-          const BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
-        ],
-      ),
-      body: IndexedStack(
-        index: _index,
-        children: [
-          _mainMarketplaceBody(),
-          const SizedBox(), // Placeholder for Scan (handled by nav)
-          const MyAssetsScreen(),
-          ProfileScreen(),
-        ],
-      ),
+        )
+            : null,
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _index,
+          onTap: _nav,
+          type: BottomNavigationBarType.fixed,
+          items: [
+            const BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
+            BottomNavigationBarItem(
+              icon: Showcase(
+                key: _scanKey,
+                description: 'Scan an asset QR code to verify its authenticity.',
+                child: const Icon(Icons.qr_code_scanner),
+              ),
+              label: "Scan",
+            ),
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.inventory),
+              label: "My Assets",
+            ),
+            const BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
+          ],
+        ),
+        body: IndexedStack(
+          index: _index,
+          children: [
+            _mainMarketplaceBody(),
+            const SizedBox(), // Placeholder for Scan (handled by nav)
+            const MyAssetsScreen(),
+            ProfileScreen(),
+          ],
+        ),
       ),
     );
   }
@@ -460,17 +460,18 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
         .snapshots()
         .listen(
           (snap) {
-            _snap1 = snap;
-            _mergeAndSetState();
-          },
-          onError: (e) {
-            if (mounted)
-              setState(() {
-                _assetsError = e.toString();
-                _assetsLoading = false;
-              });
-          },
-        );
+        _snap1 = snap;
+        _mergeAndSetState();
+      },
+      onError: (e) {
+        if (mounted) {
+          setState(() {
+            _assetsError = e.toString();
+            _assetsLoading = false;
+          });
+        }
+      },
+    );
 
     // Query 2 — ownerUid (used by some supplier upload flows)
     _sub2 = db
@@ -479,17 +480,18 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
         .snapshots()
         .listen(
           (snap) {
-            _snap2 = snap;
-            _mergeAndSetState();
-          },
-          onError: (e) {
-            if (mounted)
-              setState(() {
-                _assetsError = e.toString();
-                _assetsLoading = false;
-              });
-          },
-        );
+        _snap2 = snap;
+        _mergeAndSetState();
+      },
+      onError: (e) {
+        if (mounted) {
+          setState(() {
+            _assetsError = e.toString();
+            _assetsLoading = false;
+          });
+        }
+      },
+    );
   }
 
   void _mergeAndSetState() {
@@ -544,27 +546,30 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
     try {
       await _ensureWalletConnected();
       final tx = await _blockchain.claimLandRent(propertyId);
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Transaction Sent! Waiting for confirmation...'),
           ),
         );
+      }
       if (tx != null) {
         await _blockchain.waitForConfirmation(tx);
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Rent Claimed Successfully!'),
               backgroundColor: Color(0xFF2A7F8F),
             ),
           );
+        }
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -574,9 +579,9 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
 
   // FIX #3 — double-tap guard + FIX #4 — removed redundant inner const Color
   Future<void> _listForResale(
-    String assetId,
-    Map<String, dynamic> asset,
-  ) async {
+      String assetId,
+      Map<String, dynamic> asset,
+      ) async {
     if (_listingInProgress) return;
     if (mounted) setState(() => _listingInProgress = true);
     try {
@@ -622,17 +627,19 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
     if (confirmed != true) return;
     try {
       await _resaleSvc.removeListing(assetId);
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Listing removed. Asset hidden from marketplace.'),
           ),
         );
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
+      }
     }
   }
 
@@ -662,18 +669,20 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                   tokenId: tokenId,
                   reviewText: txtCtrl.text,
                 );
-                if (mounted)
+                if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text("Review Transaction Sent!"),
                       backgroundColor: Color(0xFF2A7F8F),
                     ),
                   );
+                }
               } catch (e) {
-                if (mounted)
+                if (mounted) {
                   ScaffoldMessenger.of(
                     context,
                   ).showSnackBar(SnackBar(content: Text("Error: $e")));
+                }
               }
             },
             child: const Text("Submit"),
@@ -880,21 +889,21 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                 vertical: 10,
                               ),
                               decoration: BoxDecoration(
-                                color: isSyncing 
+                                color: isSyncing
                                     ? Colors.orange.shade600
                                     : tokenId != null
-                                        ? const Color(0xFF1A4F5C)
-                                        : Colors.grey.shade200,
+                                    ? const Color(0xFF1A4F5C)
+                                    : Colors.grey.shade200,
                                 borderRadius: BorderRadius.circular(18),
                                 boxShadow: isSyncing || tokenId != null
                                     ? [
-                                        BoxShadow(
-                                          color: (isSyncing ? Colors.orange.shade600 : const Color(0xFF1A4F5C))
-                                              .withOpacity(0.18),
-                                          blurRadius: 10,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                      ]
+                                  BoxShadow(
+                                    color: (isSyncing ? Colors.orange.shade600 : const Color(0xFF1A4F5C))
+                                        .withOpacity(0.18),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ]
                                     : null,
                               ),
                               child: Row(
@@ -985,11 +994,12 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                       tokenId,
                                     ),
                                     builder: (c, s) {
-                                      if (s.hasError)
+                                      if (s.hasError) {
                                         return const Text(
                                           'Rent: —',
                                           style: TextStyle(fontSize: 12),
                                         );
+                                      }
                                       final rent = s.data ?? BigInt.zero;
                                       return Text(
                                         'Unclaimed: ${_blockchain.weiToEther(rent)} MATIC',
@@ -1007,17 +1017,17 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                 ElevatedButton.icon(
                                   icon: _loading
                                       ? const SizedBox(
-                                          width: 14,
-                                          height: 14,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
                                       : const Icon(
-                                          Icons.monetization_on,
-                                          size: 15,
-                                        ),
+                                    Icons.monetization_on,
+                                    size: 15,
+                                  ),
                                   label: const Text(
                                     'Claim Rent',
                                     style: TextStyle(fontSize: 12),
@@ -1031,7 +1041,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                     ),
                                     minimumSize: const Size(0, 38),
                                     tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
+                                    MaterialTapTargetSize.shrinkWrap,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(14),
                                     ),
@@ -1070,7 +1080,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      CrossAxisAlignment.start,
                                       children: [
                                         const Text(
                                           'Warranty Activated',
@@ -1118,10 +1128,10 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
   // ── Resale action row ─────────────────────────────────────────────────────
   // FIX #1 — added tokenId parameter; shows "Pending NFT" when not minted
   Widget _buildResaleRow(
-    String assetId,
-    Map<String, dynamic> asset,
-    int? tokenId, // ← NEW parameter
-  ) {
+      String assetId,
+      Map<String, dynamic> asset,
+      int? tokenId, // ← NEW parameter
+      ) {
     final isListed = asset['isListedForResale'] == true;
     final resalePrice = asset['resalePrice'];
     // NFT must be minted before the asset can be listed for resale
@@ -1163,7 +1173,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
 
           // FIX #1 — three-branch decision tree
           if (!canList)
-            // NFT not yet minted — disable resale quietly
+          // NFT not yet minted — disable resale quietly
             Tooltip(
               message: 'NFT must be minted before listing',
               child: Row(
@@ -1273,8 +1283,9 @@ class _LatestAssetsRow extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
       builder: (context, snap) {
-        if (!snap.hasData)
+        if (!snap.hasData) {
           return const Center(child: CircularProgressIndicator());
+        }
 
         final docs = snap.data!.docs.where((doc) {
           final d = doc.data() as Map<String, dynamic>;
@@ -1312,7 +1323,7 @@ class _LatestAssetsRow extends StatelessWidget {
             final price = data['price'] ?? 0;
             final isResale =
                 data['isListedForResale'] == true &&
-                data['previousOwnerId'] != null;
+                    data['previousOwnerId'] != null;
 
             return GestureDetector(
               onTap: () => Navigator.push(
@@ -1509,41 +1520,48 @@ class AssetListView extends StatelessWidget {
   bool _matchesFilters(Map<String, dynamic> d) {
     if (filters["brand"] != null && filters["brand"].toString().isNotEmpty) {
       if ((d["brand"] ?? "").toString().toLowerCase() !=
-          filters["brand"].toString().toLowerCase())
+          filters["brand"].toString().toLowerCase()) {
         return false;
+      }
     }
     if (filters["city"] != null && filters["city"].toString().isNotEmpty) {
       if ((d["city"] ?? "").toString().toLowerCase() !=
-          filters["city"].toString().toLowerCase())
+          filters["city"].toString().toLowerCase()) {
         return false;
+      }
     }
     if (category == "electronics") {
       if (filters["ram"] != null && filters["ram"].toString().isNotEmpty) {
-        if ((d["ram"] ?? "").toString() != filters["ram"].toString())
+        if ((d["ram"] ?? "").toString() != filters["ram"].toString()) {
           return false;
+        }
       }
       if (filters["storage"] != null &&
           filters["storage"].toString().isNotEmpty) {
-        if ((d["storage"] ?? "").toString() != filters["storage"].toString())
+        if ((d["storage"] ?? "").toString() != filters["storage"].toString()) {
           return false;
+        }
       }
       if (filters["condition"] != null &&
           filters["condition"].toString().isNotEmpty) {
         if ((d["condition"] ?? "").toString().toLowerCase() !=
-            filters["condition"].toString().toLowerCase())
+            filters["condition"].toString().toLowerCase()) {
           return false;
+        }
       }
     }
     if (category == "land") {
       if (filters["area"] != null && filters["area"].toString().isNotEmpty) {
-        if ((d["area"] ?? "").toString() != filters["area"].toString())
+        if ((d["area"] ?? "").toString() != filters["area"].toString()) {
           return false;
+        }
       }
       if (filters["landType"] != null &&
           filters["landType"].toString().isNotEmpty) {
         if ((d["landType"] ?? "").toString().toLowerCase() !=
-            filters["landType"].toString().toLowerCase())
+            filters["landType"].toString().toLowerCase()) {
           return false;
+        }
       }
     }
     return true;
@@ -1555,16 +1573,17 @@ class AssetListView extends StatelessWidget {
       stream: _buildQuery().snapshots(),
       builder: (context, snap) {
         if (snap.hasError) return Center(child: Text("Error: ${snap.error}"));
-        if (!snap.hasData)
+        if (!snap.hasData) {
           return const Center(child: CircularProgressIndicator());
+        }
 
         final docs = snap.data!.docs;
         final filtered = docs
             .where(
               (e) =>
-                  _matchesFilters(e.data() as Map<String, dynamic>) &&
-                  _matchesSearch(e.data() as Map<String, dynamic>),
-            )
+          _matchesFilters(e.data() as Map<String, dynamic>) &&
+              _matchesSearch(e.data() as Map<String, dynamic>),
+        )
             .toList();
 
         final currentUid = FirebaseAuth.instance.currentUser?.uid;
@@ -1988,13 +2007,13 @@ class _FilterSheetState extends State<FilterSheet> {
                   children: _cities
                       .map(
                         (c) => _selectChip(
-                          label: c,
-                          selected: _selectedCity == c,
-                          onTap: () => setState(
+                      label: c,
+                      selected: _selectedCity == c,
+                      onTap: () => setState(
                             () => _selectedCity = _selectedCity == c ? null : c,
-                          ),
-                        ),
-                      )
+                      ),
+                    ),
+                  )
                       .toList(),
                 ),
                 const SizedBox(height: 20),
@@ -2008,14 +2027,14 @@ class _FilterSheetState extends State<FilterSheet> {
                     children: _areas
                         .map(
                           (a) => _selectChip(
-                            label: a,
-                            selected: _selectedArea == a,
-                            onTap: () => setState(
+                        label: a,
+                        selected: _selectedArea == a,
+                        onTap: () => setState(
                               () =>
-                                  _selectedArea = _selectedArea == a ? null : a,
-                            ),
-                          ),
-                        )
+                          _selectedArea = _selectedArea == a ? null : a,
+                        ),
+                      ),
+                    )
                         .toList(),
                   ),
                   const SizedBox(height: 20),

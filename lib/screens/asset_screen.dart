@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'shared_screens.dart';
 import 'asset_detail_screen.dart';
+import 'resale_listing_sheet.dart';
+import '../services/resale_service.dart';
 
 const Color _teal = Color(0xFF00695C);
 const Color _tealBg = Color(0xFFE0F2F1);
@@ -109,7 +111,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
 
                         return _AssetCard(
                           image: img,
-                          title: d['title'] ?? 'Untitled',
+                          title: _assetTitle(d, fallback: 'Untitled'),
                           badge: hasNFT ? 'NFT' : null,
                           categoryLabel: isLand ? '🏡 Land' : '📦 Electronics',
                           price: 'PKR ${d['price'] ?? '—'}',
@@ -183,12 +185,72 @@ class _SupplierAssetsView extends StatefulWidget {
 
 class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
   final _searchCtrl = TextEditingController();
+  final ResaleService _resaleSvc = ResaleService();
   String _query = '';
+  bool _listingInProgress = false;
 
   @override
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _listForSale(String assetId, Map<String, dynamic> asset) async {
+    if (_listingInProgress) return;
+    if (mounted) setState(() => _listingInProgress = true);
+    try {
+      final listed = await ResaleListingSheet.show(
+        context,
+        assetId: assetId,
+        assetData: asset,
+      );
+      if (listed && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Asset listed for sale on the marketplace.'),
+            backgroundColor: _teal,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _listingInProgress = false);
+    }
+  }
+
+  Future<void> _removeSaleListing(String assetId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove From Sale'),
+        content: const Text(
+          'This will hide the asset from the marketplace until you list it again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Remove',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await _resaleSvc.removeListing(assetId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Asset removed from sale.'),
+        backgroundColor: _teal,
+      ),
+    );
   }
 
   @override
@@ -203,9 +265,8 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
             onChanged: (v) => setState(() => _query = v.toLowerCase()),
           ),
           Expanded(
-            child: _MergedOwnerAssetsBuilder(
+            child: _SupplierPublishedAssetsBuilder(
               userId: widget.userId,
-              sortField: 'createdAt',
               builder: (docs) {
                 var filtered = docs;
                 if (_query.isNotEmpty) {
@@ -238,10 +299,11 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
                     final isLand = (d['category'] ?? '') == 'land';
                     final img = _firstImage(d);
                     final hasNFT = d['blockchainTokenId'] != null;
+                    final isListedForSale = d['isListedForResale'] == true;
 
                     return _AssetCard(
                       image: img,
-                      title: d['title'] ?? d['name'] ?? 'Untitled',
+                      title: _assetTitle(d, fallback: 'Untitled'),
                       badge: hasNFT ? 'NFT' : null,
                       categoryLabel: isLand ? '🏡 Land' : '📦 Electronics',
                       price: 'PKR ${d['price'] ?? '—'}',
@@ -262,28 +324,62 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
                         ),
                       ),
                       primaryAction: _ActionButton(
-                        label: 'Full Certificate',
-                        icon: Icons.verified_user_outlined,
+                        label: hasNFT
+                            ? (isListedForSale
+                                  ? 'Remove From Sale'
+                                  : 'List for Sale')
+                            : 'Pending NFT',
+                        icon: hasNFT
+                            ? (isListedForSale
+                                  ? Icons.remove_circle_outline
+                                  : Icons.sell_outlined)
+                            : Icons.hourglass_top_rounded,
                         outlined: true,
                         onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Certificate generated'),
-                              backgroundColor: _teal,
-                            ),
-                          );
+                          if (!hasNFT) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Mint the NFT before listing this asset for sale.',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+                          if (isListedForSale) {
+                            _removeSaleListing(id);
+                            return;
+                          }
+                          _listForSale(id, d);
                         },
                       ),
                       secondaryAction: _ActionButton(
-                        label: 'View Asset',
-                        icon: Icons.visibility_outlined,
+                        label: isListedForSale ? 'On Marketplace' : 'View Asset',
+                        icon: isListedForSale
+                            ? Icons.storefront_outlined
+                            : Icons.visibility_outlined,
                         outlined: false,
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => AssetDetailScreen(assetId: id),
-                          ),
-                        ),
+                        onPressed: () {
+                          if (isListedForSale) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  d['resalePrice'] != null
+                                      ? 'Listed for PKR ${d['resalePrice']}'
+                                      : 'Asset is live on the marketplace.',
+                                ),
+                                backgroundColor: _teal,
+                              ),
+                            );
+                            return;
+                          }
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AssetDetailScreen(assetId: id),
+                            ),
+                          );
+                        },
                       ),
                     );
                   },
@@ -331,182 +427,209 @@ class _AssetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.07),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Image ──────────────────────────────────────
-            // SizedBox outside ClipRRect gives Stack concrete height bounds.
-            // StackFit.expand fills every child into the 180px slot.
-            SizedBox(
-              height: 180,
-              child: ClipRRect(
+    return Material(
+      color: Colors.transparent,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          constraints: const BoxConstraints(
+            minHeight: 0,
+            maxHeight: double.infinity,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.07),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── IMAGE ───────────────────────────────
+              ClipRRect(
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(18),
                 ),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    image != null
-                        ? buildAssetImage(
-                            image,
-                            width: double.infinity,
-                            height: 180,
-                            fit: BoxFit.cover,
-                          )
-                        : Container(
-                            color: const Color(0xFFE8F4F6),
-                            child: const Center(
-                              child: Icon(
-                                Icons.image_outlined,
-                                size: 48,
-                                color: _grey,
+                child: SizedBox(
+                  height: 180,
+                  width: double.infinity,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      image != null
+                          ? buildAssetImage(image, fit: BoxFit.cover)
+                          : Container(
+                              color: const Color(0xFFE8F4F6),
+                              child: const Center(
+                                child: Icon(
+                                  Icons.image_outlined,
+                                  size: 48,
+                                  color: _grey,
+                                ),
                               ),
                             ),
+
+                      // Badge
+                      if (badge != null)
+                        Positioned(
+                          top: 12,
+                          left: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _teal,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.verified,
+                                  color: Colors.white,
+                                  size: 12,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  badge!,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                    // Badge
-                    if (badge != null)
+                        ),
+
+                      // Category chip
                       Positioned(
-                        top: 12,
-                        left: 12,
+                        bottom: 12,
+                        right: 12,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: _teal,
+                            color: Colors.black.withOpacity(0.55),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.verified,
-                                color: Colors.white,
-                                size: 12,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                badge!,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
+                          child: Text(
+                            categoryLabel,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
                       ),
-                    // Category chip
-                    Positioned(
-                      bottom: 12,
-                      right: 12,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.55),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          categoryLabel,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
+                    ],
+                  ),
+                ),
+              ),
+
+              // ── BODY ────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _dark,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Details
+                    if (detail1?.isNotEmpty == true)
+                      _DetailRow(
+                        icon: Icons.location_on_outlined,
+                        text: detail1!,
+                      ),
+
+                    if (detail2?.isNotEmpty == true)
+                      _DetailRow(
+                        icon: Icons.straighten_outlined,
+                        text: detail2!,
+                      ),
+
+                    if (transferDate?.isNotEmpty == true)
+                      _DetailRow(
+                        icon: Icons.swap_horiz_outlined,
+                        text: 'Transferred: $transferDate',
+                        color: _teal,
+                      ),
+
+                    if (tokenId != null)
+                      _DetailRow(
+                        icon: Icons.token_outlined,
+                        text: 'Token $tokenId',
+                        color: _teal,
+                      ),
+
+                    const SizedBox(height: 12),
+                    const Divider(height: 1, color: Color(0xFFF0F0F0)),
+                    const SizedBox(height: 12),
+
+                    // Price + Actions
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              price,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: _teal,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ),
-                      ),
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              alignment: WrapAlignment.end,
+                              children: [primaryAction, secondaryAction],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
-            ),
-
-            // ── Body ───────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Title
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: _dark,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Detail rows
-                  if (detail1 != null && detail1!.isNotEmpty)
-                    _DetailRow(
-                      icon: Icons.location_on_outlined,
-                      text: detail1!,
-                    ),
-                  if (detail2 != null && detail2!.isNotEmpty)
-                    _DetailRow(icon: Icons.straighten_outlined, text: detail2!),
-                  if (transferDate != null && transferDate!.isNotEmpty)
-                    _DetailRow(
-                      icon: Icons.swap_horiz_outlined,
-                      text: 'Transferred: $transferDate',
-                      color: _teal,
-                    ),
-                  if (tokenId != null)
-                    _DetailRow(
-                      icon: Icons.token_outlined,
-                      text: 'Token $tokenId',
-                      color: _teal,
-                    ),
-
-                  const SizedBox(height: 12),
-                  const Divider(height: 1, color: Color(0xFFF0F0F0)),
-                  const SizedBox(height: 12),
-
-                  // Price + actions
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          price,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: _teal,
-                          ),
-                        ),
-                      ),
-                      primaryAction,
-                      const SizedBox(width: 8),
-                      secondaryAction,
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -781,13 +904,32 @@ class _ErrorView extends StatelessWidget {
   }
 }
 
-String? _firstImage(Map<String, dynamic> d) =>
-    (d['images'] is List && (d['images'] as List).isNotEmpty)
-    ? (d['images'] as List)[0] as String?
-    : null;
+String? _asNonEmptyString(Object? value) {
+  if (value == null) return null;
+
+  final text = value.toString().trim();
+  return text.isEmpty ? null : text;
+}
+
+String _assetTitle(Map<String, dynamic> data, {required String fallback}) =>
+    _asNonEmptyString(data['title']) ??
+    _asNonEmptyString(data['name']) ??
+    fallback;
+
+String? _firstImage(Map<String, dynamic> d) {
+  final images = d['images'];
+  if (images is! Iterable) return null;
+
+  for (final image in images) {
+    final value = _asNonEmptyString(image);
+    if (value != null) return value;
+  }
+
+  return null;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RELATED ITEMS LIST  (unchanged logic, cleaner card)
+// RELATED ITEMS LIST
 // ─────────────────────────────────────────────────────────────────────────────
 class RelatedItemsList extends StatelessWidget {
   final String? type;
@@ -871,7 +1013,7 @@ class RelatedItemsList extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.all(8),
                         child: Text(
-                          d['title'] ?? d['name'] ?? '',
+                          _assetTitle(d, fallback: ''),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -906,11 +1048,7 @@ class FavoritesScreen extends StatelessWidget {
       return const Scaffold(body: Center(child: Text('Not logged in')));
     }
 
-    final q = db
-        .collection('users')
-        .doc(user.uid)
-        .collection('favorites')
-        .orderBy('createdAt', descending: true);
+    final q = db.collection('users').doc(user.uid).collection('favorites');
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -933,7 +1071,7 @@ class FavoritesScreen extends StatelessWidget {
             );
           }
           return ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
             itemCount: docs.length,
             itemBuilder: (context, i) {
               final favorite = docs[i].data();
@@ -958,95 +1096,11 @@ class FavoritesScreen extends StatelessWidget {
                 );
               }
 
-              return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                future: db.collection('assets').doc(assetId).get(),
-                builder: (context, assetSnap) {
-                  if (assetSnap.connectionState == ConnectionState.waiting) {
-                    return const _FavoriteSkeletonCard();
-                  }
-                  if (assetSnap.hasError) {
-                    return _InlineStatusCard(
-                      icon: Icons.error_outline_rounded,
-                      title: 'Could not load this favorite',
-                      subtitle: 'Please remove it and add it again if needed.',
-                      actionLabel: 'Remove',
-                      onAction: () {
-                        db
-                            .collection('users')
-                            .doc(user.uid)
-                            .collection('favorites')
-                            .doc(docs[i].id)
-                            .delete();
-                      },
-                    );
-                  }
-                  if (!assetSnap.hasData || !assetSnap.data!.exists) {
-                    return _InlineStatusCard(
-                      icon: Icons.inventory_2_outlined,
-                      title: 'This asset is no longer available',
-                      subtitle: 'You can remove it from your favorites list.',
-                      actionLabel: 'Remove',
-                      onAction: () {
-                        db
-                            .collection('users')
-                            .doc(user.uid)
-                            .collection('favorites')
-                            .doc(docs[i].id)
-                            .delete();
-                      },
-                    );
-                  }
-                  final asset = assetSnap.data!.data() ?? <String, dynamic>{};
-                  final img = _firstImage(asset);
-
-                  return _AssetCard(
-                    image: img,
-                    title: asset['title'] ?? asset['name'] ?? 'Asset',
-                    categoryLabel: (asset['category'] ?? '') == 'land'
-                        ? '🏡 Land'
-                        : '📦 Electronics',
-                    price: 'PKR ${asset['price'] ?? 'N/A'}',
-                    detail1: asset['location'] != null
-                        ? '${asset['location']}, ${asset['city'] ?? ''}'
-                        : null,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => AssetDetailScreen(assetId: assetId),
-                      ),
-                    ),
-                    primaryAction: _ActionButton(
-                      label: 'Remove',
-                      icon: Icons.delete_outline,
-                      outlined: true,
-                      onPressed: () {
-                        db
-                            .collection('users')
-                            .doc(user.uid)
-                            .collection('favorites')
-                            .doc(docs[i].id)
-                            .delete();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Removed from favorites'),
-                            backgroundColor: _teal,
-                          ),
-                        );
-                      },
-                    ),
-                    secondaryAction: _ActionButton(
-                      label: 'View',
-                      icon: Icons.visibility_outlined,
-                      outlined: false,
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => AssetDetailScreen(assetId: assetId),
-                        ),
-                      ),
-                    ),
-                  );
-                },
+              return _FavoriteItem(
+                key: ValueKey(assetId),
+                assetId: assetId,
+                favoriteDocId: docs[i].id,
+                userId: user.uid,
               );
             },
           );
@@ -1056,6 +1110,205 @@ class FavoritesScreen extends StatelessWidget {
   }
 }
 
+class _FavoriteItem extends StatefulWidget {
+  final String assetId;
+  final String favoriteDocId;
+  final String userId;
+
+  const _FavoriteItem({
+    super.key,
+    required this.assetId,
+    required this.favoriteDocId,
+    required this.userId,
+  });
+
+  @override
+  State<_FavoriteItem> createState() => _FavoriteItemState();
+}
+
+class _FavoriteItemState extends State<_FavoriteItem> {
+  late final Future<DocumentSnapshot<Map<String, dynamic>>> _assetFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    // Created ONCE — never re-called on rebuild
+    _assetFuture = db.collection('assets').doc(widget.assetId).get();
+  }
+
+  void _remove() {
+    db
+        .collection('users')
+        .doc(widget.userId)
+        .collection('favorites')
+        .doc(widget.favoriteDocId)
+        .delete();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Removed from favorites'),
+          backgroundColor: _teal,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: _assetFuture,
+      builder: (context, assetSnap) {
+        if (assetSnap.connectionState == ConnectionState.waiting) {
+          return const SizedBox.shrink();
+        }
+
+        if (assetSnap.hasError) {
+          return _InlineStatusCard(
+            icon: Icons.error_outline_rounded,
+            title: 'Could not load this favorite',
+            subtitle: 'Please remove it and add it again if needed.',
+            actionLabel: 'Remove',
+            onAction: _remove,
+          );
+        }
+
+        if (!assetSnap.hasData || !assetSnap.data!.exists) {
+          return _InlineStatusCard(
+            icon: Icons.inventory_2_outlined,
+            title: 'This asset is no longer available',
+            subtitle: 'You can remove it from your favorites list.',
+            actionLabel: 'Remove',
+            onAction: _remove,
+          );
+        }
+
+        final asset = assetSnap.data!.data() ?? <String, dynamic>{};
+        final img = _firstImage(asset);
+
+        return _AssetCard(
+          image: img,
+          title: _assetTitle(asset, fallback: 'Asset'),
+          categoryLabel: (asset['category'] ?? '') == 'land'
+              ? '🏡 Land'
+              : '📦 Electronics',
+          price: 'PKR ${asset['price'] ?? 'N/A'}',
+          detail1: asset['location'] != null
+              ? '${asset['location']}, ${asset['city'] ?? ''}'
+              : null,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => AssetDetailScreen(assetId: widget.assetId),
+            ),
+          ),
+          primaryAction: _ActionButton(
+            label: 'Remove',
+            icon: Icons.delete_outline,
+            outlined: true,
+            onPressed: _remove,
+          ),
+          secondaryAction: _ActionButton(
+            label: 'View',
+            icon: Icons.visibility_outlined,
+            outlined: false,
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AssetDetailScreen(assetId: widget.assetId),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUPPLIER PUBLISHED ASSETS BUILDER
+// ─────────────────────────────────────────────────────────────────────────────
+class _SupplierPublishedAssetsBuilder extends StatelessWidget {
+  final String userId;
+  final Widget Function(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs)
+  builder;
+
+  const _SupplierPublishedAssetsBuilder({
+    required this.userId,
+    required this.builder,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final assetsRef = db.collection('assets');
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: assetsRef.where('ownerId', isEqualTo: userId).snapshots(),
+      builder: (context, ownerIdSnap) {
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: assetsRef.where('ownerUid', isEqualTo: userId).snapshots(),
+          builder: (context, ownerUidSnap) {
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: assetsRef
+                  .where('supplierId', isEqualTo: userId)
+                  .snapshots(),
+              builder: (context, supplierSnap) {
+                return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: assetsRef
+                      .where('createdBy', isEqualTo: userId)
+                      .snapshots(),
+                  builder: (context, createdBySnap) {
+                    final snapshots = [
+                      ownerIdSnap,
+                      ownerUidSnap,
+                      supplierSnap,
+                      createdBySnap,
+                    ];
+
+                    Object? firstError;
+                    for (final snap in snapshots) {
+                      if (snap.hasError) {
+                        firstError = snap.error;
+                        break;
+                      }
+                    }
+
+                    if (firstError != null &&
+                        snapshots.every((snap) => snap.hasError)) {
+                      return _ErrorView(error: firstError.toString());
+                    }
+
+                    if (!snapshots.any((snap) => snap.hasData)) {
+                      return const Center(
+                        child: CircularProgressIndicator(color: _teal),
+                      );
+                    }
+
+                    final docs = _mergeAssetDocGroups([
+                      ownerIdSnap.data?.docs ??
+                          const <QueryDocumentSnapshot<Map<String, dynamic>>>[],
+                      ownerUidSnap.data?.docs ??
+                          const <QueryDocumentSnapshot<Map<String, dynamic>>>[],
+                      supplierSnap.data?.docs ??
+                          const <QueryDocumentSnapshot<Map<String, dynamic>>>[],
+                      createdBySnap.data?.docs ??
+                          const <QueryDocumentSnapshot<Map<String, dynamic>>>[],
+                    ], sortField: 'createdAt');
+
+                    return builder(docs);
+                  },
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MERGED OWNER ASSETS BUILDER
+// ─────────────────────────────────────────────────────────────────────────────
 class _MergedOwnerAssetsBuilder extends StatelessWidget {
   final String userId;
   final String sortField;
@@ -1116,12 +1369,21 @@ List<QueryDocumentSnapshot<Map<String, dynamic>>> _mergeAssetDocs(
   Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> secondary, {
   required String sortField,
 }) {
+  return _mergeAssetDocGroups([primary, secondary], sortField: sortField);
+}
+
+List<QueryDocumentSnapshot<Map<String, dynamic>>> _mergeAssetDocGroups(
+  Iterable<Iterable<QueryDocumentSnapshot<Map<String, dynamic>>>> groups, {
+  required String sortField,
+}) {
   final merged = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
   final seenIds = <String>{};
 
-  for (final doc in [...primary, ...secondary]) {
-    if (seenIds.add(doc.id)) {
-      merged.add(doc);
+  for (final group in groups) {
+    for (final doc in group) {
+      if (seenIds.add(doc.id)) {
+        merged.add(doc);
+      }
     }
   }
 
@@ -1139,6 +1401,9 @@ List<QueryDocumentSnapshot<Map<String, dynamic>>> _mergeAssetDocs(
   return merged;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SKELETON CARD (shown while favorite asset loads)
+// ─────────────────────────────────────────────────────────────────────────────
 class _FavoriteSkeletonCard extends StatelessWidget {
   const _FavoriteSkeletonCard();
 
@@ -1211,6 +1476,9 @@ class _FavoriteSkeletonCard extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// INLINE STATUS CARD
+// ─────────────────────────────────────────────────────────────────────────────
 class _InlineStatusCard extends StatelessWidget {
   final IconData icon;
   final String title;

@@ -113,7 +113,7 @@ class _TenantRentPaymentScreenState extends State<TenantRentPaymentScreen>
 
   Future<void> _loadLease() async {
     final doc =
-        await _firestore.collection('leases').doc(widget.leaseId).get();
+    await _firestore.collection('leases').doc(widget.leaseId).get();
     if (doc.exists) {
       _leaseData = doc.data();
     }
@@ -148,20 +148,20 @@ class _TenantRentPaymentScreenState extends State<TenantRentPaymentScreen>
       '${dt.day} ${_month(dt.month)} ${dt.year}';
 
   String _month(int m) => const [
-        '',
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec'
-      ][m];
+    '',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec'
+  ][m];
 
   // ── Payment Flow ─────────────────────────────────────────────────────────────
   Future<void> _payRent() async {
@@ -185,7 +185,7 @@ class _TenantRentPaymentScreenState extends State<TenantRentPaymentScreen>
       }
 
       final weiAmount =
-          _blockchain.etherToWei(widget.monthlyRentMatic);
+      _blockchain.etherToWei(widget.monthlyRentMatic);
 
       // 2. Write a pending record first — gives the user proof even if the
       //    app crashes before confirmation arrives
@@ -259,62 +259,62 @@ class _TenantRentPaymentScreenState extends State<TenantRentPaymentScreen>
 
   Future<bool> _showConfirmDialog() async {
     return await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: const Text('Confirm Payment'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _detailRow('Property', widget.propertyLocation),
-                const SizedBox(height: 8),
-                _detailRow(
-                    'Amount', '${widget.monthlyRentMatic} MATIC'),
-                const SizedBox(height: 8),
-                _detailRow('Wallet', _blockchain.connectedAddress ?? '—'),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.amber[50],
-                    borderRadius: BorderRadius.circular(8),
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Confirm Payment'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _detailRow('Property', widget.propertyLocation),
+            const SizedBox(height: 8),
+            _detailRow(
+                'Amount', '${widget.monthlyRentMatic} MATIC'),
+            const SizedBox(height: 8),
+            _detailRow('Wallet', _blockchain.connectedAddress ?? '—'),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber[50],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      color: Colors.amber[700], size: 18),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'This transaction cannot be reversed.',
+                      style: TextStyle(fontSize: 12),
+                    ),
                   ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.warning_amber_rounded,
-                          color: Colors.amber[700], size: 18),
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text(
-                          'This transaction cannot be reversed.',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1B5E20),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                ),
-                child: const Text('Pay Now'),
-              ),
-            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
           ),
-        ) ??
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1B5E20),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Pay Now'),
+          ),
+        ],
+      ),
+    ) ??
         false;
   }
 
@@ -356,41 +356,41 @@ class _TenantRentPaymentScreenState extends State<TenantRentPaymentScreen>
       ),
       body: _loading
           ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF1B5E20)))
+          child: CircularProgressIndicator(color: Color(0xFF1B5E20)))
           : _errorMessage != null
-              ? _ErrorView(
-                  message: _errorMessage!, onRetry: _init)
-              : _Body(
-                  propertyLocation: widget.propertyLocation,
-                  monthlyRentMatic: widget.monthlyRentMatic,
-                  leaseData: _leaseData,
-                  paymentHistory: _paymentHistory,
-                  isOverdue: _isOverdue,
-                  nextDueDate: _nextDueDate,
-                  paying: _paying,
-                  pulseAnim: _pulseAnim,
-                  onPay: _payRent,
-                  formatDate: _formatDate,
-                  blockchain: _blockchain,
-                ),
+          ? _ErrorView(
+          message: _errorMessage!, onRetry: _init)
+          : _Body(
+        propertyLocation: widget.propertyLocation,
+        monthlyRentMatic: widget.monthlyRentMatic,
+        leaseData: _leaseData,
+        paymentHistory: _paymentHistory,
+        isOverdue: _isOverdue,
+        nextDueDate: _nextDueDate,
+        paying: _paying,
+        pulseAnim: _pulseAnim,
+        onPay: _payRent,
+        formatDate: _formatDate,
+        blockchain: _blockchain,
+      ),
     );
   }
 
   Widget _detailRow(String label, String value) => Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 64,
-            child: Text(label,
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
-          ),
-          Expanded(
-            child: Text(value,
-                style: const TextStyle(
-                    fontWeight: FontWeight.w600, fontSize: 13)),
-          ),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      SizedBox(
+        width: 64,
+        child: Text(label,
+            style: const TextStyle(color: Colors.grey, fontSize: 13)),
+      ),
+      Expanded(
+        child: Text(value,
+            style: const TextStyle(
+                fontWeight: FontWeight.w600, fontSize: 13)),
+      ),
+    ],
+  );
 }
 
 // ── Sub-widgets ──────────────────────────────────────────────────────────────
@@ -435,7 +435,7 @@ class _Body extends StatelessWidget {
               width: double.infinity,
               margin: const EdgeInsets.only(bottom: 16),
               padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: Colors.red[700],
                 borderRadius: BorderRadius.circular(12),
@@ -520,7 +520,7 @@ class _Body extends StatelessWidget {
                         child: Text(
                           'MATIC',
                           style:
-                              TextStyle(color: Colors.white70, fontSize: 16),
+                          TextStyle(color: Colors.white70, fontSize: 16),
                         ),
                       ),
                     ],
@@ -540,7 +540,7 @@ class _Body extends StatelessWidget {
                         icon: Icons.account_balance_wallet_rounded,
                         label: blockchain.isConnected
                             ? _truncateAddress(
-                                blockchain.connectedAddress ?? '')
+                            blockchain.connectedAddress ?? '')
                             : 'Not connected',
                         overdue: false,
                       ),
@@ -563,26 +563,26 @@ class _Body extends StatelessWidget {
                       ),
                       child: paying
                           ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: Color(0xFF1B5E20),
-                              ),
-                            )
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Color(0xFF1B5E20),
+                        ),
+                      )
                           : const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.send_rounded, size: 18),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Pay Rent On-Chain',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 15),
-                                ),
-                              ],
-                            ),
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.send_rounded, size: 18),
+                          SizedBox(width: 8),
+                          Text(
+                            'Pay Rent On-Chain',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -606,10 +606,10 @@ class _Body extends StatelessWidget {
           paymentHistory.isEmpty
               ? const _EmptyHistory()
               : Column(
-                  children: paymentHistory
-                      .map((p) => _PaymentTile(payment: p))
-                      .toList(),
-                ),
+            children: paymentHistory
+                .map((p) => _PaymentTile(payment: p))
+                .toList(),
+          ),
 
           const SizedBox(height: 24),
 
@@ -714,7 +714,7 @@ class _LeaseDetailsCard extends StatelessWidget {
     return Card(
       elevation: 0,
       shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       color: Colors.white,
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -733,24 +733,24 @@ class _LeaseDetailsCard extends StatelessWidget {
   }
 
   static Widget _Row(String label, String value) => Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: Text(label,
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
-          ),
-          Expanded(
-            flex: 3,
-            child: Text(
-              value,
-              style: const TextStyle(
-                  fontWeight: FontWeight.w600, fontSize: 13),
-              textAlign: TextAlign.end,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      );
+    children: [
+      Expanded(
+        flex: 2,
+        child: Text(label,
+            style: const TextStyle(color: Colors.grey, fontSize: 13)),
+      ),
+      Expanded(
+        flex: 3,
+        child: Text(
+          value,
+          style: const TextStyle(
+              fontWeight: FontWeight.w600, fontSize: 13),
+          textAlign: TextAlign.end,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    ],
+  );
 }
 
 class _PaymentTile extends StatelessWidget {
@@ -783,11 +783,11 @@ class _PaymentTile extends StatelessWidget {
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 10),
       shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       color: Colors.white,
       child: ListTile(
         contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
           backgroundColor: statusColor.withOpacity(0.1),
           child: Icon(statusIcon, color: statusColor, size: 20),
@@ -798,19 +798,19 @@ class _PaymentTile extends StatelessWidget {
         ),
         subtitle: txHash != null
             ? GestureDetector(
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: txHash));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Tx hash copied')),
-                  );
-                },
-                child: Text(
-                  '${txHash.substring(0, 10)}… (tap to copy)',
-                  style: const TextStyle(fontSize: 11, color: Colors.grey),
-                ),
-              )
+          onTap: () {
+            Clipboard.setData(ClipboardData(text: txHash));
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Tx hash copied')),
+            );
+          },
+          child: Text(
+            '${txHash.substring(0, 10)}… (tap to copy)',
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
+          ),
+        )
             : const Text('Pending confirmation',
-                style: TextStyle(fontSize: 11, color: Colors.grey)),
+            style: TextStyle(fontSize: 11, color: Colors.grey)),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -874,7 +874,7 @@ class _InfoBullet extends StatelessWidget {
           Expanded(
             child: Text(text,
                 style:
-                    const TextStyle(fontSize: 12, color: Colors.black87)),
+                const TextStyle(fontSize: 12, color: Colors.black87)),
           ),
         ],
       ),

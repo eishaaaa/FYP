@@ -7,13 +7,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:google_fonts/google_fonts.dart';
-
 import 'screens/auth_screens.dart';
 import 'screens/user_screens.dart';
 import 'screens/supplier_screens.dart';
 import 'screens/admin_screen.dart';
 import 'screens/transfer_screen.dart';
-// import 'services/push_notification_service.dart';
+import 'services/push_notification_service.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
+
+
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN 2 — TEAL PALETTE (single source of truth for the whole app)
@@ -32,8 +35,6 @@ class AppColors {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CUSTOM PAGE-TRANSITION BUILDER
-// Applied globally via PageTransitionsTheme — every Navigator.push gets
-// a smooth slide-from-right + fade-in automatically.
 // ─────────────────────────────────────────────────────────────────────────────
 class _AppPageTransition extends PageTransitionsBuilder {
   const _AppPageTransition();
@@ -142,6 +143,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  FirebaseAnalytics.instance;
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  await PushNotificationService().initialize();
 
   // Status bar: transparent — icons dark to match light transparent AppBar
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -151,7 +155,6 @@ Future<void> main() async {
     systemNavigationBarIconBrightness: Brightness.dark,
   ));
 
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   runApp(const DigitalGoodsApp());
 }
 
@@ -199,36 +202,14 @@ class _DigitalGoodsAppState extends State<DigitalGoodsApp> {
 
   // ── Notification wiring ────────────────────────────────────────────────────
   void _setupNotificationHandlers() {
-    FirebaseMessaging.onMessage.listen((m) {
-      if (m.notification != null) _showNotificationDialog(m);
-    });
+    // Foreground notifications are shown as local notifications by PushNotificationService.
+    // Here we only handle navigation when user taps a notification.
     FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationNavigation);
     FirebaseMessaging.instance.getInitialMessage().then((m) {
       if (m != null) {
         Future.delayed(const Duration(seconds: 2), () => _handleNotificationNavigation(m));
       }
     });
-  }
-
-  void _showNotificationDialog(RemoteMessage message) {
-    final ctx = navigatorKey.currentContext;
-    if (ctx == null) return;
-    final n = message.notification;
-    if (n == null) return;
-    showDialog(
-      context: ctx,
-      builder: (_) => AlertDialog(
-        title: Text(n.title ?? 'Notification'),
-        content: Text(n.body ?? ''),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Dismiss')),
-          ElevatedButton(
-            onPressed: () { Navigator.pop(ctx); _handleNotificationNavigation(message); },
-            child: const Text('View'),
-          ),
-        ],
-      ),
-    );
   }
 
   void _handleNotificationNavigation(RemoteMessage message) {

@@ -238,9 +238,9 @@ class _TransactionsScreenState extends State<TransactionsScreen>
             ),
             bottom: TabBar(
               controller: _tabController,
-              indicatorColor: Colors.white,
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white60,
+              indicatorColor: kTeal,
+              labelColor: kTeal,
+              unselectedLabelColor: kTeal,
               isScrollable: true,
               tabs: [
                 _buildTab(Icons.hourglass_empty, 'Pending'),
