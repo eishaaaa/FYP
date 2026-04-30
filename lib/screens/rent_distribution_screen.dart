@@ -1,8 +1,10 @@
 // lib/screens/rent_distribution_screen.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../blockchain/blockchain_service.dart';
-// import 'package:firebase_auth/firebase_auth.dart';
 
 // ─── Brand Colors ─────────────────────────────────────────────────────────────
 const kTeal        = Color(0xFF2D7D7D);
@@ -14,11 +16,13 @@ const kTextPrimary = Color(0xFF1A2E2E);
 const kTextSecondary = Color(0xFF6B8E8E);
 
 class RentDistributionScreen extends StatefulWidget {
-  final int  propertyId;
-  final bool isOwner;
+  final String assetId;
+  final int    propertyId;
+  final bool   isOwner;
 
   const RentDistributionScreen({
     super.key,
+    required this.assetId,
     required this.propertyId,
     this.isOwner = false,
   });
@@ -32,6 +36,9 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     with SingleTickerProviderStateMixin {
   final _blockchainService = BlockchainServiceEnhanced();
   final _amountCtrl        = TextEditingController();
+  final _rentPriceCtrl     = TextEditingController();
+  final _db                = FirebaseFirestore.instance;
+  final _auth              = FirebaseAuth.instance;
 
   Map<String, dynamic>? _propertyData;
   BigInt _unclaimedRent = BigInt.zero;
@@ -60,6 +67,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
   void dispose() {
     _animCtrl.dispose();
     _amountCtrl.dispose();
+    _rentPriceCtrl.dispose();
     super.dispose();
   }
 
@@ -80,9 +88,17 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
           widget.propertyId,
         );
       }
+
+      // Fetch owner info from Firestore
+      final assetDoc = await _db.collection('assets').doc(widget.assetId).get();
+      final ownerUid = assetDoc.data()?['ownerId'] ?? assetDoc.data()?['ownerUid'];
+      
       setState(() {
-        _propertyData = property;
-        _loading      = false;
+        if (property != null) {
+          _propertyData = Map<String, dynamic>.from(property);
+          _propertyData!['originalOwnerUid'] = ownerUid;
+        }
+        _loading = false;
       });
     } catch (_) {
       setState(() => _loading = false);
@@ -124,24 +140,106 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     }
   }
 
-  // ── Claim ─────────────────────────────────────────────────────────────────
-  Future<void> _claimRent() async {
-    if (_unclaimedRent == BigInt.zero) {
-      _showSnack('No rent to claim');
+  // ── Rental Logic ──────────────────────────────────────────────────────────
+  Future<void> _listForRent() async {
+    final rentAmount = double.tryParse(_rentPriceCtrl.text);
+    if (rentAmount == null || rentAmount <= 0) {
+      _showSnack('Please enter a valid monthly rent');
       return;
     }
-    _showProcessingDialog('Claiming rent…');
+    final weiRent = _blockchainService.etherToWei(rentAmount);
+    _showProcessingDialog('Listing for rent…');
     try {
-      final txHash =
-      await _blockchainService.claimLandRent(widget.propertyId);
+      final txHash = await _blockchainService.listLandForRent(
+        propertyId: widget.propertyId,
+        rentAmount: weiRent,
+      );
+      if (txHash != null) {
+        final ok = await _blockchainService.waitForConfirmation(txHash);
+        if (ok) {
+          // Sync with Firestore
+          await _db.collection('assets').doc(widget.assetId).update({
+            'isForRent': true,
+            'monthlyRent': rentAmount,
+          });
+          if (mounted) Navigator.pop(context);
+          _showSnack('✅ Listed for rent successfully!', color: Colors.green);
+          _loadData();
+        }
+      } else {
+        if (mounted) Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      _showSnack('Error: $e', color: Colors.red);
+    }
+  }
+
+  Future<void> _requestRent() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    
+    _showProcessingDialog('Sending rent request…');
+    try {
+      final txHash = await _blockchainService.requestLandRent(widget.propertyId);
+      if (txHash != null) {
+        final ok = await _blockchainService.waitForConfirmation(txHash);
+        if (ok) {
+          final requestId = _db.collection('rent_requests').doc().id;
+          final batch = _db.batch();
+          
+          final rentAmount = _blockchainService.weiToEther(_propertyData!['monthlyRent']);
+
+          batch.set(_db.collection('rent_requests').doc(requestId), {
+            'assetId': widget.assetId,
+            'propertyId': widget.propertyId,
+            'tenantUid': user.uid,
+            'ownerUid': _propertyData!['originalOwnerUid'] ?? '', // We'll need to ensure this is in _propertyData or fetched
+            'rentAmount': rentAmount,
+            'status': 'pending',
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+
+          batch.set(_db.collection('transactions').doc(requestId), {
+            'transactionId': requestId,
+            'assetId': widget.assetId,
+            'buyerUid': user.uid, // tenant
+            'sellerUid': _propertyData!['originalOwnerUid'] ?? '', // owner
+            'status': 'pending',
+            'category': 'land',
+            'requestType': 'rent_request',
+            'amount': rentAmount,
+            'blockchainPropertyId': widget.propertyId,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+
+          await batch.commit();
+          if (mounted) Navigator.pop(context);
+          _showSnack('✅ Rent request sent to owner!', color: Colors.green);
+          _loadData();
+        }
+      } else {
+        if (mounted) Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      _showSnack('Error: $e', color: Colors.red);
+    }
+  }
+
+  Future<void> _payMonthlyRent() async {
+    final rentWei = _propertyData!['monthlyRent'] as BigInt;
+    _showProcessingDialog('Paying monthly rent…');
+    try {
+      final txHash = await _blockchainService.payLandMonthlyRent(
+        propertyId: widget.propertyId,
+        amount: rentWei,
+      );
       if (txHash != null) {
         final ok = await _blockchainService.waitForConfirmation(txHash);
         if (mounted) Navigator.pop(context);
         if (ok) {
-          _showSnack(
-            '✅ Claimed ${_blockchainService.weiToEther(_unclaimedRent)} MATIC!',
-            color: Colors.green,
-          );
+          _showSnack('✅ Rent paid successfully!', color: Colors.green);
           _loadData();
         }
       } else {
@@ -279,6 +377,10 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
 
                       // Unclaimed rent hero card
                       _buildRentHeroCard(hasRent),
+                      const SizedBox(height: 16),
+
+                      // Rental Listing / Request Section
+                      _buildRentalSection(),
                       const SizedBox(height: 16),
 
                       // Distribute section (owner only)
@@ -676,6 +778,211 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
         ],
       ),
     );
+  }
+
+  // ── Rental Section ────────────────────────────────────────────────────────
+  Widget _buildRentalSection() {
+    final bool isForRent = _propertyData!['isForRent'] ?? false;
+    final BigInt monthlyRent = _propertyData!['monthlyRent'] ?? BigInt.zero;
+    final String currentTenant = _propertyData!['currentTenant'] ?? '0x0000000000000000000000000000000000000000';
+    final String pendingTenant = _propertyData!['pendingTenant'] ?? '0x0000000000000000000000000000000000000000';
+    final bool hasTenant = currentTenant != '0x0000000000000000000000000000000000000000';
+    final bool hasPending = pendingTenant != '0x0000000000000000000000000000000000000000';
+    
+    final userAddr = _blockchainService.connectedAddress?.toLowerCase() ?? '';
+    final bool isTenant = currentTenant.toLowerCase() == userAddr;
+
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: kTealLight,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.vpn_key_rounded, color: kTeal, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Text('Rental Status',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: kTextPrimary,
+                  )),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          if (widget.isOwner) ...[
+            if (!isForRent && !hasTenant) ...[
+              Text('Property is not yet listed for rent.',
+                  style: GoogleFonts.poppins(fontSize: 13, color: kTextSecondary)),
+              const SizedBox(height: 12),
+              _buildRentInputField(),
+              const SizedBox(height: 12),
+              _GradientButton(
+                label: 'List Property for Rent',
+                icon: Icons.add_home_rounded,
+                onPressed: _listForRent,
+              ),
+            ] else if (isForRent && !hasPending) ...[
+              _buildStatusRow('Status', 'Available for Rent', Colors.green),
+              _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', kTeal),
+              const SizedBox(height: 12),
+              const Center(child: Text('Waiting for tenants…', style: TextStyle(fontSize: 12, color: Colors.grey))),
+            ] else if (hasPending) ...[
+              _buildStatusRow('Status', 'Pending Request', Colors.orange),
+              _buildStatusRow('Tenant Address', pendingTenant, kTextPrimary),
+              const SizedBox(height: 12),
+              _GradientButton(
+                label: 'Accept Tenant',
+                icon: Icons.check_circle_rounded,
+                onPressed: _acceptRentRequest,
+              ),
+            ] else if (hasTenant) ...[
+              _buildStatusRow('Status', 'Rented', kTeal),
+              _buildStatusRow('Current Tenant', currentTenant, kTextPrimary),
+              _buildStatusRow('Monthly Income', '${_blockchainService.weiToEther(monthlyRent)} MATIC', kTeal),
+            ],
+          ] else ...[
+            // Non-owner view
+            if (isTenant) ...[
+              _buildStatusRow('Status', 'You are the Tenant', kTeal),
+              _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', kTeal),
+              const SizedBox(height: 16),
+              _GradientButton(
+                label: 'Pay Monthly Rent',
+                icon: Icons.payment_rounded,
+                onPressed: _payMonthlyRent,
+              ),
+            ] else if (isForRent) ...[
+              _buildStatusRow('Status', 'Available for Rent', Colors.green),
+              _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', kTeal),
+              const SizedBox(height: 16),
+              _GradientButton(
+                label: 'Request to Rent',
+                icon: Icons.send_rounded,
+                onPressed: _requestRent,
+              ),
+            ] else if (hasTenant) ...[
+              _buildStatusRow('Status', 'Already Rented', Colors.grey),
+            ] else ...[
+              _buildStatusRow('Status', 'Not for Rent', Colors.grey),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRentInputField() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: kTeal.withOpacity(0.2)),
+      ),
+      child: TextField(
+        controller: _rentPriceCtrl,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        style: GoogleFonts.poppins(fontSize: 14),
+        decoration: InputDecoration(
+          hintText: 'Enter monthly rent amount',
+          prefixIcon: const Icon(Icons.monetization_on_rounded, color: kTeal),
+          suffixText: 'MATIC',
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusRow(String label, String value, Color valueColor) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: GoogleFonts.poppins(fontSize: 12, color: kTextSecondary)),
+          Flexible(
+            child: Text(value,
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: valueColor,
+                ),
+                overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _claimRent() async {
+    _showProcessingDialog('Claiming your rent share…');
+    try {
+      final txHash = await _blockchainService.claimLandRent(widget.propertyId);
+      if (txHash != null) {
+        final ok = await _blockchainService.waitForConfirmation(txHash);
+        if (mounted) Navigator.pop(context);
+        if (ok) {
+          _showSnack('✅ Rent claimed successfully!', color: Colors.green);
+          _loadData();
+        } else {
+          _showSnack('❌ Claim failed on blockchain', color: Colors.red);
+        }
+      } else {
+        if (mounted) Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      _showSnack('Error: $e', color: Colors.red);
+    }
+  }
+
+  Future<void> _acceptRentRequest() async {
+    _showProcessingDialog('Accepting tenant…');
+    try {
+      final txHash = await _blockchainService.acceptLandRentRequest(widget.propertyId);
+      if (txHash != null) {
+        final ok = await _blockchainService.waitForConfirmation(txHash);
+        if (ok) {
+          // Update Firestore: find the pending request and mark as approved
+          final q = await _db.collection('rent_requests')
+              .where('assetId', isEqualTo: widget.assetId)
+              .where('status', isEqualTo: 'pending')
+              .limit(1).get();
+          
+          if (q.docs.isNotEmpty) {
+            final batch = _db.batch();
+            batch.update(q.docs.first.reference, {'status': 'approved'});
+            batch.update(_db.collection('transactions').doc(q.docs.first.id), {'status': 'approved'});
+            
+            // Update asset doc
+            batch.update(_db.collection('assets').doc(widget.assetId), {
+              'isForRent': false,
+              'currentTenant': q.docs.first.data()['tenantUid'],
+              'currentTenantAddress': _propertyData!['pendingTenant'],
+            });
+            
+            await batch.commit();
+          }
+
+          if (mounted) Navigator.pop(context);
+          _showSnack('✅ Tenant accepted!', color: Colors.green);
+          _loadData();
+        }
+      } else {
+        if (mounted) Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      _showSnack('Error: $e', color: Colors.red);
+    }
   }
 
   // ── Info card ─────────────────────────────────────────────────────────────

@@ -175,6 +175,23 @@ class BlockchainServiceEnhanced {
     }
   }
 
+  Future<String?> _sendContractTransaction(DeployedContract contract, String functionName, List<dynamic> params, {BigInt? value, ContractFunction? function}) async {
+    await init();
+    try {
+      final func = function ?? contract.function(functionName);
+      final transaction = Transaction.callContract(
+        contract: contract,
+        function: func,
+        parameters: params,
+        value: value != null ? EtherAmount.inWei(value) : null,
+      );
+      return await _sendTransaction(transaction);
+    } catch (e) {
+      debugPrint('Error in _sendContractTransaction: $e');
+      return null;
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════
   // ─── HELPERS ───────────────────────────────────────────────────────────────
   // ═══════════════════════════════════════════════════════════
@@ -215,21 +232,14 @@ class BlockchainServiceEnhanced {
     required String warrantyExpiry,
     required String tokenURI,
   }) async {
-    await init();
-    final function = _electronicsContract.function('mintElectronic');
-    final transaction = Transaction.callContract(
-      contract: _electronicsContract,
-      function: function,
-      parameters: [
-        EthereumAddress.fromHex(toAddress),
-        serialNumber,
-        brand,
-        model,
-        warrantyExpiry,
-        tokenURI,
-      ],
-    );
-    return await _sendTransaction(transaction);
+    return _sendContractTransaction(_electronicsContract, 'mintElectronic', [
+      EthereumAddress.fromHex(toAddress),
+      serialNumber,
+      brand,
+      model,
+      warrantyExpiry,
+      tokenURI,
+    ]);
   }
 
   Future<Map<String, dynamic>?> getDevice(int tokenId) async {
@@ -264,39 +274,17 @@ class BlockchainServiceEnhanced {
 
 
   Future<String?> submitElectronicsReview({required int tokenId, required String reviewText}) async {
-    await init();
     final reviewBytes = Uint8List.fromList(utf8.encode(reviewText));
     final reviewHash = keccak256(reviewBytes);
-
-    final function = _electronicsContract.function('submitReview');
-    final transaction = Transaction.callContract(
-      contract: _electronicsContract,
-      function: function,
-      parameters: [BigInt.from(tokenId), reviewHash],
-    );
-    return await _sendTransaction(transaction);
+    return _sendContractTransaction(_electronicsContract, 'submitReview', [BigInt.from(tokenId), reviewHash]);
   }
 
   Future<String?> grantVendorRole(String address) async {
-    await init();
-    final function = _electronicsContract.function('addVendor');
-    final transaction = Transaction.callContract(
-      contract: _electronicsContract,
-      function: function,
-      parameters: [EthereumAddress.fromHex(address)],
-    );
-    return await _sendTransaction(transaction);
+    return _sendContractTransaction(_electronicsContract, 'addVendor', [EthereumAddress.fromHex(address)]);
   }
 
   Future<String?> grantRetailerRole(String address) async {
-    await init();
-    final function = _electronicsContract.function('addRetailer');
-    final transaction = Transaction.callContract(
-      contract: _electronicsContract,
-      function: function,
-      parameters: [EthereumAddress.fromHex(address)],
-    );
-    return await _sendTransaction(transaction);
+    return _sendContractTransaction(_electronicsContract, 'addRetailer', [EthereumAddress.fromHex(address)]);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -335,15 +323,7 @@ class BlockchainServiceEnhanced {
     required int amount,
     required BigInt totalCost,
   }) async {
-    await init();
-    final function = _landContract.function('purchaseFractions');
-    final transaction = Transaction.callContract(
-      contract: _landContract,
-      function: function,
-      parameters: [BigInt.from(propertyId), BigInt.from(amount)],
-      value: EtherAmount.inWei(totalCost),
-    );
-    return await _sendTransaction(transaction);
+    return _sendContractTransaction(_landContract, 'purchaseFractions', [BigInt.from(propertyId), BigInt.from(amount)], value: totalCost);
   }
 
   /// Returns the ID of the most recently minted electronics token (= totalMinted).
@@ -406,6 +386,10 @@ class BlockchainServiceEnhanced {
         'originalOwner': (landData[7] as EthereumAddress).toString(),
         'ipfsMetadata': landData[8],
         'isVerified': landData[9],
+        'isForRent': landData[10],
+        'monthlyRent': landData[11] as BigInt,
+        'currentTenant': (landData[12] as EthereumAddress).toString(),
+        'pendingTenant': (landData[13] as EthereumAddress).toString(),
       };
     } catch (e) {
       debugPrint('Error getLandProperty: $e');
@@ -444,53 +428,32 @@ class BlockchainServiceEnhanced {
   }
 
   Future<String?> distributeLandRent({required int propertyId, required BigInt amount}) async {
-    await init();
-    final function = _landContract.function('distributeRent');
-    final transaction = Transaction.callContract(
-      contract: _landContract,
-      function: function,
-      parameters: [BigInt.from(propertyId)],
-      value: EtherAmount.inWei(amount),
-    );
-    return await _sendTransaction(transaction);
+    return _sendContractTransaction(_landContract, 'distributeRent', [BigInt.from(propertyId)], value: amount);
+  }
+
+  Future<String?> listLandForRent({required int propertyId, required BigInt rentAmount}) async {
+    return _sendContractTransaction(_landContract, 'listForRent', [BigInt.from(propertyId), rentAmount]);
+  }
+
+  Future<String?> requestLandRent(int propertyId) async {
+    return _sendContractTransaction(_landContract, 'requestRent', [BigInt.from(propertyId)]);
+  }
+
+  Future<String?> acceptLandRentRequest(int propertyId) async {
+    return _sendContractTransaction(_landContract, 'acceptRentRequest', [BigInt.from(propertyId)]);
+  }
+
+  Future<String?> payLandMonthlyRent({required int propertyId, required BigInt amount}) async {
+    return _sendContractTransaction(_landContract, 'payMonthlyRent', [BigInt.from(propertyId)], value: amount);
   }
 
   Future<String?> claimLandRent(int propertyId) async {
-    await init();
-    final function = _landContract.function('claimRent');
-    final transaction = Transaction.callContract(
-      contract: _landContract,
-      function: function,
-      parameters: [BigInt.from(propertyId)],
-    );
-    return await _sendTransaction(transaction);
+    return _sendContractTransaction(_landContract, 'claimRent', [BigInt.from(propertyId)]);
   }
 
   // ═══════════════════════════════════════════════════════════
-  // TENANT RENT PAYMENT
+  // REVIEWS & ROLES
   // ═══════════════════════════════════════════════════════════
-
-  /// Tenant pays rent on-chain for [propertyId].
-  ///
-  /// [amount] must be in Wei — use [etherToWei] before calling:
-  ///   final wei = blockchainService.etherToWei(0.05);
-  ///   final tx  = await blockchainService.payLandRent(propertyId: 42, amount: wei);
-  ///
-  /// Returns tx hash on success, null if the user rejected in their wallet.
-  Future<String?> payLandRent({
-    required int propertyId,
-    required BigInt amount,
-  }) async {
-    await init();
-    final function = _landContract.function('payRent');
-    final transaction = Transaction.callContract(
-      contract: _landContract,
-      function: function,
-      parameters: [BigInt.from(propertyId)],
-      value: EtherAmount.inWei(amount),   // MATIC sent with the call
-    );
-    return await _sendTransaction(transaction);
-  }
 
   Future<String?> transferLandFraction({
     required String toAddress,
@@ -498,25 +461,18 @@ class BlockchainServiceEnhanced {
     required int amount,
   }) async {
     await init();
-    // FIX: ERC-1155 safeTransferFrom takes 5 params (from, to, id, amount, bytes).
-    // Use findFunctionsByName to avoid "Too many elements" if ABI has overloads.
     final overloads = _landContract.findFunctionsByName('safeTransferFrom');
     final function = overloads.firstWhere(
           (f) => f.parameters.length == 5,
       orElse: () => overloads.first,
     );
-    final transaction = Transaction.callContract(
-      contract: _landContract,
-      function: function,
-      parameters: [
-        EthereumAddress.fromHex(connectedAddress!),
-        EthereumAddress.fromHex(toAddress),
-        BigInt.from(propertyId),
-        BigInt.from(amount),
-        Uint8List(0),
-      ],
-    );
-    return await _sendTransaction(transaction);
+    return _sendContractTransaction(_landContract, 'safeTransferFrom', [
+      EthereumAddress.fromHex(connectedAddress!),
+      EthereumAddress.fromHex(toAddress),
+      BigInt.from(propertyId),
+      BigInt.from(amount),
+      Uint8List(0),
+    ], function: function);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -654,6 +610,26 @@ class BlockchainServiceEnhanced {
           isTampered = true;
           updates['totalFractions'] = property['totalFractions'];
         }
+
+        // --- Rental Healing ---
+        if (data['isForRent'] != property['isForRent']) {
+          isTampered = true;
+          updates['isForRent'] = property['isForRent'];
+        }
+        
+        final chainRentEther = double.parse(weiToEther(property['monthlyRent']));
+        final dbRent = (data['monthlyRent'] ?? 0).toDouble();
+        if ((chainRentEther - dbRent).abs() > 0.0001) {
+          isTampered = true;
+          updates['monthlyRent'] = chainRentEther;
+        }
+
+        final chainTenant = property['currentTenant'].toString().toLowerCase();
+        final dbTenant = (data['currentTenantAddress'] ?? data['currentTenant'] ?? '').toString().toLowerCase();
+        if (dbTenant != chainTenant) {
+          isTampered = true;
+          updates['currentTenantAddress'] = property['currentTenant'];
+        }
       }
 
       if (isTampered) {
@@ -675,26 +651,11 @@ class BlockchainServiceEnhanced {
 
   /// Verifies an electronic device on-chain. Required to flip 'isVerified' to true.
   Future<String?> verifyDevice(int tokenId) async {
-    await init();
-    final function = _electronicsContract.function('verifyDevice');
-    final transaction = Transaction.callContract(
-      contract: _electronicsContract,
-      function: function,
-      parameters: [BigInt.from(tokenId)],
-    );
-    return await _sendTransaction(transaction);
+    return _sendContractTransaction(_electronicsContract, 'verifyDevice', [BigInt.from(tokenId)]);
   }
 
-  /// Verifies a land property on-chain.
   Future<String?> verifyProperty(int propertyId) async {
-    await init();
-    final function = _landContract.function('verifyProperty');
-    final transaction = Transaction.callContract(
-      contract: _landContract,
-      function: function,
-      parameters: [BigInt.from(propertyId)],
-    );
-    return await _sendTransaction(transaction);
+    return _sendContractTransaction(_landContract, 'verifyProperty', [BigInt.from(propertyId)]);
   }
 
   /// Transfers an electronics NFT from the current owner (Admin/Dell) to a Supplier.
@@ -703,24 +664,15 @@ class BlockchainServiceEnhanced {
     required int tokenId,
   }) async {
     await init();
-    
-    // FIX: ERC-721 ABI has overloads for safeTransferFrom. 
-    // Pick the one with 3 parameters: (address from, address to, uint256 tokenId)
     final overloads = _electronicsContract.findFunctionsByName('safeTransferFrom');
     final function = overloads.firstWhere(
       (f) => f.parameters.length == 3,
       orElse: () => overloads.first,
     );
-
-    final transaction = Transaction.callContract(
-      contract: _electronicsContract,
-      function: function,
-      parameters: [
-        EthereumAddress.fromHex(connectedAddress!),
-        EthereumAddress.fromHex(toAddress),
-        BigInt.from(tokenId),
-      ],
-    );
-    return await _sendTransaction(transaction);
+    return _sendContractTransaction(_electronicsContract, 'safeTransferFrom', [
+      EthereumAddress.fromHex(connectedAddress!),
+      EthereumAddress.fromHex(toAddress),
+      BigInt.from(tokenId),
+    ], function: function);
   }
 }

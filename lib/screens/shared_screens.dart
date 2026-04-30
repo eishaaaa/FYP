@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import 'asset_detail_screen.dart';
 import 'chat_screen.dart';
 import 'transfer_screen.dart';
+import '../blockchain/blockchain_service.dart';
 
 
 final db   = FirebaseFirestore.instance;
@@ -603,7 +604,15 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                         ),
                       ],
                     ),
-                    if (t['price'] != null) ...[
+                    if (t['requestType'] == 'rent_request') ...[
+                      const SizedBox(height: 4),
+                      Row(children: [
+                        const Icon(Icons.calendar_month_outlined, size: 14, color: Colors.grey),
+                        const SizedBox(width: 6),
+                        Text('Monthly Rent: ${t['amount']} MATIC',
+                            style: const TextStyle(fontSize: 13, color: kTeal, fontWeight: FontWeight.bold)),
+                      ]),
+                    ] else if (t['price'] != null) ...[
                       const SizedBox(height: 4),
                       Row(children: [
                         const Icon(Icons.attach_money, size: 14, color: Colors.grey),
@@ -675,7 +684,13 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                               foregroundColor: const Color(0xFF2A7F8F),
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                             ),
-                            onPressed: () => _updateStatus(id, 'approved'),
+                            onPressed: () {
+                              if (t['requestType'] == 'rent_request') {
+                                _acceptRentTransaction(context, id, t);
+                              } else {
+                                _updateStatus(id, 'approved');
+                              }
+                            },
                           ),
                           TextButton.icon(
                             icon: const Icon(Icons.close, size: 16),
@@ -684,7 +699,13 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                               foregroundColor: Colors.red,
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                             ),
-                            onPressed: () => _updateStatus(id, 'rejected'),
+                            onPressed: () {
+                              if (t['requestType'] == 'rent_request') {
+                                _updateRentRequestStatus(id, 'rejected');
+                              } else {
+                                _updateStatus(id, 'rejected');
+                              }
+                            },
                           ),
                         ],
                         if (!isSupplier &&
@@ -897,6 +918,55 @@ class _TransactionsScreenState extends State<TransactionsScreen>
         ));
       }
     }
+  }
+
+  Future<void> _acceptRentTransaction(BuildContext context, String transactionId, Map<String, dynamic> t) async {
+    final assetId = t['assetId'];
+    final propertyId = t['blockchainPropertyId'];
+    
+    if (propertyId == null) return;
+
+    try {
+      final service = BlockchainServiceEnhanced();
+      await service.init();
+      
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Confirming on blockchain...')));
+      
+      final txHash = await service.acceptLandRentRequest(propertyId is int ? propertyId : int.parse(propertyId.toString()));
+      if (txHash != null) {
+        final ok = await service.waitForConfirmation(txHash);
+        if (ok) {
+          final batch = db.batch();
+          batch.update(db.collection('transactions').doc(transactionId), {'status': 'approved'});
+          batch.update(db.collection('rent_requests').doc(transactionId), {'status': 'approved'});
+          
+          // Fetch property to get current pending tenant address
+          final prop = await service.getLandProperty(propertyId is int ? propertyId : int.parse(propertyId.toString()));
+          
+          batch.update(db.collection('assets').doc(assetId), {
+            'isForRent': false,
+            'currentTenant': t['buyerUid'],
+            'currentTenantAddress': prop?['pendingTenant'] ?? '',
+          });
+          
+          await batch.commit();
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Rent request approved!'), backgroundColor: Color(0xFF2A7F8F)));
+          }
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  Future<void> _updateRentRequestStatus(String id, String status) async {
+    final batch = db.batch();
+    batch.update(db.collection('transactions').doc(id), {'status': status});
+    batch.update(db.collection('rent_requests').doc(id), {'status': status});
+    await batch.commit();
   }
 
   String _shorten(String id) {

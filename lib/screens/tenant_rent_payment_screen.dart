@@ -29,8 +29,8 @@
 //     tenantAddress : String
 //     propertyId    : int
 //
-// BLOCKCHAIN — calls BlockchainServiceEnhanced.payLandRent(propertyId, weiAmount)
-// Make sure that method exists (see blockchain_service_additions.dart snippet).
+// BLOCKCHAIN — calls BlockchainServiceEnhanced.payLandMonthlyRent(propertyId, weiAmount)
+// Make sure that method exists.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -200,9 +200,7 @@ class _TenantRentPaymentScreenState extends State<TenantRentPaymentScreen>
       });
 
       // 3. Send the on-chain transaction
-      //    payLandRent must be added to BlockchainServiceEnhanced — see
-      //    blockchain_service_additions.dart
-      final txHash = await _blockchain.payLandRent(
+      final txHash = await _blockchain.payLandMonthlyRent(
         propertyId: widget.propertyId,
         amount: weiAmount,
       );
