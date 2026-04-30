@@ -257,7 +257,7 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: _buildAppBar('My Published Assets'),
+      appBar: _buildAppBar('My Inventory'),
       body: Column(
         children: [
           _SearchBar(

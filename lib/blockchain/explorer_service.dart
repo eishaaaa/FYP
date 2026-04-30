@@ -35,7 +35,6 @@ class ExplorerService {
 
       return list.take(15).map((tx) {
         final from = tx["from"].toLowerCase();
-        final to = tx["to"]?.toLowerCase() ?? "";
         final isSent = from == address.toLowerCase();
 
         // 🔥 Detect contract interaction

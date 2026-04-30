@@ -1129,7 +1129,7 @@ class _AssetModerationState extends State<AssetModeration> {
             shrinkWrap: true,
             itemCount: suppliersQuery.docs.length,
             itemBuilder: (_, i) {
-              final s = suppliersQuery.docs[i].data() as Map<String, dynamic>;
+              final s = suppliersQuery.docs[i].data();
               return ListTile(
                 title: Text(s['name'] ?? 'Unknown'),
                 subtitle: Text(s['email'] ?? ''),

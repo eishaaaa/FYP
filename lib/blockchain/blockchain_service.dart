@@ -587,11 +587,30 @@ class BlockchainServiceEnhanced {
         final device = await getDevice(blockchainId);
         if (device == null) return true;
         
-        // Check Owner
+        // Check Owner & Heal ownerId/ownerUid
         final currentOwner = await getOwnerOf(type, blockchainId);
-        if (currentOwner != null && data['currentOwnerAddress']?.toString().toLowerCase() != currentOwner.toLowerCase()) {
-          isTampered = true;
-          updates['currentOwnerAddress'] = currentOwner;
+        if (currentOwner != null) {
+          final chainAddr = currentOwner.toLowerCase();
+          final dbAddr = data['currentOwnerAddress']?.toString().toLowerCase();
+          
+          if (dbAddr != chainAddr) {
+            isTampered = true;
+            updates['currentOwnerAddress'] = currentOwner;
+          }
+
+          // Resolve ownerId from wallet address
+          final userQuery = await firestore.collection('users')
+              .where('walletAddress', isEqualTo: currentOwner)
+              .limit(1).get();
+          
+          if (userQuery.docs.isNotEmpty) {
+            final correctUid = userQuery.docs.first.id;
+            if (data['ownerId'] != correctUid) {
+              isTampered = true;
+              updates['ownerId'] = correctUid;
+              updates['ownerUid'] = correctUid;
+            }
+          }
         }
 
         // Check Serial

@@ -656,10 +656,24 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                 ],
 
                 // ── Action buttons ────────────────────────────────────────
-                if (!isSupplier)
-                  _buildUserActions(context, data)
-                else
-                  _buildSupplierActions(context, data, role, activeTx),
+                // Logic: 
+                // 1. If owner: Show Supplier Management (Transfer/QR) AND User Actions (Resale)
+                // 2. If NOT owner: Show User Actions (Request to Buy)
+                Builder(builder: (context) {
+                  final uid = auth.currentUser?.uid;
+                  final ownerId = data['ownerId'] ?? data['ownerUid'];
+                  final isOwner = uid != null && uid == ownerId;
+
+                  return Column(
+                    children: [
+                      if (isOwner && isSupplier) ...[
+                        _buildSupplierActions(context, data, role, activeTx),
+                        const SizedBox(height: 16),
+                      ],
+                      _buildUserActions(context, data),
+                    ],
+                  );
+                }),
 
                 const SizedBox(height: 24),
 
@@ -1193,7 +1207,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                         if (context.mounted) {
                           final buyerDoc = await db
                               .collection('users')
-                              .doc(activeTx!['buyerUid'])
+                              .doc(activeTx['buyerUid'])
                               .get();
                           final buyerName = buyerDoc.data()?['name'] ?? 'Buyer';
                           final assetPrice = data['price']?.toString() ?? '0';

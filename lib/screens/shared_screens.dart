@@ -1,4 +1,4 @@
-// lib/screens/shared_screen.dart
+// lib/screens/shared_screens.dart
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -13,6 +13,11 @@ import 'transfer_screen.dart';
 
 final db   = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
+
+const kTeal = Color(0xFF2D7D7D);
+const kTealDark = Color(0xFF1F5C5C);
+const kTealLight = Color(0xFFE8F4F4);
+const kTealAccent = Color(0xFF3AAFA9);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GLOBAL HELPERS
@@ -178,6 +183,7 @@ class TransactionsScreen extends StatefulWidget {
 class _TransactionsScreenState extends State<TransactionsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  bool? _isBuyingMode; // Initialized in build() based on role
 
   @override
   void initState() {
@@ -229,18 +235,32 @@ class _TransactionsScreenState extends State<TransactionsScreen>
         final role       = snap.data ?? 'user';
         final isSupplier = role.toLowerCase().contains('supplier');
 
+        // Initialize mode: Suppliers land on 'Sales', Users land on 'Purchases'
+        _isBuyingMode ??= !isSupplier;
+
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Transactions'),
+            title: Text(_isBuyingMode! ? 'My Purchases' : 'My Sales'),
             leading: IconButton(
               icon: const Icon(Icons.chevron_left),
               onPressed: () => Navigator.pop(context),
             ),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _isBuyingMode = !_isBuyingMode!),
+                  icon: Icon(_isBuyingMode! ? Icons.sell : Icons.shopping_cart, size: 18),
+                  label: Text(_isBuyingMode! ? 'Switch to Selling' : 'Switch to Buying'),
+                  style: TextButton.styleFrom(foregroundColor: kTeal),
+                ),
+              ),
+            ],
             bottom: TabBar(
               controller: _tabController,
               indicatorColor: kTeal,
               labelColor: kTeal,
-              unselectedLabelColor: kTeal,
+              unselectedLabelColor: Colors.grey[400],
               isScrollable: true,
               tabs: [
                 _buildTab(Icons.hourglass_empty, 'Pending'),
@@ -253,10 +273,10 @@ class _TransactionsScreenState extends State<TransactionsScreen>
           body: TabBarView(
             controller: _tabController,
             children: [
-              _buildTransactionList(user.uid, isSupplier, 'pending',  context),
-              _buildTransactionList(user.uid, isSupplier, 'approved', context),
-              _buildFractionRequestsTab(user.uid, isSupplier, context),
-              _buildTransactionList(user.uid, isSupplier, 'rejected', context),
+              _buildTransactionList(user.uid, isSupplier && !_isBuyingMode!, 'pending',  context),
+              _buildTransactionList(user.uid, isSupplier && !_isBuyingMode!, 'approved', context),
+              _buildFractionRequestsTab(user.uid, isSupplier && !_isBuyingMode!, context),
+              _buildTransactionList(user.uid, isSupplier && !_isBuyingMode!, 'rejected', context),
             ],
           ),
         );
