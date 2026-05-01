@@ -687,12 +687,24 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
             child: Icon(icon, color: iconColor, size: 22),
           ),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(value, style: AppTheme.heading(22, color: _C.textDark).copyWith(letterSpacing: -0.5)),
-              Text(label, style: AppTheme.body(12, color: _C.textLight)),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTheme.heading(22, color: _C.textDark).copyWith(letterSpacing: -0.5),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTheme.body(12, color: _C.textLight),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -804,7 +816,12 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: AppTheme.heading(14, color: _C.textDark)),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.heading(14, color: _C.textDark),
+                  ),
                   const SizedBox(height: 2),
                   Text(_shorten(tx.to), style: AppTheme.body(12, color: _C.textLight)),
                 ],

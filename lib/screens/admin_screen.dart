@@ -359,6 +359,8 @@ class AdminDashboard extends StatelessWidget {
                               Text(
                                 '${data['category'] ?? ''} • PKR ${data['price'] ?? 0}',
                                 style: AppTheme.body(12, color: AppTheme.textMid),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),
@@ -451,10 +453,14 @@ class _StatCard extends StatelessWidget {
                 children: [
                   Text(
                     '$count',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: AppTheme.heading(26, color: Colors.white),
                   ),
                   Text(
                     title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: AppTheme.body(12, color: Colors.white.withOpacity(0.85), weight: FontWeight.w500),
                   ),
                 ],
@@ -1239,6 +1245,8 @@ class TransactionMonitor extends StatelessWidget {
                           Text(
                             'Property: ${tx['assetId'] ?? 'Unknown'}',
                             style: AppTheme.heading(14, color: AppTheme.textPrimary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 6),
                           _TxInfo(

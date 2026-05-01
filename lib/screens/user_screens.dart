@@ -344,7 +344,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           ),
           const SizedBox(height: 8),
           SizedBox(
-            height: 230,
+            height: 250,
             child: _LatestAssetsRow(
               category: _category,
               mode: isLand ? _landMode : null,
@@ -1694,7 +1694,7 @@ class AssetListView extends StatelessWidget {
             crossAxisCount: 2,
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
-            childAspectRatio: 0.75,
+            childAspectRatio: 0.72,
           ),
           itemBuilder: (_, i) {
             final doc = visible[i];
