@@ -367,7 +367,7 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
                                   MaterialPageRoute(
                                     builder: (_) => RentDistributionScreen(
                                       assetId: id,
-                                      propertyId: d['blockchainTokenId'] as int,
+                                      propertyId: (d['blockchainTokenId'] as num).toInt(),
                                       isOwner: true,
                                     ),
                                   ),

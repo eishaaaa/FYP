@@ -1176,22 +1176,36 @@ class _AssetFormState extends State<AssetForm> {
             ] else ...[
               TextFormField(
                 controller: _brandCtrl,
-                decoration: const InputDecoration(labelText: 'Brand'),
-              ),
-              TextFormField(
-                controller: _modelCtrl,
-                decoration: const InputDecoration(labelText: 'Model'),
-              ),
-              TextFormField(
-                controller: _serialCtrl,
-                decoration: const InputDecoration(labelText: 'Serial / IMEI'),
-              ),
-              TextFormField(
-                controller: _warrantyCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Warranty (Date/Months)',
+                decoration: InputDecoration(
+                  labelText: 'Brand',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _modelCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Model',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _serialCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Serial / IMEI',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _warrantyCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Warranty (Date/Months)',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: _condition,
                 items: const [
@@ -1199,7 +1213,10 @@ class _AssetFormState extends State<AssetForm> {
                   DropdownMenuItem(value: 'used', child: Text('Used')),
                 ],
                 onChanged: (v) => setState(() => _condition = v!),
-                decoration: const InputDecoration(labelText: 'Condition'),
+                decoration: InputDecoration(
+                  labelText: 'Condition',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
               ),
             ],
 

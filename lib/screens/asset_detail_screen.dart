@@ -1022,7 +1022,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                         MaterialPageRoute(
                           builder: (_) => RentDistributionScreen(
                             assetId: widget.assetId,
-                            propertyId: data['blockchainTokenId'] as int,
+                            propertyId: (data['blockchainTokenId'] as num).toInt(),
                             isOwner: true,
                           ),
                         ),

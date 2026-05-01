@@ -38,6 +38,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
   BigInt _unclaimedRent = BigInt.zero;
   int    _userFractions = 0;
   bool   _loading       = true;
+  String? _errorMessage;
 
   // Page entrance animation
   late AnimationController _animCtrl;
@@ -91,11 +92,17 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
         if (property != null) {
           _propertyData = Map<String, dynamic>.from(property);
           _propertyData!['originalOwnerUid'] = ownerUid;
+        } else {
+          _errorMessage = "Property not found on blockchain (ID: ${widget.propertyId})";
         }
         _loading = false;
       });
-    } catch (_) {
-      setState(() => _loading = false);
+    } catch (e) {
+      debugPrint("RentDataLoadError: $e");
+      setState(() {
+        _errorMessage = e.toString();
+        _loading = false;
+      });
     }
   }
 
@@ -328,7 +335,8 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
               const Icon(Icons.error_outline_rounded,
                   size: 48, color: AppTheme.textSecondary),
               const SizedBox(height: 12),
-              Text('Failed to load property data',
+              Text(_errorMessage ?? 'Failed to load property data',
+                  textAlign: TextAlign.center,
                   style: GoogleFonts.poppins(
                       color: AppTheme.textSecondary, fontSize: 15)),
             ],
