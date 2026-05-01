@@ -2,17 +2,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../theme.dart';
 
 import '../services/resale_service.dart';
 
-const kDeepSea = Color(0xFF1F5562);
-const kDeepSeaSoft = Color(0xFF2D6E7D);
-const kMint = Color(0xFF5FB4AF);
-const kMintSoft = Color(0xFFDFF2F0);
-const kShell = Color(0xFFF7FAF9);
+// Migration to AppTheme: The constants below are now derived from AppTheme
+const kDeepSea = AppTheme.primaryStartDark;
+const kDeepSeaSoft = AppTheme.primaryStart;
+const kMint = AppTheme.accent;
+const kMintSoft = Color(0xFFE8F4F4); // Kept for light background variations
+const kShell = AppTheme.background;
 const kShellEdge = Color(0xFFEAF3F1);
-const kPrimaryText = Color(0xFF172A32);
-const kMutedText = Color(0xFF718B93);
+const kPrimaryText = AppTheme.textPrimary;
+const kMutedText = AppTheme.textSecondary;
 const kCardShadow = Color(0xFF123840);
 const kStar = Color(0xFFFFB648);
 
@@ -359,11 +361,7 @@ class _ResaleListingSheetState extends State<ResaleListingSheet>
                                   width: 56,
                                   height: 56,
                                   decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: [kDeepSea, kDeepSeaSoft],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ),
+                                    gradient: AppTheme.primaryGradient,
                                     borderRadius: BorderRadius.circular(18),
                                     boxShadow: [
                                       BoxShadow(
@@ -640,11 +638,7 @@ class _ResaleListingSheetState extends State<ResaleListingSheet>
                                   decoration: BoxDecoration(
                                     gradient: _submitting
                                         ? null
-                                        : const LinearGradient(
-                                      colors: [kDeepSea, kMint],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ),
+                                        : AppTheme.primaryGradient,
                                     color: _submitting ? kMutedText : null,
                                     borderRadius: BorderRadius.circular(20),
                                     boxShadow: _submitting
@@ -951,11 +945,7 @@ class _ResaleListingSheetState extends State<ResaleListingSheet>
                     vertical: 12,
                   ),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [kDeepSea, kDeepSeaSoft],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    gradient: AppTheme.primaryGradient,
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
@@ -1091,11 +1081,7 @@ class _ResaleListingSheetState extends State<ResaleListingSheet>
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [kDeepSea, kMint],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  gradient: AppTheme.primaryGradient,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Icon(

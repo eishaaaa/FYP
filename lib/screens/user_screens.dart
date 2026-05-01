@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'shared_screens.dart';
 import 'chat_list_screen.dart';
 import 'wallet_screen.dart';
@@ -14,9 +15,9 @@ import '../services/push_notification_service.dart';
 import 'resale_listing_sheet.dart';
 import 'asset_detail_screen.dart';
 import 'profile_screen.dart';
-import 'package:showcaseview/showcaseview.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/hand_help_tooltip.dart';
+import '../theme.dart';
+import 'package:showcaseview/showcaseview.dart';
 
 final db = FirebaseFirestore.instance;
 
@@ -100,24 +101,26 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             ? null
             : _index == 2
             ? AppBar(
+          backgroundColor: AppTheme.primaryStart,
+          flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
           leading: IconButton(
-            icon: const Icon(Icons.chevron_left),
+            icon: const Icon(Icons.chevron_left, color: Colors.white),
             onPressed: () => setState(() => _index = 0),
           ),
-          title: const Text("My Assets"),
+          title: Text("My Assets", style: AppTheme.heading(20, color: Colors.white)),
         )
             : AppBar(
           backgroundColor: Colors.white,
           elevation: 0,
           leading: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Image.asset('assets/logos.png', fit: BoxFit.contain),
+            padding: const EdgeInsets.all(10),
+            child: Icon(Icons.shopping_bag_outlined, color: AppTheme.primaryStart, size: 28),
           ),
           actions: [
             IconButton(
               icon: const Icon(
                 Icons.account_balance_wallet_outlined,
-                color: Color(0xFF1A2E2E),
+                color: AppTheme.textPrimary,
               ),
               onPressed: () => Navigator.push(
                 context,
@@ -142,7 +145,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   child: IconButton(
                     icon: const Icon(
                       Icons.notifications_none_rounded,
-                      color: Color(0xFF1A2E2E),
+                      color: AppTheme.textPrimary,
                     ),
                     onPressed: () => Navigator.push(
                       context,
@@ -179,6 +182,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           currentIndex: _index,
           onTap: _nav,
           type: BottomNavigationBarType.fixed,
+          selectedItemColor: AppTheme.primaryStart,
+          unselectedItemColor: Colors.grey,
+          selectedLabelStyle: AppTheme.body(12, weight: FontWeight.w700),
+          unselectedLabelStyle: AppTheme.body(12),
           items: [
             const BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
             BottomNavigationBarItem(
@@ -225,12 +232,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
             child: Text(
               headline,
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                height: 1.25,
-                color: Color(0xFF1A2E2E),
-              ),
+              style: AppTheme.heading(28, color: AppTheme.textPrimary).copyWith(height: 1.25),
             ),
           ),
 
@@ -243,7 +245,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   child: Container(
                     height: 50,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF5F7F8),
+                      color: AppTheme.background,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Showcase(
@@ -252,16 +254,16 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                       child: TextField(
                         onChanged: (v) =>
                             setState(() => _search = v.trim().toLowerCase()),
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           hintText: 'Search your home...',
-                          hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
+                          hintStyle: AppTheme.body(14, color: AppTheme.textMid),
                           prefixIcon: Icon(
                             Icons.search,
-                            color: Colors.grey,
+                            color: AppTheme.textMid,
                             size: 20,
                           ),
                           border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(vertical: 15),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 15),
                         ),
                       ),
                     ),
@@ -274,7 +276,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                     width: 50,
                     height: 50,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A4F5C),
+                      color: AppTheme.primaryStart,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: const Icon(
@@ -314,21 +316,17 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               children: [
                 Text(
                   latestLabel,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1A2E2E),
-                  ),
+                  style: AppTheme.heading(18, color: AppTheme.textPrimary),
                 ),
                 TextButton(
                   onPressed: () {},
                   style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF2A7F8F),
+                    foregroundColor: AppTheme.accent,
                     padding: EdgeInsets.zero,
                   ),
-                  child: const Text(
+                  child: Text(
                     'View All',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    style: AppTheme.heading(13, color: AppTheme.accent),
                   ),
                 ),
               ],
@@ -360,7 +358,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF1A2E2E),
+                    color: AppTheme.textPrimary,
                   ),
                 ),
               ],
@@ -389,7 +387,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF1A4F5C) : const Color(0xFFF5F7F8),
+          color: selected ? AppTheme.primaryStart : AppTheme.background,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -403,11 +401,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             const SizedBox(width: 6),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? Colors.white : Colors.grey[700],
-              ),
+              style: AppTheme.heading(13, color: selected ? Colors.white : AppTheme.textPrimary),
             ),
           ],
         ),
@@ -594,7 +588,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Asset listed for resale on marketplace!'),
-            backgroundColor: Color(0xFF2A7F8F), // FIX #4 — no redundant const
+            backgroundColor: AppTheme.primaryStart,
           ),
         );
       }
@@ -619,7 +613,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Remove', style: TextStyle(color: Colors.white)),
+            child: Text('Remove', style: AppTheme.button(14, color: Colors.white)),
           ),
         ],
       ),
@@ -673,7 +667,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text("Review Transaction Sent!"),
-                      backgroundColor: Color(0xFF2A7F8F),
+                      backgroundColor: AppTheme.primaryStart,
                     ),
                   );
                 }
@@ -699,7 +693,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
 
     if (_assetsLoading) {
       return const Center(
-        child: CircularProgressIndicator(color: Color(0xFF1A4F5C)),
+        child: CircularProgressIndicator(color: AppTheme.primaryStart),
       );
     }
 
@@ -715,7 +709,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
               Text(
                 'Could not load assets:\n$_assetsError',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.red, fontSize: 13),
+                style: AppTheme.body(13, color: AppTheme.error),
               ),
             ],
           ),
@@ -746,29 +740,25 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                 width: 72,
                 height: 72,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE8F4F6),
+                  color: AppTheme.surface,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Icon(
                   Icons.inventory_2_outlined,
                   size: 34,
-                  color: Color(0xFF1A4F5C),
+                  color: AppTheme.primaryStart,
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 "No assets owned yet",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1A2E2E),
-                ),
+                style: AppTheme.heading(16, color: AppTheme.textPrimary),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 "Assets you buy or receive will appear here.",
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: Colors.grey, height: 1.4),
+                style: AppTheme.body(13, color: AppTheme.textMid),
               ),
               const SizedBox(height: 12),
               TextButton(
@@ -784,7 +774,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
     }
 
     return Container(
-      color: const Color(0xFFF5F7F8),
+      color: AppTheme.background,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         itemCount: _ownedAssets.length,
@@ -865,7 +855,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                     style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w700,
-                                      color: Color(0xFF1A2E2E),
+                                      color: AppTheme.textPrimary,
                                     ),
                                   ),
                                   const SizedBox(height: 6),
@@ -892,13 +882,13 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                 color: isSyncing
                                     ? Colors.orange.shade600
                                     : tokenId != null
-                                    ? const Color(0xFF1A4F5C)
+                                    ? AppTheme.primaryStart
                                     : Colors.grey.shade200,
                                 borderRadius: BorderRadius.circular(18),
                                 boxShadow: isSyncing || tokenId != null
                                     ? [
                                   BoxShadow(
-                                    color: (isSyncing ? Colors.orange.shade600 : const Color(0xFF1A4F5C))
+                                    color: (isSyncing ? Colors.orange.shade600 : AppTheme.primaryStart)
                                         .withOpacity(0.18),
                                     blurRadius: 10,
                                     offset: const Offset(0, 4),
@@ -953,7 +943,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                               vertical: 12,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE8F4F6),
+                              color: AppTheme.surface,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
                                 color: const Color(0xFFB0D8DE),
@@ -1033,7 +1023,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                     style: TextStyle(fontSize: 12),
                                   ),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF2A7F8F),
+                                    backgroundColor: AppTheme.accent,
                                     visualDensity: VisualDensity.compact,
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 12,
@@ -1063,7 +1053,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                 vertical: 8,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFE8F4F6),
+                                color: AppTheme.surface,
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
                                   color: const Color(0xFFB0D8DE),
@@ -1218,7 +1208,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                 style: TextStyle(fontSize: 12),
               ),
               style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF2A7F8F),
+                foregroundColor: AppTheme.accent,
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               ),
@@ -1420,7 +1410,7 @@ class _LatestAssetsRow extends StatelessWidget {
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
-                              color: Color(0xFF1A2E2E),
+                              color: AppTheme.textPrimary,
                             ),
                           ),
                           if (city.isNotEmpty) ...[
@@ -1783,7 +1773,7 @@ class AssetGridCard extends StatelessWidget {
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
-                      color: Color(0xFF1A2E2E),
+                      color: AppTheme.textPrimary,
                     ),
                   ),
                   if (city.isNotEmpty) ...[
@@ -1839,7 +1829,7 @@ class AssetGridCard extends StatelessWidget {
                             vertical: 5,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1A4F5C),
+                            color: AppTheme.primaryStart,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Text(
@@ -1897,7 +1887,7 @@ class _FilterSheetState extends State<FilterSheet> {
 
   static const _teal = Color(0xFF1A4F5C);
   static const _chipBg = Color(0xFFF5F7F8);
-  static const _labelClr = Color(0xFF1A2E2E);
+  static const _labelClr = AppTheme.textPrimary;
 
   @override
   void initState() {

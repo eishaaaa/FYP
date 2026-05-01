@@ -6,14 +6,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../blockchain/ipfs_service.dart';
+import '../theme.dart';
 
-// ─────────────────────────────────────────────────────────────
-//  THEME CONSTANTS
-// ─────────────────────────────────────────────────────────────
-const _kPrimary     = Color(0xFF0C6E8A);
-const _kPrimaryDark = Color(0xFF0A5268);
-const _kAccent      = Color(0xFF19A4C7);
-const _kBg          = Color(0xFFF0F8FB);
+// ── THEME CONSTANTS ─────────────────────────────────────────────
+const _kPrimary     = AppTheme.primaryStart;
+const _kPrimaryDark = AppTheme.primaryEnd;
+const _kAccent      = AppTheme.accent;
+const _kBg          = AppTheme.background;
 const _kCard        = Colors.white;
 
 // ─────────────────────────────────────────────────────────────
@@ -107,43 +106,33 @@ class _StolenReportScreenState extends State<StolenReportScreen>
     return Scaffold(
       backgroundColor: _kBg,
       appBar: AppBar(
-        // ── Transparent AppBar ──────────────────────────────
-        backgroundColor : Colors.transparent,
-        elevation       : 0,
-        scrolledUnderElevation: 0,
+        title: Text('Stolen Report', style: AppTheme.heading(20, color: Colors.white)),
+        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
+        elevation: 0,
+        centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: _kPrimaryDark, size: 30),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: const Text(
-          'Stolen Report',
-          style: TextStyle(
-            color      : _kPrimaryDark,
-            fontWeight : FontWeight.bold,
-            fontSize   : 20,
-          ),
-        ),
-        centerTitle: true,
-        iconTheme: const IconThemeData(color: _kPrimaryDark),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(70),
           child: Container(
-            margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 14),
             decoration: BoxDecoration(
-              color        : _kPrimary.withOpacity(0.08),
-              borderRadius : BorderRadius.circular(14),
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: TabBar(
-              controller           : _tabController,
-              indicator            : BoxDecoration(
-                color        : _kPrimary,
-                borderRadius : BorderRadius.circular(12),
+              controller: _tabController,
+              indicator: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
               ),
-              indicatorSize        : TabBarIndicatorSize.tab,
-              labelColor           : Colors.white,
-              unselectedLabelColor : _kPrimaryDark,
-              labelStyle           : const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-              unselectedLabelStyle : const TextStyle(fontSize: 11),
+              indicatorSize: TabBarIndicatorSize.tab,
+              labelColor: AppTheme.primaryStart,
+              unselectedLabelColor: Colors.white70,
+              labelStyle: AppTheme.heading(11),
+              unselectedLabelStyle: AppTheme.body(11),
               tabs: const [
                 Tab(icon: Icon(Icons.list_alt,              size: 18), text: 'My Reports'),
                 Tab(icon: Icon(Icons.public,                size: 18), text: 'All Reports'),
@@ -272,8 +261,8 @@ class _MyReportsTabState extends State<_MyReportsTab>
               child: const Icon(Icons.devices_outlined, size: 56, color: _kPrimary),
             ),
             const SizedBox(height: 20),
-            const Text('No stolen reports yet.',
-                style: TextStyle(color: _kPrimaryDark, fontSize: 16, fontWeight: FontWeight.w600)),
+            Text('No stolen reports yet.',
+                style: AppTheme.heading(16, color: _kPrimaryDark)),
             const SizedBox(height: 8),
             Text('Use the "Submit New" tab to file a complaint.',
                 style: TextStyle(color: Colors.grey[500], fontSize: 13)),
@@ -412,10 +401,7 @@ class _ElectronicsReportCard extends StatelessWidget {
                       // Asset name
                       Text(
                         report.assetName,
-                        style: const TextStyle(
-                            fontSize  : 15,
-                            fontWeight: FontWeight.bold,
-                            color     : _kPrimaryDark),
+                        style: AppTheme.heading(15, color: _kPrimaryDark),
                       ),
                       const SizedBox(height: 3),
 
@@ -715,9 +701,8 @@ class _AllReportsTabState extends State<_AllReportsTab>
                   children: [
                     const Icon(Icons.tune, color: _kPrimary, size: 22),
                     const SizedBox(width: 8),
-                    const Text('Filter Reports',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold, color: _kPrimaryDark)),
+                    Text('Filter Reports',
+                        style: AppTheme.heading(18, color: _kPrimaryDark)),
                     const Spacer(),
                     TextButton(
                       onPressed: () => setSheetState(() {
@@ -898,7 +883,7 @@ class _AllReportsTabState extends State<_AllReportsTab>
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12)),
                         ),
-                        child: const Text('Apply Filters'),
+                        child: Text('Apply Filters', style: AppTheme.heading(14, color: Colors.white)),
                       ),
                     ),
                   ],
@@ -948,7 +933,7 @@ class _AllReportsTabState extends State<_AllReportsTab>
                         borderSide: BorderSide(color: Colors.grey[200]!)),
                     focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: _kPrimary, width: 1.5)),
+                        borderSide: const BorderSide(color: AppTheme.primaryStart, width: 1.5)),
                   ),
                 ),
               ),
@@ -1258,9 +1243,8 @@ class _ReportDetailSheet extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Report Details',
-                          style: TextStyle(
-                              fontSize: 20, fontWeight: FontWeight.bold, color: _kPrimaryDark)),
+                      Text('Report Details',
+                          style: AppTheme.heading(20, color: _kPrimaryDark)),
                       Text('Filed on ${DateFormat('MMM dd, yyyy').format(report.createdAt)}',
                           style: TextStyle(fontSize: 12, color: Colors.grey[500])),
                     ],
@@ -1292,25 +1276,25 @@ class _ReportDetailSheet extends StatelessWidget {
             ],
 
             const Divider(height: 28),
-            const Text('Description',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _kPrimaryDark)),
+            Text('Description',
+                style: AppTheme.heading(14, color: _kPrimaryDark)),
             const SizedBox(height: 8),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color        : _kBg,
+                color        : AppTheme.background,
                 borderRadius : BorderRadius.circular(12),
-                border       : Border.all(color: _kPrimary.withOpacity(0.15)),
+                border: Border.all(color: AppTheme.primaryStart.withOpacity(0.15)),
               ),
               child: Text(report.description,
-                  style: const TextStyle(fontSize: 14, height: 1.55)),
+                  style: const TextStyle(fontSize: 14, fontFamily: 'Poppins', height: 1.55)),
             ),
 
             if (report.docIpfsHash != null) ...[
               const SizedBox(height: 20),
-              const Text('Attached Document',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _kPrimaryDark)),
+              Text('Attached Document',
+                  style: AppTheme.heading(14, color: _kPrimaryDark)),
               const SizedBox(height: 8),
               _ViewableDocTile(
                   fileName: report.docFileName ?? 'Document',
@@ -1563,7 +1547,7 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
           borderSide: BorderSide(color: Colors.grey[300]!)),
       focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _kPrimary, width: 1.5)),
+          borderSide: const BorderSide(color: AppTheme.primaryStart, width: 1.5)),
       errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.red)),
@@ -1833,7 +1817,7 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
                       : _submitting
                       ? 'Submitting...'
                       : 'Submit Stolen Report',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: AppTheme.heading(16, color: Colors.white),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _kPrimary,
@@ -2098,7 +2082,7 @@ class _DocViewerScreenState extends State<_DocViewerScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(widget.fileName,
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                style: AppTheme.heading(14, color: Colors.white),
                 overflow: TextOverflow.ellipsis),
             Text('Police Complaint Document',
                 style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.7))),

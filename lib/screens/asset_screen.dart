@@ -5,11 +5,9 @@ import 'shared_screens.dart';
 import 'asset_detail_screen.dart';
 import 'resale_listing_sheet.dart';
 import '../services/resale_service.dart';
+import '../theme.dart';
 
-const Color _teal = Color(0xFF00695C);
-const Color _tealBg = Color(0xFFE0F2F1);
-const Color _dark = Color(0xFF1A1A2E);
-const Color _grey = Color(0xFF8A9AAF);
+// Constants removed - using AppTheme
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MY ASSETS SCREEN
@@ -43,7 +41,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-            body: Center(child: CircularProgressIndicator(color: _teal)),
+            body: Center(child: CircularProgressIndicator(color: AppTheme.primaryStart)),
           );
         }
         final role = snap.data ?? 'user';
@@ -55,8 +53,8 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
 
         // ── Regular user view ─────────────────────────────────────────────
         return Scaffold(
-          backgroundColor: Colors.grey.shade50,
-          appBar: _buildAppBar('My Assets'),
+          backgroundColor: AppTheme.background,
+          appBar: _buildAppBar(context,'My Assets'),
           body: Column(
             children: [
               _SearchBar(
@@ -208,7 +206,7 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Asset listed for sale on the marketplace.'),
-            backgroundColor: _teal,
+            backgroundColor: AppTheme.primaryStart,
           ),
         );
       }
@@ -233,9 +231,9 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
+            child: Text(
               'Remove',
-              style: TextStyle(color: Colors.white),
+              style: AppTheme.button(14),
             ),
           ),
         ],
@@ -248,7 +246,7 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Asset removed from sale.'),
-        backgroundColor: _teal,
+        backgroundColor: AppTheme.primaryStart,
       ),
     );
   }
@@ -256,8 +254,8 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      appBar: _buildAppBar('My Inventory'),
+      backgroundColor: AppTheme.background,
+      appBar: _buildAppBar(context,'My Inventory'),
       body: Column(
         children: [
           _SearchBar(
@@ -368,7 +366,7 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
                                       ? 'Listed for PKR ${d['resalePrice']}'
                                       : 'Asset is live on the marketplace.',
                                 ),
-                                backgroundColor: _teal,
+                                backgroundColor: AppTheme.primaryStart,
                               ),
                             );
                             return;
@@ -443,7 +441,7 @@ class _AssetCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.07),
+                color: AppTheme.primaryStart.withOpacity(0.07),
                 blurRadius: 16,
                 offset: const Offset(0, 4),
               ),
@@ -467,12 +465,12 @@ class _AssetCard extends StatelessWidget {
                       image != null
                           ? buildAssetImage(image, fit: BoxFit.cover)
                           : Container(
-                              color: const Color(0xFFE8F4F6),
-                              child: const Center(
+                              color: AppTheme.primaryStart.withOpacity(0.05),
+                              child: Center(
                                 child: Icon(
                                   Icons.image_outlined,
                                   size: 48,
-                                  color: _grey,
+                                  color: AppTheme.textMid,
                                 ),
                               ),
                             ),
@@ -488,7 +486,7 @@ class _AssetCard extends StatelessWidget {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: _teal,
+                              color: AppTheme.primaryStart,
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Row(
@@ -502,11 +500,7 @@ class _AssetCard extends StatelessWidget {
                                 const SizedBox(width: 4),
                                 Text(
                                   badge!,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  style: AppTheme.heading(11, color: Colors.white),
                                 ),
                               ],
                             ),
@@ -523,16 +517,12 @@ class _AssetCard extends StatelessWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.55),
+                            color: AppTheme.primaryStart.withOpacity(0.7),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
                             categoryLabel,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                            ),
+                            style: AppTheme.body(11, color: Colors.white),
                           ),
                         ),
                       ),
@@ -551,11 +541,7 @@ class _AssetCard extends StatelessWidget {
                     // Title
                     Text(
                       title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: _dark,
-                      ),
+                      style: AppTheme.heading(16),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -579,18 +565,18 @@ class _AssetCard extends StatelessWidget {
                       _DetailRow(
                         icon: Icons.swap_horiz_outlined,
                         text: 'Transferred: $transferDate',
-                        color: _teal,
+                        color: AppTheme.primaryStart,
                       ),
 
                     if (tokenId != null)
                       _DetailRow(
                         icon: Icons.token_outlined,
                         text: 'Token $tokenId',
-                        color: _teal,
+                        color: AppTheme.primaryStart,
                       ),
 
                     const SizedBox(height: 12),
-                    const Divider(height: 1, color: Color(0xFFF0F0F0)),
+                    Divider(height: 1, color: AppTheme.primaryStart.withOpacity(0.05)),
                     const SizedBox(height: 12),
 
                     // Price + Actions
@@ -602,11 +588,7 @@ class _AssetCard extends StatelessWidget {
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
                               price,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: _teal,
-                              ),
+                              style: AppTheme.heading(15, color: AppTheme.primaryStart),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
@@ -656,29 +638,23 @@ class _ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = outlined
         ? OutlinedButton.styleFrom(
-            foregroundColor: _teal,
-            side: const BorderSide(color: _teal, width: 1.4),
+            foregroundColor: AppTheme.primaryStart,
+            side: const BorderSide(color: AppTheme.primaryStart, width: 1.4),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
-            textStyle: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
+            textStyle: AppTheme.button(12),
           )
         : ElevatedButton.styleFrom(
-            backgroundColor: _teal,
+            backgroundColor: AppTheme.primaryStart,
             foregroundColor: Colors.white,
             elevation: 0,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
-            textStyle: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
+            textStyle: AppTheme.button(12),
           );
 
     final child = Row(
@@ -700,7 +676,7 @@ class _DetailRow extends StatelessWidget {
   const _DetailRow({
     required this.icon,
     required this.text,
-    this.color = _grey,
+    this.color = AppTheme.textSecondary,
   });
 
   @override
@@ -714,11 +690,7 @@ class _DetailRow extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: TextStyle(
-                fontSize: 12,
-                color: color,
-                fontWeight: FontWeight.w500,
-              ),
+              style: AppTheme.body(12, color: color),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -749,7 +721,7 @@ class _SearchBar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: AppTheme.primaryStart.withOpacity(0.05),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -758,16 +730,13 @@ class _SearchBar extends StatelessWidget {
               child: TextField(
                 controller: controller,
                 onChanged: onChanged,
-                style: const TextStyle(fontSize: 14, color: _dark),
+                style: AppTheme.body(14),
                 decoration: InputDecoration(
                   hintText: 'Search assets…',
-                  hintStyle: TextStyle(
-                    color: Colors.grey.shade400,
-                    fontSize: 14,
-                  ),
+                  hintStyle: AppTheme.body(14, color: AppTheme.textMid.withOpacity(0.5)),
                   prefixIcon: Icon(
                     Icons.search_rounded,
-                    color: Colors.grey.shade400,
+                    color: AppTheme.textMid.withOpacity(0.5),
                     size: 20,
                   ),
                   border: InputBorder.none,
@@ -781,11 +750,11 @@ class _SearchBar extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: _teal,
+              color: AppTheme.primaryStart,
               borderRadius: BorderRadius.circular(14),
               boxShadow: [
                 BoxShadow(
-                  color: _teal.withOpacity(0.35),
+                  color: AppTheme.primaryStart.withOpacity(0.35),
                   blurRadius: 8,
                   offset: const Offset(0, 4),
                 ),
@@ -803,42 +772,16 @@ class _SearchBar extends StatelessWidget {
   }
 }
 
-AppBar _buildAppBar(String title) {
+AppBar _buildAppBar(BuildContext context, String title) {
   return AppBar(
-    backgroundColor: Colors.transparent,
+    title: Text(title, style: AppTheme.heading(20, color: Colors.white)),
+    flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
     elevation: 0,
-    scrolledUnderElevation: 0,
-    leadingWidth: 72,
-    leading: Builder(
-      builder: (context) => IconButton(
-        icon: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: const Icon(Icons.chevron_left_rounded, color: _dark, size: 24),
-        ),
-        onPressed: () => Navigator.of(context).pop(),
-      ),
-    ),
-    title: Text(
-      title,
-      style: const TextStyle(
-        color: _dark,
-        fontSize: 17,
-        fontWeight: FontWeight.w700,
-      ),
-    ),
     centerTitle: true,
+    leading: IconButton(
+      icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+      onPressed: () => Navigator.of(context).maybePop(),
+    ),
   );
 }
 
@@ -863,22 +806,18 @@ class _EmptyView extends StatelessWidget {
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              color: _tealBg,
+              color: AppTheme.primaryStart.withOpacity(0.1),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Icon(icon, size: 40, color: _teal),
+            child: Icon(icon, size: 40, color: AppTheme.primaryStart),
           ),
           const SizedBox(height: 16),
           Text(
             title,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: _dark,
-            ),
+            style: AppTheme.heading(16),
           ),
           const SizedBox(height: 6),
-          Text(subtitle, style: const TextStyle(fontSize: 13, color: _grey)),
+          Text(subtitle, style: AppTheme.body(13, color: AppTheme.textSecondary)),
         ],
       ),
     );
@@ -954,7 +893,7 @@ class RelatedItemsList extends StatelessWidget {
         stream: q.snapshots(),
         builder: (context, snap) {
           if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator(color: _teal));
+            return Center(child: CircularProgressIndicator(color: AppTheme.primaryStart));
           }
           final docs = snap.data!.docs;
           return ListView.builder(
@@ -1005,7 +944,7 @@ class RelatedItemsList extends StatelessWidget {
                                   color: const Color(0xFFE8F4F6),
                                   child: const Icon(
                                     Icons.image_outlined,
-                                    color: _grey,
+                                    color: AppTheme.textSecondary,
                                   ),
                                 ),
                         ),
@@ -1016,11 +955,7 @@ class RelatedItemsList extends StatelessWidget {
                           _assetTitle(d, fallback: ''),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: _dark,
-                          ),
+                          style: AppTheme.heading(12),
                         ),
                       ),
                     ],
@@ -1052,7 +987,7 @@ class FavoritesScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: _buildAppBar('Favorites'),
+      appBar: _buildAppBar(context,'Favorites'),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: q.snapshots(),
         builder: (context, snap) {
@@ -1060,7 +995,7 @@ class FavoritesScreen extends StatelessWidget {
             return _ErrorView(error: snap.error.toString());
           }
           if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator(color: _teal));
+            return Center(child: CircularProgressIndicator(color: AppTheme.primaryStart));
           }
           final docs = snap.data!.docs;
           if (docs.isEmpty) {
@@ -1147,7 +1082,7 @@ class _FavoriteItemState extends State<_FavoriteItem> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Removed from favorites'),
-          backgroundColor: _teal,
+          backgroundColor: AppTheme.primaryStart,
         ),
       );
     }
@@ -1279,7 +1214,7 @@ class _SupplierPublishedAssetsBuilder extends StatelessWidget {
 
                     if (!snapshots.any((snap) => snap.hasData)) {
                       return const Center(
-                        child: CircularProgressIndicator(color: _teal),
+                        child: CircularProgressIndicator(color: AppTheme.primaryStart),
                       );
                     }
 
@@ -1332,7 +1267,7 @@ class _MergedOwnerAssetsBuilder extends StatelessWidget {
           return _ErrorView(error: ownerIdSnap.error.toString());
         }
         if (!ownerIdSnap.hasData) {
-          return const Center(child: CircularProgressIndicator(color: _teal));
+          return Center(child: CircularProgressIndicator(color: AppTheme.primaryStart));
         }
 
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -1345,7 +1280,7 @@ class _MergedOwnerAssetsBuilder extends StatelessWidget {
             }
             if (!ownerUidSnap.hasData && primaryDocs.isEmpty) {
               return const Center(
-                child: CircularProgressIndicator(color: _teal),
+                child: CircularProgressIndicator(color: AppTheme.primaryStart),
               );
             }
 
@@ -1431,8 +1366,8 @@ class _FavoriteSkeletonCard extends StatelessWidget {
               height: 180,
               width: double.infinity,
               color: Colors.grey.shade100,
-              child: const Center(
-                child: CircularProgressIndicator(color: _teal, strokeWidth: 2),
+              child: Center(
+                child: CircularProgressIndicator(color: AppTheme.primaryStart, strokeWidth: 2),
               ),
             ),
           ),
@@ -1518,10 +1453,10 @@ class _InlineStatusCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: _tealBg,
+              color: AppTheme.primaryStart.withOpacity(0.1),
               borderRadius: BorderRadius.circular(14),
             ),
-            child: Icon(icon, color: _teal),
+            child: Icon(icon, color: AppTheme.primaryStart),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -1530,26 +1465,18 @@ class _InlineStatusCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: _dark,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: AppTheme.heading(14),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: const TextStyle(
-                    color: _grey,
-                    fontSize: 12,
-                    height: 1.45,
-                  ),
+                  style: AppTheme.body(12, color: AppTheme.textSecondary),
                 ),
                 const SizedBox(height: 12),
                 TextButton(
                   onPressed: onAction,
                   style: TextButton.styleFrom(
-                    foregroundColor: _teal,
+                    foregroundColor: AppTheme.primaryStart,
                     padding: EdgeInsets.zero,
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,

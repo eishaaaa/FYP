@@ -4,33 +4,24 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'auth_screens.dart';
 import '../blockchain/blockchain_service.dart';
+import '../theme.dart';
 
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
 
-// ─── Brand Colors (matching the real-estate app UI) ───────────────────────────
-const kTeal = Color(0xFF2D7D7D);
-const kTealDark = Color(0xFF1F5C5C);
-const kTealLight = Color(0xFFE8F4F4);
-const kTealAccent = Color(0xFF3AAFA9);
-const kScaffoldBg = Color(0xFFF5F8F8);
-const kCardBg = Colors.white;
-const kTextPrimary = Color(0xFF1A2E2E);
-const kTextSecondary = Color(0xFF6B8E8E);
-
-// ─── Theme ────────────────────────────────────────────────────────────────────
+// Brand colors removed - using AppTheme
 ThemeData get adminTheme => ThemeData(
   useMaterial3: true,
   fontFamily: 'Poppins',
   colorScheme: ColorScheme.fromSeed(
-    seedColor: kTeal,
-    primary: kTeal,
-    secondary: kTealAccent,
-    surface: kScaffoldBg,
+    seedColor: AppTheme.primaryStart,
+    primary: AppTheme.primaryStart,
+    secondary: AppTheme.accent,
+    surface: AppTheme.background,
   ),
-  scaffoldBackgroundColor: kScaffoldBg,
+  scaffoldBackgroundColor: AppTheme.background,
   appBarTheme: const AppBarTheme(
-    backgroundColor: kTeal,
+    backgroundColor: AppTheme.primaryStart,
     foregroundColor: Colors.white,
     elevation: 0,
     centerTitle: false,
@@ -42,35 +33,35 @@ ThemeData get adminTheme => ThemeData(
     ),
   ),
   cardTheme: CardThemeData(
-    color: kCardBg,
+    color: Colors.white,
     elevation: 0,
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(16),
     ),
     margin: EdgeInsets.zero,
   ),
-  bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+  bottomNavigationBarTheme: BottomNavigationBarThemeData(
     backgroundColor: Colors.white,
-    selectedItemColor: kTeal,
-    unselectedItemColor: kTextSecondary,
-    selectedLabelStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: 11),
-    unselectedLabelStyle: TextStyle(fontSize: 11),
+    selectedItemColor: AppTheme.primaryStart,
+    unselectedItemColor: Colors.grey,
+    selectedLabelStyle: AppTheme.body(11, weight: FontWeight.w600),
+    unselectedLabelStyle: AppTheme.body(11),
     elevation: 12,
     type: BottomNavigationBarType.fixed,
   ),
   elevatedButtonTheme: ElevatedButtonThemeData(
     style: ElevatedButton.styleFrom(
-      backgroundColor: kTeal,
+      backgroundColor: AppTheme.primaryStart,
       foregroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       padding: const EdgeInsets.symmetric(vertical: 14),
-      textStyle: const TextStyle(fontWeight: FontWeight.w600),
+      textStyle: AppTheme.body(14, weight: FontWeight.w600),
     ),
   ),
   chipTheme: ChipThemeData(
-    selectedColor: kTeal,
-    backgroundColor: kTealLight,
-    labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+    selectedColor: AppTheme.primaryStart,
+    backgroundColor: AppTheme.surface,
+    labelStyle: AppTheme.body(13, weight: FontWeight.w500),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
     side: BorderSide.none,
   ),
@@ -106,16 +97,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     return Theme(
       data: adminTheme,
       child: Scaffold(
-        backgroundColor: kScaffoldBg,
+        backgroundColor: AppTheme.background,
         appBar: AppBar(
           title: Text(_titles[_selectedIndex]),
           flexibleSpace: Container(
             decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [kTealDark, kTeal],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              gradient: AppTheme.primaryGradient,
             ),
           ),
           actions: [
@@ -199,11 +186,7 @@ class AdminDashboard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [kTealDark, kTealAccent],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              gradient: AppTheme.primaryGradient,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
@@ -212,30 +195,19 @@ class AdminDashboard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Good Morning 👋',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
+                        style: AppTheme.body(13, color: Colors.white70),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
+                      Text(
                         'Admin Panel',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                        ),
+                        style: AppTheme.heading(22, color: Colors.white),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         'System Overview',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
-                          fontSize: 13,
-                        ),
+                        style: AppTheme.body(13, color: Colors.white.withOpacity(0.8)),
                       ),
                     ],
                   ),
@@ -258,13 +230,9 @@ class AdminDashboard extends StatelessWidget {
 
           const SizedBox(height: 24),
 
-          const Text(
+          Text(
             'Statistics',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: kTextPrimary,
-            ),
+            style: AppTheme.heading(16, color: AppTheme.textPrimary),
           ),
           const SizedBox(height: 12),
 
@@ -281,25 +249,25 @@ class AdminDashboard extends StatelessWidget {
                 title: 'Total Users',
                 collection: 'users',
                 icon: Icons.people_alt_rounded,
-                gradientColors: [const Color(0xFF2D7D7D), const Color(0xFF3AAFA9)],
+                gradientColors: [AppTheme.primaryStart, AppTheme.primaryEnd],
               ),
               _StatCard(
                 title: 'Properties',
                 collection: 'assets',
                 icon: Icons.apartment_rounded,
-                gradientColors: [const Color(0xFF1F5C5C), const Color(0xFF2D7D7D)],
+                gradientColors: [AppTheme.primaryEnd, AppTheme.primaryStart],
               ),
               _StatCard(
                 title: 'Transactions',
                 collection: 'transactions',
                 icon: Icons.receipt_long_rounded,
-                gradientColors: [const Color(0xFF3AAFA9), const Color(0xFF5CC8C8)],
+                gradientColors: [AppTheme.accent, AppTheme.primaryStart],
               ),
               _StatCard(
                 title: 'Reviews',
                 collection: 'reviews',
                 icon: Icons.star_rounded,
-                gradientColors: [const Color(0xFF2D7D7D), const Color(0xFF1F5C5C)],
+                gradientColors: [AppTheme.primaryStart, AppTheme.accent],
               ),
             ],
           ),
@@ -309,19 +277,15 @@ class AdminDashboard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'Recent Properties',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: kTextPrimary,
-                ),
+                style: AppTheme.heading(16, color: AppTheme.textPrimary),
               ),
               TextButton(
                 onPressed: () {},
-                child: const Text(
+                child: Text(
                   'See All',
-                  style: TextStyle(color: kTeal, fontWeight: FontWeight.w600),
+                  style: AppTheme.heading(13, color: AppTheme.primaryStart),
                 ),
               ),
             ],
@@ -339,7 +303,7 @@ class AdminDashboard extends StatelessWidget {
                 return const Center(
                   child: Padding(
                     padding: EdgeInsets.all(24),
-                    child: CircularProgressIndicator(color: kTeal),
+                    child: CircularProgressIndicator(color: AppTheme.primaryStart),
                   ),
                 );
               }
@@ -352,11 +316,11 @@ class AdminDashboard extends StatelessWidget {
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: kCardBg,
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(14),
                       boxShadow: [
                         BoxShadow(
-                          color: kTeal.withOpacity(0.06),
+                          color: AppTheme.primaryStart.withOpacity(0.06),
                           blurRadius: 12,
                           offset: const Offset(0, 3),
                         ),
@@ -368,12 +332,12 @@ class AdminDashboard extends StatelessWidget {
                           width: 44,
                           height: 44,
                           decoration: BoxDecoration(
-                            color: kTealLight,
+                            color: AppTheme.primaryLight,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Icon(
                             Icons.apartment_rounded,
-                            color: kTeal,
+                            color: AppTheme.primaryStart,
                             size: 22,
                           ),
                         ),
@@ -384,19 +348,12 @@ class AdminDashboard extends StatelessWidget {
                             children: [
                               Text(
                                 data['title'] ?? 'New Property',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                  color: kTextPrimary,
-                                ),
+                                style: AppTheme.heading(14, color: AppTheme.textPrimary),
                               ),
                               const SizedBox(height: 3),
                               Text(
                                 '${data['category'] ?? ''} • PKR ${data['price'] ?? 0}',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: kTextSecondary,
-                                ),
+                                style: AppTheme.body(12, color: AppTheme.textMid),
                               ),
                             ],
                           ),
@@ -488,19 +445,11 @@ class _StatCard extends StatelessWidget {
                 children: [
                   Text(
                     '$count',
-                    style: const TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
+                    style: AppTheme.heading(26, color: Colors.white),
                   ),
                   Text(
                     title,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withOpacity(0.85),
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: AppTheme.body(12, color: Colors.white.withOpacity(0.85), weight: FontWeight.w500),
                   ),
                 ],
               ),
@@ -522,18 +471,18 @@ class UserManagement extends StatelessWidget {
       children: [
         // Search bar
         Container(
-          color: kTeal,
+          color: AppTheme.primaryStart,
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
           child: Container(
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: const TextField(
+            child: TextField(
               decoration: InputDecoration(
                 hintText: 'Search users...',
-                hintStyle: TextStyle(color: kTextSecondary, fontSize: 14),
-                prefixIcon: Icon(Icons.search_rounded, color: kTextSecondary),
+                hintStyle: AppTheme.body(14, color: AppTheme.textMid),
+                prefixIcon: Icon(Icons.search_rounded, color: AppTheme.textMid),
                 border: InputBorder.none,
                 contentPadding: EdgeInsets.symmetric(vertical: 14),
               ),
@@ -552,7 +501,7 @@ class UserManagement extends StatelessWidget {
                 return Center(child: Text('Error: ${snapshot.error}'));
               }
               if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator(color: kTeal));
+                return const Center(child: CircularProgressIndicator(color: AppTheme.primaryStart));
               }
 
               final users = snapshot.data!.docs;
@@ -571,11 +520,11 @@ class UserManagement extends StatelessWidget {
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
-                      color: kCardBg,
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: kTeal.withOpacity(0.06),
+                          color: AppTheme.primaryStart.withOpacity(0.06),
                           blurRadius: 12,
                           offset: const Offset(0, 3),
                         ),
@@ -587,31 +536,23 @@ class UserManagement extends StatelessWidget {
                         vertical: 8,
                       ),
                       leading: CircleAvatar(
-                        backgroundColor: kTeal,
+                        backgroundColor: AppTheme.primaryStart,
                         radius: 24,
                         child: Text(
                           name[0].toUpperCase(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                          ),
+                          style: AppTheme.heading(16, color: Colors.white),
                         ),
                       ),
                       title: Row(
                         children: [
                           Text(
                             name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: kTextPrimary,
-                            ),
+                            style: AppTheme.heading(14, color: AppTheme.textPrimary),
                           ),
                           const SizedBox(width: 8),
                           if (verified)
                             const Icon(Icons.verified_rounded,
-                                color: kTeal, size: 16),
+                                color: AppTheme.primaryStart, size: 16),
                           if (suspended)
                             const Icon(Icons.block_rounded,
                                 color: Colors.red, size: 16),
@@ -623,33 +564,26 @@ class UserManagement extends StatelessWidget {
                           const SizedBox(height: 3),
                           Text(
                             user['email'] ?? '',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: kTextSecondary,
-                            ),
+                            style: AppTheme.body(12, color: AppTheme.textMid),
                           ),
                           const SizedBox(height: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: kTealLight,
+                              color: AppTheme.primaryLight,
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
                               role.toUpperCase(),
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: kTeal,
-                                fontWeight: FontWeight.w700,
-                              ),
+                              style: AppTheme.heading(10, color: AppTheme.primaryStart),
                             ),
                           ),
                         ],
                       ),
                       trailing: PopupMenuButton<String>(
                         icon: const Icon(Icons.more_vert_rounded,
-                            color: kTextSecondary),
+                            color: Colors.grey),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                         onSelected: (value) async {
@@ -679,7 +613,7 @@ class UserManagement extends StatelessWidget {
                             child: Row(
                               children: [
                                 Icon(Icons.verified_rounded,
-                                    color: kTeal, size: 18),
+                                    color: AppTheme.primaryStart, size: 18),
                                 SizedBox(width: 10),
                                 Text('Verify User'),
                               ],
@@ -713,7 +647,7 @@ class UserManagement extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor: color ?? kTeal,
+        backgroundColor: color ?? AppTheme.primaryStart,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
@@ -746,7 +680,7 @@ class _AssetModerationState extends State<AssetModeration> {
       children: [
         // Filter header
         Container(
-          color: kTeal,
+          color: AppTheme.primaryStart,
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
           child: Row(
             children: [
@@ -774,7 +708,7 @@ class _AssetModerationState extends State<AssetModeration> {
               }
               if (!snapshot.hasData) {
                 return const Center(
-                    child: CircularProgressIndicator(color: kTeal));
+                    child: CircularProgressIndicator(color: AppTheme.primaryStart));
               }
 
               final assets = snapshot.data!.docs;
@@ -787,25 +721,21 @@ class _AssetModerationState extends State<AssetModeration> {
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: kTealLight,
+                          color: AppTheme.primaryLight,
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.check_circle_rounded,
-                            size: 48, color: kTeal),
+                            size: 48, color: AppTheme.primaryStart),
                       ),
                       const SizedBox(height: 16),
-                      const Text(
+                      Text(
                         'All caught up!',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: kTextPrimary,
-                        ),
+                        style: AppTheme.heading(16, color: AppTheme.textPrimary),
                       ),
                       const SizedBox(height: 6),
-                      const Text(
+                      Text(
                         'No properties found for this filter',
-                        style: TextStyle(fontSize: 13, color: kTextSecondary),
+                        style: AppTheme.body(13, color: AppTheme.textMid),
                       ),
                     ],
                   ),
@@ -823,11 +753,11 @@ class _AssetModerationState extends State<AssetModeration> {
                   return Container(
                     margin: const EdgeInsets.only(bottom: 14),
                     decoration: BoxDecoration(
-                      color: kCardBg,
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(18),
                       boxShadow: [
                         BoxShadow(
-                          color: kTeal.withOpacity(0.07),
+                          color: AppTheme.primaryStart.withOpacity(0.07),
                           blurRadius: 14,
                           offset: const Offset(0, 4),
                         ),
@@ -842,8 +772,8 @@ class _AssetModerationState extends State<AssetModeration> {
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: isVerified
-                                  ? [kTealDark, kTeal]
-                                  : [const Color(0xFF4A4A5A), const Color(0xFF6B6B7B)],
+                                  ? [AppTheme.primaryStartDark, AppTheme.primaryStart]
+                                  : [const Color(0xFF2C3E50), const Color(0xFF4B79A1)],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
@@ -867,11 +797,7 @@ class _AssetModerationState extends State<AssetModeration> {
                               Expanded(
                                 child: Text(
                                   asset['title'] ?? 'Untitled',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                  style: AppTheme.heading(16, color: Colors.white),
                                 ),
                               ),
                               if (isVerified)
@@ -884,13 +810,9 @@ class _AssetModerationState extends State<AssetModeration> {
                                     border: Border.all(
                                         color: Colors.green.shade300),
                                   ),
-                                  child: const Text(
+                                  child: Text(
                                     '✓ Verified',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                                    style: AppTheme.heading(11, color: Colors.white),
                                   ),
                                 ),
                             ],
@@ -942,7 +864,7 @@ class _AssetModerationState extends State<AssetModeration> {
                                             size: 18),
                                         label: const Text('Approve'),
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: kTeal,
+                                          backgroundColor: AppTheme.primaryStart,
                                           foregroundColor: Colors.white,
                                           shape: RoundedRectangleBorder(
                                               borderRadius:
@@ -1067,15 +989,14 @@ class _AssetModerationState extends State<AssetModeration> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Reject Property',
-            style: TextStyle(fontWeight: FontWeight.w700)),
+        title: Text('Reject Property', style: AppTheme.heading(20)),
         content: const Text(
             'Are you sure you want to reject this property listing?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: kTextSecondary)),
+            child: Text('Cancel',
+                style: AppTheme.body(14, color: AppTheme.textMid)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -1182,7 +1103,7 @@ class _AssetModerationState extends State<AssetModeration> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor: color ?? kTeal,
+        backgroundColor: color ?? AppTheme.primaryStart,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
@@ -1207,7 +1128,7 @@ class TransactionMonitor extends StatelessWidget {
           return Center(child: Text('Error: ${snapshot.error}'));
         }
         if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator(color: kTeal));
+          return const Center(child: CircularProgressIndicator(color: AppTheme.primaryStart));
         }
 
         final transactions = snapshot.data!.docs;
@@ -1220,20 +1141,16 @@ class TransactionMonitor extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: kTealLight,
+                    color: AppTheme.primaryLight,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.receipt_long_rounded,
-                      size: 48, color: kTeal),
+                      size: 48, color: AppTheme.primaryStart),
                 ),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'No transactions yet',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: kTextPrimary,
-                  ),
+                  style: AppTheme.heading(16, color: AppTheme.textPrimary),
                 ),
               ],
             ),
@@ -1259,7 +1176,7 @@ class TransactionMonitor extends StatelessWidget {
                 statusLabel = 'Completed';
                 break;
               case 'approved':
-                statusColor = kTeal;
+                statusColor = AppTheme.primaryStart;
                 statusIcon = Icons.pending_rounded;
                 statusLabel = 'Approved';
                 break;
@@ -1277,11 +1194,11 @@ class TransactionMonitor extends StatelessWidget {
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(
-                color: kCardBg,
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: kTeal.withOpacity(0.06),
+                    color: AppTheme.primaryStart.withOpacity(0.06),
                     blurRadius: 12,
                     offset: const Offset(0, 3),
                   ),
@@ -1307,11 +1224,7 @@ class TransactionMonitor extends StatelessWidget {
                         children: [
                           Text(
                             'Property: ${tx['assetId'] ?? 'Unknown'}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: kTextPrimary,
-                            ),
+                            style: AppTheme.heading(14, color: AppTheme.textPrimary),
                           ),
                           const SizedBox(height: 6),
                           _TxInfo(
@@ -1342,10 +1255,7 @@ class TransactionMonitor extends StatelessWidget {
                       Text(
                         '${timestamp.toDate().day}/${timestamp.toDate().month}\n${timestamp.toDate().year}',
                         textAlign: TextAlign.right,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: kTextSecondary,
-                        ),
+                        style: AppTheme.body(11, color: AppTheme.textMid),
                       ),
                   ],
                 ),
@@ -1383,11 +1293,7 @@ class _FilterChip extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: TextStyle(
-            color: selected ? kTeal : Colors.white,
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-          ),
+            style: AppTheme.heading(13, color: selected ? AppTheme.primaryStart : Colors.white),
         ),
       ),
     );
@@ -1406,18 +1312,16 @@ class _InfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: kTeal),
+        Icon(icon, size: 16, color: AppTheme.primaryStart),
         const SizedBox(width: 8),
         Text(
           '$label: ',
-          style: const TextStyle(
-              fontSize: 13, color: kTextSecondary, fontWeight: FontWeight.w500),
+          style: AppTheme.body(13, color: AppTheme.textMid),
         ),
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
-                fontSize: 13, color: kTextPrimary, fontWeight: FontWeight.w600),
+            style: AppTheme.heading(13, color: AppTheme.textPrimary),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -1442,12 +1346,11 @@ class _TxInfo extends StatelessWidget {
           children: [
             TextSpan(
               text: '$label: ',
-              style: const TextStyle(color: kTextSecondary),
+              style: AppTheme.body(12, color: AppTheme.textMid),
             ),
             TextSpan(
               text: value,
-              style: const TextStyle(
-                  color: kTextPrimary, fontWeight: FontWeight.w500),
+              style: AppTheme.heading(12, color: AppTheme.textPrimary),
             ),
           ],
         ),

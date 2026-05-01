@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../theme.dart';
 
 import '../blockchain/blockchain_service.dart';
 
@@ -65,9 +66,9 @@ class _TransferScreenState extends State<TransferScreen> {
   bool _isStolen = false;
 
   // ── Design tokens ────────────────────────────────────────────
-  static const _accent = Color(0xFF3D5CFF);
-  static const _surface = Color(0xFFF8F9FE);
-  static const _cardRadius = 16.0;
+  static const _accent = AppTheme.primaryStart;
+  static const _surface = AppTheme.background;
+  static const _cardRadius = 18.0;
 
   @override
   void initState() {
@@ -348,23 +349,14 @@ class _TransferScreenState extends State<TransferScreen> {
     final title = isLand ? 'Transfer Land Ownership' : 'Transfer Electronics Ownership';
 
     PreferredSizeWidget appBar = AppBar(
-      backgroundColor: Colors.transparent,
+      title: Text(title, style: AppTheme.heading(18, color: Colors.white)),
+      flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
       elevation: 0,
-      scrolledUnderElevation: 0,
+      centerTitle: true,
       leading: IconButton(
-        icon: const Icon(Icons.chevron_left, size: 28),
-        color: Colors.black87,
+        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
         onPressed: () => Navigator.pop(context),
       ),
-      title: Text(
-        title,
-        style: const TextStyle(
-          color: Colors.black87,
-          fontSize: 17,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      centerTitle: true,
     );
 
     if (_loadingCheck) {
@@ -529,7 +521,7 @@ class _TransferScreenState extends State<TransferScreen> {
   Widget _buildStepperView(bool isLand) {
     return Theme(
       data: Theme.of(context).copyWith(
-        colorScheme: Theme.of(context).colorScheme.copyWith(primary: _accent),
+        colorScheme: Theme.of(context).colorScheme.copyWith(primary: AppTheme.primaryStart),
       ),
       child: Stepper(
         currentStep: _currentStep,
@@ -635,15 +627,15 @@ class _TransferScreenState extends State<TransferScreen> {
             ElevatedButton(
               onPressed: details.onStepContinue,
               style: ElevatedButton.styleFrom(
-                backgroundColor: isLastStep ? _accent : _accent,
+                backgroundColor: isLastStep ? AppTheme.primaryStart : AppTheme.primaryStart,
                 foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                minimumSize: const Size.fromHeight(56),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 elevation: 0,
               ),
               child: Text(
                 isLastStep ? '🔗 Execute Blockchain Transfer' : 'Continue',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                style: AppTheme.heading(15, color: Colors.white),
               ),
             ),
             if (_currentStep > 0) ...[
@@ -668,8 +660,8 @@ class _TransferScreenState extends State<TransferScreen> {
   // ── Step 0: Review summary ───────────────────────────────────
   Step _stepReview(bool isLand) {
     return Step(
-      title: const Text('Transfer Summary', style: TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: const Text('Review before proceeding'),
+      title: Text('Transfer Summary', style: AppTheme.heading(16)),
+      subtitle: Text('Review before proceeding', style: AppTheme.body(12)),
       isActive: _currentStep >= 0,
       content: Container(
         padding: const EdgeInsets.all(16),
@@ -730,8 +722,8 @@ class _TransferScreenState extends State<TransferScreen> {
   Step _stepBuyerWallet() {
     final hasWallet = _buyerWalletAddress != null && _buyerWalletAddress!.isNotEmpty;
     return Step(
-      title: const Text("Buyer's Wallet", style: TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: Text(hasWallet ? 'Wallet registered ✅' : 'Not yet connected ⚠️'),
+      title: Text("Buyer's Wallet", style: AppTheme.heading(16)),
+      subtitle: Text(hasWallet ? 'Wallet registered ✅' : 'Not yet connected ⚠️', style: AppTheme.body(12)),
       isActive: _currentStep >= 1,
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -776,10 +768,10 @@ class _TransferScreenState extends State<TransferScreen> {
   // ── Step 2: Seller wallet ────────────────────────────────────
   Step _stepConnectSeller() {
     return Step(
-      title: const Text('Connect Your Wallet', style: TextStyle(fontWeight: FontWeight.w600)),
+      title: Text('Connect Your Wallet', style: AppTheme.heading(16)),
       subtitle: Text(_walletConnected
           ? 'Connected: ${_bs.connectedAddress?.substring(0, 12) ?? ''}…'
-          : 'Not connected'),
+          : 'Not connected', style: AppTheme.body(12)),
       isActive: _currentStep >= 2,
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -819,8 +811,8 @@ class _TransferScreenState extends State<TransferScreen> {
   // ── Step 3 (land only): Legal paperwork ─────────────────────
   Step _stepLegalConfirmation() {
     return Step(
-      title: const Text('Legal Confirmation', style: TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: const Text('Required for land transfers'),
+      title: Text('Legal Confirmation', style: AppTheme.heading(16)),
+      subtitle: Text('Required for land transfers', style: AppTheme.body(12)),
       isActive: _currentStep >= 3,
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -879,8 +871,8 @@ class _TransferScreenState extends State<TransferScreen> {
   // ── Step 3/4: Execute ────────────────────────────────────────
   Step _stepExecute(bool isLand) {
     return Step(
-      title: const Text('Execute Transfer', style: TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: const Text('Sign & send on blockchain'),
+      title: Text('Execute Transfer', style: AppTheme.heading(16)),
+      subtitle: Text('Sign & send on blockchain', style: AppTheme.body(12)),
       isActive: _currentStep >= (isLand ? 4 : 3),
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1062,9 +1054,9 @@ class _BuyerOwnershipAcceptScreenState extends State<BuyerOwnershipAcceptScreen>
   String? _connectedAddress;
   String? _error;
 
-  static const _accent = Color(0xFF3D5CFF);
-  static const _surface = Color(0xFFF8F9FE);
-  static const _cardRadius = 16.0;
+  static const _accent = AppTheme.primaryStart;
+  static const _surface = AppTheme.background;
+  static const _cardRadius = 18.0;
 
   @override
   void initState() {
@@ -1140,27 +1132,17 @@ class _BuyerOwnershipAcceptScreenState extends State<BuyerOwnershipAcceptScreen>
     return Scaffold(
       backgroundColor: _surface,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        title: Text('Incoming Transfer', style: AppTheme.heading(18, color: Colors.white)),
+        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
         elevation: 0,
-        scrolledUnderElevation: 0,
+        centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, size: 28),
-          color: Colors.black87,
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Incoming Transfer',
-          style: TextStyle(
-            color: Colors.black87,
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, size: 22),
-            color: Colors.black54,
+            icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 22),
             onPressed: _load,
           ),
         ],
@@ -1193,14 +1175,15 @@ class _BuyerOwnershipAcceptScreenState extends State<BuyerOwnershipAcceptScreen>
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: txCompleted
-              ? [const Color(0xFF00897B), const Color(0xFF4DB6AC)]
-              : [const Color(0xFFFF8F00), const Color(0xFFFFCC02)],
-        ),
+        gradient: AppTheme.primaryGradient,
         borderRadius: BorderRadius.circular(_cardRadius),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryStart.withOpacity(0.3),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -1368,10 +1351,10 @@ class _BuyerOwnershipAcceptScreenState extends State<BuyerOwnershipAcceptScreen>
               icon: const Icon(Icons.account_balance_wallet_rounded),
               label: const Text('Connect & Save Wallet Address'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: _accent,
+                backgroundColor: AppTheme.primaryStart,
                 foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                minimumSize: const Size.fromHeight(56),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 elevation: 0,
               ),
             ),

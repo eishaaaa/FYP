@@ -3,17 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../blockchain/blockchain_service.dart';
+import '../theme.dart';
+import '../widgets/rent_actions.dart';
 
-// ─── Brand Colors ─────────────────────────────────────────────────────────────
-const kTeal        = Color(0xFF2D7D7D);
-const kTealDark    = Color(0xFF1F5C5C);
-const kTealLight   = Color(0xFFE8F4F4);
-const kTealAccent  = Color(0xFF3AAFA9);
-const kScaffoldBg  = Color(0xFFF5F8F8);
-const kTextPrimary = Color(0xFF1A2E2E);
-const kTextSecondary = Color(0xFF6B8E8E);
+// Brand colors removed - using AppTheme
 
 class RentDistributionScreen extends StatefulWidget {
   final String assetId;
@@ -256,7 +250,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content        : Text(msg, style: GoogleFonts.poppins()),
-      backgroundColor: color ?? kTeal,
+      backgroundColor: color ?? AppTheme.primaryStart,
       behavior       : SnackBarBehavior.floating,
       shape          : RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10)),
@@ -278,16 +272,16 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children    : [
-              const CircularProgressIndicator(color: kTeal),
+              const CircularProgressIndicator(color: AppTheme.primaryStart),
               const SizedBox(height: 18),
               Text(label,
                   style: GoogleFonts.poppins(
                       fontWeight: FontWeight.w600,
-                      color     : kTextPrimary)),
+                      color     : AppTheme.textPrimary)),
               const SizedBox(height: 6),
               Text('Please wait…',
                   style: GoogleFonts.poppins(
-                      fontSize: 12, color: kTextSecondary)),
+                      fontSize: 12, color: AppTheme.textSecondary)),
             ],
           ),
         ),
@@ -301,13 +295,10 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     // Loading
     if (_loading) {
       return Scaffold(
-        backgroundColor: kScaffoldBg,
+        backgroundColor: AppTheme.background,
         body: Container(
           decoration: const BoxDecoration(
-            gradient: LinearGradient(
-                colors: [kTealDark, kTeal],
-                begin : Alignment.topLeft,
-                end   : Alignment.bottomRight),
+            gradient: AppTheme.primaryGradient,
           ),
           child: Center(
             child: Column(
@@ -328,18 +319,18 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     // Error
     if (_propertyData == null) {
       return Scaffold(
-        backgroundColor: kScaffoldBg,
+        backgroundColor: AppTheme.background,
         appBar: _buildAppBar(),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(Icons.error_outline_rounded,
-                  size: 48, color: kTextSecondary),
+                  size: 48, color: AppTheme.textSecondary),
               const SizedBox(height: 12),
               Text('Failed to load property data',
                   style: GoogleFonts.poppins(
-                      color: kTextSecondary, fontSize: 15)),
+                      color: AppTheme.textSecondary, fontSize: 15)),
             ],
           ),
         ),
@@ -353,7 +344,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     final hasRent = _unclaimedRent > BigInt.zero;
 
     return Scaffold(
-      backgroundColor: kScaffoldBg,
+      backgroundColor: AppTheme.background,
       body: Column(
         children: [
           // ── Gradient header ──
@@ -407,7 +398,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-            colors: [kTealDark, kTeal],
+            colors: [AppTheme.primaryStartDark, AppTheme.primaryStart],
             begin : Alignment.topLeft,
             end   : Alignment.bottomRight),
         borderRadius: BorderRadius.only(
@@ -518,11 +509,11 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
               Container(
                 padding   : const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color       : kTealLight,
+                  color       : AppTheme.surface,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.location_on_rounded,
-                    color: kTeal, size: 22),
+                    color: AppTheme.primaryStart, size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -533,13 +524,13 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
                         style: GoogleFonts.poppins(
                           fontSize  : 15,
                           fontWeight: FontWeight.w700,
-                          color     : kTextPrimary,
+                          color     : AppTheme.textPrimary,
                         )),
                     Text(
                       '${_propertyData!['city']}  •  '
                           '${_propertyData!['totalArea']} ${_propertyData!['areaUnit']}',
                       style: GoogleFonts.poppins(
-                          fontSize: 12, color: kTextSecondary),
+                          fontSize: 12, color: AppTheme.textSecondary),
                     ),
                   ],
                 ),
@@ -547,7 +538,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
             ],
           ),
           const SizedBox(height: 14),
-          Divider(color: kTeal.withOpacity(0.1)),
+          Divider(color: AppTheme.primaryStart.withOpacity(0.1)),
           const SizedBox(height: 10),
           // Ownership bar
           Row(
@@ -555,12 +546,12 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
             children: [
               Text('Your ownership share',
                   style: GoogleFonts.poppins(
-                      fontSize: 12, color: kTextSecondary)),
+                      fontSize: 12, color: AppTheme.textSecondary)),
               Text('${ownershipPct.toStringAsFixed(2)}%',
                   style: GoogleFonts.poppins(
                     fontSize  : 12,
                     fontWeight: FontWeight.w700,
-                    color     : kTeal,
+                    color     : AppTheme.primaryStart,
                   )),
             ],
           ),
@@ -572,9 +563,9 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
                   ? _userFractions / totalFractions
                   : 0,
               minHeight      : 8,
-              backgroundColor: kTealLight,
+              backgroundColor: AppTheme.surface,
               valueColor     :
-              const AlwaysStoppedAnimation<Color>(kTeal),
+              const AlwaysStoppedAnimation<Color>(AppTheme.primaryStart),
             ),
           ),
         ],
@@ -591,14 +582,14 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
         gradient: LinearGradient(
           colors: hasRent
               ? [const Color(0xFF1B6B3A), const Color(0xFF2ECC71)]
-              : [kTealDark, kTeal],
+              : [AppTheme.primaryStartDark, AppTheme.primaryStart],
           begin: Alignment.topLeft,
           end  : Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color     : (hasRent ? Colors.green : kTeal).withOpacity(0.3),
+            color     : (hasRent ? Colors.green : AppTheme.primaryStart).withOpacity(0.3),
             blurRadius: 16,
             offset    : const Offset(0, 6),
           ),
@@ -631,50 +622,10 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
           const SizedBox(height: 20),
 
           // Claim button
-          GestureDetector(
-            onTap: hasRent ? _claimRent : null,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding : const EdgeInsets.symmetric(
-                  horizontal: 32, vertical: 14),
-              decoration: BoxDecoration(
-                color       : hasRent
-                    ? Colors.white
-                    : Colors.white.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(14),
-                boxShadow   : hasRent
-                    ? [
-                  BoxShadow(
-                    color     : Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset    : const Offset(0, 3),
-                  )
-                ]
-                    : [],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children    : [
-                  Icon(
-                    Icons.download_rounded,
-                    color: hasRent ? Colors.green.shade700 : Colors.white70,
-                    size : 20,
+                  ClaimRentButton(
+                    onPressed: _claimRent,
+                    isLoading: false, // Could add loading state
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    hasRent ? 'Claim Rent' : 'Nothing to Claim',
-                    style: GoogleFonts.poppins(
-                      color     : hasRent
-                          ? Colors.green.shade700
-                          : Colors.white70,
-                      fontWeight: FontWeight.w700,
-                      fontSize  : 15,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -691,11 +642,11 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
               Container(
                 padding   : const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color       : kTealLight,
+                  color       : AppTheme.surface,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.upload_rounded,
-                    color: kTeal, size: 22),
+                    color: AppTheme.primaryStart, size: 22),
               ),
               const SizedBox(width: 12),
               Column(
@@ -705,17 +656,17 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
                       style: GoogleFonts.poppins(
                         fontWeight: FontWeight.w700,
                         fontSize  : 15,
-                        color     : kTextPrimary,
+                        color     : AppTheme.textPrimary,
                       )),
                   Text('Send rent to all fraction holders',
                       style: GoogleFonts.poppins(
-                          fontSize: 12, color: kTextSecondary)),
+                          fontSize: 12, color: AppTheme.textSecondary)),
                 ],
               ),
             ],
           ),
           const SizedBox(height: 16),
-          Divider(color: kTeal.withOpacity(0.1)),
+          Divider(color: AppTheme.primaryStart.withOpacity(0.1)),
           const SizedBox(height: 14),
 
           // Amount field
@@ -723,10 +674,10 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
             decoration: BoxDecoration(
               color       : Colors.white,
               borderRadius: BorderRadius.circular(14),
-              border      : Border.all(color: kTeal.withOpacity(0.2)),
+              border      : Border.all(color: AppTheme.primaryStart.withOpacity(0.2)),
               boxShadow   : [
                 BoxShadow(
-                  color     : kTeal.withOpacity(0.05),
+                  color     : AppTheme.primaryStart.withOpacity(0.05),
                   blurRadius: 8,
                   offset    : const Offset(0, 2),
                 ),
@@ -739,17 +690,17 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
               style       : GoogleFonts.poppins(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
-                  color     : kTextPrimary),
+                  color     : AppTheme.textPrimary),
               decoration  : InputDecoration(
                 hintText      : 'Enter amount to distribute',
                 hintStyle     : GoogleFonts.poppins(
-                    color: kTextSecondary.withOpacity(0.6),
+                    color: AppTheme.textSecondary.withOpacity(0.6),
                     fontSize: 14),
                 prefixIcon    : const Icon(
-                    Icons.monetization_on_rounded, color: kTeal),
+                    Icons.monetization_on_rounded, color: AppTheme.primaryStart),
                 suffixText    : 'MATIC',
                 suffixStyle   : GoogleFonts.poppins(
-                    color     : kTeal,
+                    color     : AppTheme.primaryStart,
                     fontWeight: FontWeight.w700),
                 border        : InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(
@@ -772,7 +723,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
               'Rent is distributed proportionally to all fraction holders.',
               textAlign: TextAlign.center,
               style    : GoogleFonts.poppins(
-                  fontSize: 12, color: kTextSecondary),
+                  fontSize: 12, color: AppTheme.textSecondary),
             ),
           ),
         ],
@@ -801,17 +752,17 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: kTealLight,
+                  color: AppTheme.surface,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.vpn_key_rounded, color: kTeal, size: 22),
+                child: const Icon(Icons.vpn_key_rounded, color: AppTheme.primaryStart, size: 22),
               ),
               const SizedBox(width: 12),
               Text('Rental Status',
                   style: GoogleFonts.poppins(
                     fontWeight: FontWeight.w700,
                     fontSize: 15,
-                    color: kTextPrimary,
+                    color: AppTheme.textPrimary,
                   )),
             ],
           ),
@@ -820,48 +771,36 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
           if (widget.isOwner) ...[
             if (!isForRent && !hasTenant) ...[
               Text('Property is not yet listed for rent.',
-                  style: GoogleFonts.poppins(fontSize: 13, color: kTextSecondary)),
+                  style: GoogleFonts.poppins(fontSize: 13, color: AppTheme.textSecondary)),
               const SizedBox(height: 12),
               _buildRentInputField(),
               const SizedBox(height: 12),
-              _GradientButton(
-                label: 'List Property for Rent',
-                icon: Icons.add_home_rounded,
-                onPressed: _listForRent,
-              ),
+              ListForRentButton(onPressed: _listForRent),
             ] else if (isForRent && !hasPending) ...[
               _buildStatusRow('Status', 'Available for Rent', Colors.green),
-              _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', kTeal),
+              _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', AppTheme.primaryStart),
               const SizedBox(height: 12),
               const Center(child: Text('Waiting for tenants…', style: TextStyle(fontSize: 12, color: Colors.grey))),
             ] else if (hasPending) ...[
               _buildStatusRow('Status', 'Pending Request', Colors.orange),
-              _buildStatusRow('Tenant Address', pendingTenant, kTextPrimary),
+              _buildStatusRow('Tenant Address', pendingTenant, AppTheme.textPrimary),
               const SizedBox(height: 12),
-              _GradientButton(
-                label: 'Accept Tenant',
-                icon: Icons.check_circle_rounded,
-                onPressed: _acceptRentRequest,
-              ),
+              AcceptRentRequestButton(onPressed: _acceptRentRequest),
             ] else if (hasTenant) ...[
-              _buildStatusRow('Status', 'Rented', kTeal),
-              _buildStatusRow('Current Tenant', currentTenant, kTextPrimary),
-              _buildStatusRow('Monthly Income', '${_blockchainService.weiToEther(monthlyRent)} MATIC', kTeal),
+              _buildStatusRow('Status', 'Rented', AppTheme.primaryStart),
+              _buildStatusRow('Current Tenant', currentTenant, AppTheme.textPrimary),
+              _buildStatusRow('Monthly Income', '${_blockchainService.weiToEther(monthlyRent)} MATIC', AppTheme.primaryStart),
             ],
           ] else ...[
             // Non-owner view
             if (isTenant) ...[
-              _buildStatusRow('Status', 'You are the Tenant', kTeal),
-              _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', kTeal),
+              _buildStatusRow('Status', 'You are the Tenant', AppTheme.primaryStart),
+              _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', AppTheme.primaryStart),
               const SizedBox(height: 16),
-              _GradientButton(
-                label: 'Pay Monthly Rent',
-                icon: Icons.payment_rounded,
-                onPressed: _payMonthlyRent,
-              ),
+              PayRentButton(onPressed: _payMonthlyRent),
             ] else if (isForRent) ...[
               _buildStatusRow('Status', 'Available for Rent', Colors.green),
-              _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', kTeal),
+              _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', AppTheme.primaryStart),
               const SizedBox(height: 16),
               _GradientButton(
                 label: 'Request to Rent',
@@ -884,7 +823,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: kTeal.withOpacity(0.2)),
+        border: Border.all(color: AppTheme.primaryStart.withOpacity(0.2)),
       ),
       child: TextField(
         controller: _rentPriceCtrl,
@@ -892,7 +831,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
         style: GoogleFonts.poppins(fontSize: 14),
         decoration: InputDecoration(
           hintText: 'Enter monthly rent amount',
-          prefixIcon: const Icon(Icons.monetization_on_rounded, color: kTeal),
+          prefixIcon: const Icon(Icons.monetization_on_rounded, color: AppTheme.primaryStart),
           suffixText: 'MATIC',
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -907,7 +846,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: GoogleFonts.poppins(fontSize: 12, color: kTextSecondary)),
+          Text(label, style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textSecondary)),
           Flexible(
             child: Text(value,
                 style: GoogleFonts.poppins(
@@ -1003,18 +942,18 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
               Container(
                 padding   : const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color       : kTealLight,
+                  color       : AppTheme.surface,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(Icons.info_outline_rounded,
-                    color: kTeal, size: 20),
+                    color: AppTheme.primaryStart, size: 20),
               ),
               const SizedBox(width: 10),
               Text('How Rent Distribution Works',
                   style: GoogleFonts.poppins(
                     fontWeight: FontWeight.w700,
                     fontSize  : 14,
-                    color     : kTextPrimary,
+                    color     : AppTheme.textPrimary,
                   )),
             ],
           ),
@@ -1029,14 +968,14 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
                   width     : 6,
                   height    : 6,
                   decoration: const BoxDecoration(
-                      color: kTeal, shape: BoxShape.circle),
+                      color: AppTheme.primaryStart, shape: BoxShape.circle),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(b,
                       style: GoogleFonts.poppins(
                           fontSize: 13,
-                          color   : kTextSecondary,
+                          color   : AppTheme.textSecondary,
                           height  : 1.4)),
                 ),
               ],
@@ -1048,13 +987,10 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
   }
 
   PreferredSizeWidget _buildAppBar() => AppBar(
-    backgroundColor: kTeal,
+    backgroundColor: AppTheme.primaryStart,
     flexibleSpace  : Container(
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-            colors: [kTealDark, kTeal],
-            begin : Alignment.topLeft,
-            end   : Alignment.bottomRight),
+        gradient: AppTheme.primaryGradient,
       ),
     ),
     leading: IconButton(
@@ -1081,7 +1017,7 @@ class _Card extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       boxShadow   : [
         BoxShadow(
-          color     : kTeal.withOpacity(0.07),
+          color     : AppTheme.primaryStart.withOpacity(0.07),
           blurRadius: 14,
           offset    : const Offset(0, 4),
         ),
@@ -1141,15 +1077,15 @@ class _GradientButton extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     height    : 52,
     decoration: BoxDecoration(
-      gradient    : const LinearGradient(
-        colors: [kTealDark, kTealAccent],
+      gradient    : LinearGradient(
+        colors: [AppTheme.primaryStartDark, AppTheme.primaryStart],
         begin : Alignment.topLeft,
         end   : Alignment.bottomRight,
       ),
       borderRadius: BorderRadius.circular(14),
       boxShadow   : [
         BoxShadow(
-          color     : kTeal.withOpacity(0.35),
+          color     : AppTheme.primaryStart.withOpacity(0.35),
           blurRadius: 12,
           offset    : const Offset(0, 5),
         ),

@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
+import '../theme.dart';
 
 class QRGeneratorScreen extends StatefulWidget {
   final String assetId;
@@ -118,7 +119,9 @@ class _QRGeneratorScreenState extends State<QRGeneratorScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Asset QR Code'),
+        title: Text('Asset QR Code', style: AppTheme.heading(18, color: Colors.white)),
+        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
+        elevation: 0,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -294,12 +297,13 @@ class _QRGeneratorScreenState extends State<QRGeneratorScreen> {
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: _shareQR,
-                  icon: const Icon(Icons.share),
-                  label: const Text('Share QR Code'),
+                  icon: const Icon(Icons.share, color: Colors.white),
+                  label: Text('Share QR Code', style: AppTheme.body(15, weight: FontWeight.w600, color: Colors.white)),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1A4F5C),
+                    backgroundColor: AppTheme.primaryStart,
                     foregroundColor: Colors.white,
                     minimumSize: const Size.fromHeight(50),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
               ),
@@ -308,10 +312,12 @@ class _QRGeneratorScreenState extends State<QRGeneratorScreen> {
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: _downloadQR,
-                  icon: const Icon(Icons.download),
-                  label: const Text('Download QR Code'),
+                  icon: const Icon(Icons.download, color: AppTheme.primaryStart),
+                  label: Text('Download QR Code', style: AppTheme.body(15, weight: FontWeight.w600, color: AppTheme.primaryStart)),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size.fromHeight(50),
+                    side: const BorderSide(color: AppTheme.primaryStart),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
               ),

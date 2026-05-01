@@ -14,6 +14,7 @@ import 'screens/admin_screen.dart';
 import 'screens/transfer_screen.dart';
 import 'services/push_notification_service.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
+import 'theme.dart';
 
 
 
@@ -22,15 +23,15 @@ import 'package:firebase_analytics/firebase_analytics.dart';
 // DESIGN 2 — TEAL PALETTE (single source of truth for the whole app)
 // ─────────────────────────────────────────────────────────────────────────────
 class AppColors {
-  static const primary      = Color(0xFF2A7F8F); // Primary Teal
-  static const primaryDark  = Color(0xFF1A4F5C); // Dark Teal  (AppBar, headers)
-  static const primaryLight = Color(0xFFE8F4F6); // Teal Light (backgrounds)
-  static const background   = Color(0xFFF5F7F8); // App scaffold BG
-  static const surface      = Color(0xFFFFFFFF); // Card / sheet BG
-  static const textPrimary  = Color(0xFF1A1A2A); // Dark navy text
-  static const textSecondary= Color(0xFF6B7280); // Muted grey text
-  static const border       = Color(0xFFE5E7EB); // Subtle border
-  static const error        = Color(0xFFDC2626); // Red
+  static const primary      = AppTheme.primaryStart; // Primary Teal
+  static const primaryDark  = AppTheme.primaryStartDark; // Dark Teal  (AppBar, headers)
+  static const primaryLight = AppTheme.primaryLight; // Teal Light (backgrounds)
+  static const background   = AppTheme.background; // App scaffold BG
+  static const surface      = Colors.white; // Card / sheet BG
+  static const textPrimary  = AppTheme.textPrimary; // Dark navy text
+  static const textSecondary= AppTheme.textSecondary; // Muted grey text
+  static const border       = AppTheme.primaryStart; // Subtle border
+  static const error        = AppTheme.error; // Red
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -487,7 +488,7 @@ class _DigitalGoodsAppState extends State<DigitalGoodsApp> {
 
       // ── Snack Bar ──────────────────────────────────────────────────────
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: isDark ? const Color(0xFF2A3A3E) : AppColors.primaryDark,
+        backgroundColor: AppTheme.primaryStartDark,
         contentTextStyle: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white),
         actionTextColor: AppColors.primaryLight,
         behavior: SnackBarBehavior.floating,
@@ -536,7 +537,7 @@ class _DigitalGoodsAppState extends State<DigitalGoodsApp> {
 
       // ── Progress Indicator ─────────────────────────────────────────────
       progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: AppColors.primary,
+        color: AppTheme.primaryStart,
         linearTrackColor: AppColors.primaryLight,
         circularTrackColor: AppColors.primaryLight,
       ),
@@ -564,7 +565,7 @@ class _DigitalGoodsAppState extends State<DigitalGoodsApp> {
 
       // ── Badge ──────────────────────────────────────────────────────────
       badgeTheme: const BadgeThemeData(
-        backgroundColor: Color(0xFFDC2626),
+        backgroundColor: AppTheme.primaryStart,
         textColor: Colors.white,
         textStyle: TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
       ),

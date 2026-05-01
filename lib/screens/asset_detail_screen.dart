@@ -15,6 +15,10 @@ import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
 import '../services/resale_service.dart';
 import 'resale_listing_sheet.dart';
+import '../theme.dart';
+// import '../widgets/transfer_widget.dart';
+final db = FirebaseFirestore.instance;
+final auth = FirebaseAuth.instance;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FRACTION REQUESTS PANEL
@@ -56,8 +60,8 @@ class FractionRequestsPanel extends StatelessWidget {
                 : '❌ Request rejected.',
           ),
           backgroundColor: newStatus == 'approved'
-              ? const Color(0xFF2A7F8F)
-              : Colors.red,
+              ? AppTheme.accent
+              : AppTheme.error,
         ),
       );
     }
@@ -83,15 +87,11 @@ class FractionRequestsPanel extends StatelessWidget {
             const SizedBox(height: 16),
             Row(
               children: [
-                Icon(Icons.inbox, color: Colors.orange[700], size: 18),
+                Icon(Icons.inbox, color: AppTheme.primaryStart, size: 18),
                 const SizedBox(width: 8),
                 Text(
                   'Pending Fraction Requests (${requests.length})',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.orange[800],
-                  ),
+                  style: AppTheme.heading(15, color: AppTheme.primaryStart),
                 ),
               ],
             ),
@@ -107,7 +107,7 @@ class FractionRequestsPanel extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: 8),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
-                  side: BorderSide(color: Colors.orange[200]!),
+                  side: BorderSide(color: AppTheme.primaryStart.withOpacity(0.2)),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
@@ -127,7 +127,7 @@ class FractionRequestsPanel extends StatelessWidget {
                               const Icon(
                                 Icons.person_outline,
                                 size: 14,
-                                color: Colors.grey,
+                                color: AppTheme.textMid,
                               ),
                               const SizedBox(width: 6),
                               Text(
@@ -146,14 +146,11 @@ class FractionRequestsPanel extends StatelessWidget {
                         children: [
                           Text(
                             'Fractions: $fractionsRequested',
-                            style: const TextStyle(fontSize: 13),
+                            style: AppTheme.body(13),
                           ),
                           Text(
                             'Est. total: ${_weiDisplay(totalCostWei)} MATIC',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF2A7F8F),
-                            ),
+                            style: AppTheme.heading(13, color: AppTheme.primaryStart),
                           ),
                         ],
                       ),
@@ -171,14 +168,12 @@ class FractionRequestsPanel extends StatelessWidget {
                               icon: const Icon(
                                 Icons.close,
                                 size: 16,
-                                color: Colors.red,
+                                color: AppTheme.error,
                               ),
-                              label: const Text(
-                                'Reject',
-                                style: TextStyle(color: Colors.red),
-                              ),
+                              label: const Text('Reject'),
                               style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: Colors.red),
+                                foregroundColor: AppTheme.error,
+                                side: const BorderSide(color: AppTheme.error),
                               ),
                             ),
                           ),
@@ -194,7 +189,7 @@ class FractionRequestsPanel extends StatelessWidget {
                               icon: const Icon(Icons.check, size: 16),
                               label: const Text('Approve'),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF2A7F8F),
+                                backgroundColor: AppTheme.accent,
                                 foregroundColor: Colors.white,
                               ),
                             ),
@@ -346,14 +341,17 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Asset Detail'),
+        title: Text('Asset Detail', style: AppTheme.heading(20, color: Colors.white)),
+        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
+        elevation: 0,
+        centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left),
-          onPressed: () => Navigator.maybePop(context),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+          onPressed: () => Navigator.of(context).maybePop(),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.qr_code),
+            icon: const Icon(Icons.qr_code_2_rounded, color: Colors.white),
             onPressed: () => _showQRCode(context),
           ),
         ],
@@ -366,9 +364,9 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  const Icon(Icons.error_outline, size: 64, color: AppTheme.error),
                   const SizedBox(height: 16),
-                  Text('Error: ${snapshot.error}'),
+                  Text('Error: ${snapshot.error}', style: AppTheme.body(14)),
                 ],
               ),
             );
@@ -440,9 +438,9 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
           else
             Container(
               height: 250,
-              color: Colors.grey[200],
-              child: const Center(
-                child: Icon(Icons.image, size: 80, color: Colors.grey),
+              color: AppTheme.primaryStart.withOpacity(0.05),
+              child: Center(
+                child: Icon(Icons.image, size: 80, color: AppTheme.textMid),
               ),
             ),
 
@@ -457,10 +455,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                     Expanded(
                       child: Text(
                         data['title'] ?? 'Untitled',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: AppTheme.heading(24, color: AppTheme.textPrimary),
                       ),
                     ),
                     if (hasBlockchainId)
@@ -470,7 +465,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF2A7F8F),
+                          color: AppTheme.accent,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Row(
@@ -493,25 +488,21 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                 const SizedBox(height: 12),
                 Text(
                   'PKR ${data['price']}',
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2A7F8F),
-                  ),
+                  style: AppTheme.heading(28, color: AppTheme.primaryStart),
                 ),
 
                 const SizedBox(height: 16),
 
                 // ── Description ───────────────────────────────────────────
                 if (data['description'] != null) ...[
-                  const Text(
+                  Text(
                     'Description',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: AppTheme.heading(18),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     data['description'],
-                    style: const TextStyle(fontSize: 15),
+                    style: AppTheme.body(15, color: AppTheme.textPrimary),
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -529,12 +520,9 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Details',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: AppTheme.heading(18),
                         ),
                         const SizedBox(height: 12),
                         StreamBuilder<DocumentSnapshot>(
@@ -596,10 +584,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                                             const SizedBox(width: 4),
                                             Text(
                                               'Ownership recently transferred',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.orange[700],
-                                              ),
+                                              style: AppTheme.body(11, color: Colors.orange[700]!),
                                             ),
                                           ],
                                         ),
@@ -678,9 +663,9 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                 const SizedBox(height: 24),
 
                 // ── Reviews ───────────────────────────────────────────────
-                const Text(
+                Text(
                   'Reviews',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  style: AppTheme.heading(20),
                 ),
                 const SizedBox(height: 12),
                 TextButton.icon(
@@ -704,13 +689,10 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     alignment: Alignment.centerLeft,
                   ),
-                  icon: const Icon(Icons.rate_review_outlined, size: 18),
-                  label: const Text(
+                  icon: Icon(Icons.rate_review_outlined, size: 18, color: AppTheme.textPrimary),
+                  label: Text(
                     'Write a Review',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black,
-                    ),
+                    style: AppTheme.heading(14, color: AppTheme.textPrimary),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -733,11 +715,11 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
           children: [
             Row(
               children: [
-                const Icon(Icons.verified_user, color: Color(0xFF2A7F8F)),
+                Icon(Icons.verified_user, color: AppTheme.primaryStart),
                 const SizedBox(width: 8),
-                const Text(
+                Text(
                   'Blockchain Verified',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: AppTheme.heading(18, color: AppTheme.textPrimary),
                 ),
               ],
             ),
@@ -775,7 +757,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                   _isDataHealthy
                       ? '🛡️ Blockchain Secured'
                       : '⚠️ Syncing with Blockchain',
-                      color: _isDataHealthy ? const Color(0xFF2A7F8F) : Colors.orange,
+                      color: _isDataHealthy ? AppTheme.accent : Colors.orange,
                 ),
               ] else if (category == 'land') ...[
                 _buildDetailRow(
@@ -804,7 +786,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                   _isDataHealthy
                       ? '🛡️ Blockchain Secured'
                       : '⚠️ Syncing with Blockchain',
-                  color: _isDataHealthy ? const Color(0xFF2A7F8F) : Colors.orange,
+                  color: _isDataHealthy ? AppTheme.accent : Colors.orange,
                 ),
               ],
               if (_ipfsData != null) ...[
@@ -813,11 +795,11 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(Icons.cloud_done, color: Color(0xFF1A4F5C)),
+                    Icon(Icons.cloud_done, color: AppTheme.primaryStart),
                     const SizedBox(width: 8),
-                    const Text(
+                    Text(
                       'Documents stored on IPFS',
-                      style: TextStyle(fontWeight: FontWeight.w500),
+                      style: AppTheme.heading(14, color: AppTheme.textPrimary),
                     ),
                   ],
                 ),
@@ -836,9 +818,9 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Documents',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: AppTheme.heading(18),
             ),
             const SizedBox(height: 12),
             ...documents.map((doc) {
@@ -909,9 +891,9 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Remove', style: TextStyle(color: Colors.white)),
+            child: Text('Remove', style: AppTheme.button(14)),
           ),
         ],
       ),
@@ -932,7 +914,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.error),
         );
       }
     }
@@ -972,11 +954,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                     resalePrice != null
                         ? 'Listed on marketplace · PKR $resalePrice'
                         : 'Listed for Resale',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.orange[700],
-                    ),
+                    style: AppTheme.heading(13, color: Colors.orange[700]!),
                   ),
                 ],
               ),
@@ -1018,10 +996,10 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size.fromHeight(50),
                     backgroundColor: isListed
-                        ? Colors.red[700]
-                        : const Color(0xFF2A7F8F),
+                        ? AppTheme.error
+                        : AppTheme.accent,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.grey[300],
+                    disabledBackgroundColor: AppTheme.textSecondary.withOpacity(0.3),
                   ),
                 ),
               ),
@@ -1043,8 +1021,8 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                   label: const Text('Certificate'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 50),
-                    foregroundColor: const Color(0xFF1A4F5C),
-                    side: const BorderSide(color: Color(0xFF1A4F5C)),
+                    foregroundColor: AppTheme.primaryStart,
+                    side: const BorderSide(color: AppTheme.primaryStart),
                   ),
                 ),
               ],
@@ -1094,8 +1072,8 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                 label: const Text('Certificate'),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(0, 50),
-                  foregroundColor: const Color(0xFF1A4F5C),
-                  side: const BorderSide(color: Color(0xFF1A4F5C)),
+                  foregroundColor: AppTheme.primaryStart,
+                  side: const BorderSide(color: AppTheme.primaryStart),
                 ),
               ),
           ],
@@ -1143,7 +1121,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                 icon: const Icon(Icons.verified),
                 label: const Text('Verify'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2A7F8F),
+                  backgroundColor: AppTheme.accent,
                 ),
               ),
             ),
@@ -1185,96 +1163,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
             const SizedBox(height: 8),
           ],
 
-          if (!isLand || activeTx != null) ...[
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: activeTx == null
-                    ? null
-                    : () async {
-                        int? maxAmount;
-                        if (isLand) {
-                          final bs = BlockchainServiceEnhanced();
-                          await bs.init();
-                          if (bs.isConnected) {
-                            maxAmount = await bs.getUserFractions(
-                              bs.connectedAddress!,
-                              data['blockchainTokenId'],
-                            );
-                          }
-                        }
-
-                        if (context.mounted) {
-                          final buyerDoc = await db
-                              .collection('users')
-                              .doc(activeTx['buyerUid'])
-                              .get();
-                          final buyerName = buyerDoc.data()?['name'] ?? 'Buyer';
-                          final assetPrice = data['price']?.toString() ?? '0';
-                          final transactionId = activeTx['transactionId'];
-                          final buyerUid = activeTx['buyerUid'];
-                          final sellerUid = auth.currentUser!.uid;
-
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => isLand
-                                  ? TransferScreen(
-                                      assetId: widget.assetId,
-                                      assetType: AssetType.land,
-                                      transactionId: transactionId,
-                                      buyerUid: buyerUid,
-                                      sellerUid: sellerUid,
-                                      propertyId: data['blockchainTokenId'],
-                                      fractionAmount: maxAmount,
-                                      assetPrice: assetPrice,
-                                      buyerName: buyerName,
-                                    )
-                                  : TransferScreen(
-                                      assetId: widget.assetId,
-                                      assetType: AssetType.electronics,
-                                      transactionId: transactionId,
-                                      buyerUid: buyerUid,
-                                      sellerUid: sellerUid,
-                                      tokenId: data['blockchainTokenId'],
-                                      assetPrice: assetPrice,
-                                      buyerName: buyerName,
-                                    ),
-                            ),
-                          ).then((result) async {
-                            if (result == true) {
-                              final buyerUid = activeTx['buyerUid'];
-                              final sellerUid = auth.currentUser!.uid;
-                              await addTransaction(
-                                userId: sellerUid,
-                                type: 'received',
-                                title: data['title'] ?? 'Asset',
-                                toAddress: buyerUid,
-                                value: data['price']?.toString() ?? '0',
-                              );
-                              await addTransaction(
-                                userId: buyerUid,
-                                type: 'nft',
-                                title: data['title'] ?? 'Asset',
-                                toAddress: sellerUid,
-                              );
-                              setState(() {
-                                _loadFuture = _load();
-                              });
-                            }
-                          });
-                        }
-                      },
-                icon: const Icon(Icons.send),
-                label: Text(
-                  activeTx == null
-                      ? 'Waiting for Buyer Approval'
-                      : 'Transfer Ownership',
-                ),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-              ),
-            ),
-          ],
+          // Transfer Ownership button removed from here - moved to Chat
 
           const SizedBox(height: 8),
           SizedBox(
@@ -1306,19 +1195,13 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
             width: 120,
             child: Text(
               '$label:',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
+              style: AppTheme.body(13, weight: FontWeight.w500),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: color ?? Colors.black87,
-              ),
+              style: AppTheme.heading(13, color: color ?? AppTheme.textPrimary),
             ),
           ),
         ],
@@ -1566,17 +1449,13 @@ class _ApprovedFractionTransferButton extends StatelessWidget {
               children: [
                 const Icon(
                   Icons.check_circle,
-                  color: Color(0xFF1A4F5C),
+                  color: AppTheme.primaryStart,
                   size: 16,
                 ),
                 const SizedBox(width: 6),
                 Text(
                   'Approved Fraction Transfers (${approvedRequests.length})',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1A4F5C),
-                    fontSize: 14,
-                  ),
+                  style: AppTheme.heading(14, color: AppTheme.primaryStart),
                 ),
               ],
             ),
@@ -1591,7 +1470,7 @@ class _ApprovedFractionTransferButton extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: 8),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
-                  side: const BorderSide(color: Color(0xFFB0D8DE)),
+                  side: BorderSide(color: AppTheme.primaryStart.withOpacity(0.2)),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
@@ -1614,14 +1493,12 @@ class _ApprovedFractionTransferButton extends StatelessWidget {
                               const Icon(
                                 Icons.person,
                                 size: 14,
-                                color: Colors.grey,
+                                color: AppTheme.textMid,
                               ),
                               const SizedBox(width: 6),
                               Text(
                                 'Buyer: $name',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                                style: AppTheme.heading(13),
                               ),
                               const Spacer(),
                               Container(
@@ -1630,15 +1507,12 @@ class _ApprovedFractionTransferButton extends StatelessWidget {
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFE8F4F6),
+                                  color: AppTheme.primaryStart.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
                                   '$fractionsRequested fractions',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF1A4F5C),
-                                  ),
+                                  style: AppTheme.body(12, color: AppTheme.primaryStart),
                                 ),
                               ),
                             ],
@@ -1659,7 +1533,7 @@ class _ApprovedFractionTransferButton extends StatelessWidget {
                           icon: const Icon(Icons.send, size: 16),
                           label: const Text('Execute Fraction Transfer'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1A4F5C),
+                            backgroundColor: AppTheme.primaryStart,
                             foregroundColor: Colors.white,
                           ),
                         ),
@@ -1884,13 +1758,13 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('NFT Certificate'),
-        backgroundColor: const Color(0xFF1A4F5C),
-        foregroundColor: Colors.white,
+        title: Text('NFT Certificate', style: AppTheme.heading(20, color: Colors.white)),
+        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
         elevation: 0,
+        centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left),
-          onPressed: () => Navigator.maybePop(context),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+          onPressed: () => Navigator.of(context).maybePop(),
         ),
       ),
       body: _loading
@@ -1905,7 +1779,7 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
                     const Icon(
                       Icons.error_outline,
                       size: 64,
-                      color: Colors.red,
+                      color: AppTheme.error,
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -1953,7 +1827,7 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isVerified
-              ? [const Color(0xFF1A4F5C), const Color(0xFF2A7F8F)]
+              ? [AppTheme.primaryStart, AppTheme.primaryEnd]
               : [Colors.orange[700]!, Colors.orange[400]!],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -1972,17 +1846,13 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
             isVerified
                 ? 'Blockchain Verified Certificate'
                 : 'Verification Pending',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: AppTheme.heading(18, color: Colors.white),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 4),
           Text(
             'Token ID: ${widget.assetData['blockchainTokenId'] ?? '—'}  •  Polygon Amoy',
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
+            style: AppTheme.body(12, color: Colors.white.withOpacity(0.7)),
           ),
         ],
       ),
@@ -2106,9 +1976,9 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: allClear ? const Color(0xFFE8F4F6) : Colors.red[50],
+        color: allClear ? AppTheme.primaryStart.withOpacity(0.05) : AppTheme.error.withOpacity(0.05),
         border: Border.all(
-          color: allClear ? const Color(0xFF2A7F8F) : Colors.red,
+          color: allClear ? AppTheme.accent : AppTheme.error,
         ),
         borderRadius: BorderRadius.circular(12),
       ),
@@ -2117,7 +1987,7 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
         children: [
           Icon(
             allClear ? Icons.thumb_up_alt_outlined : Icons.warning_amber,
-            color: allClear ? const Color(0xFF1A4F5C) : Colors.red[700],
+            color: allClear ? AppTheme.primaryStart : AppTheme.error,
             size: 28,
           ),
           const SizedBox(width: 12),
@@ -2129,21 +1999,14 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
                   allClear
                       ? 'This unit is safe to purchase'
                       : 'Caution before purchasing',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: allClear ? const Color(0xFF1A4F5C) : Colors.red[800],
-                    fontSize: 15,
-                  ),
+                  style: AppTheme.heading(15, color: allClear ? AppTheme.primaryStart : AppTheme.error),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   allClear
                       ? 'This asset has not been previously resold and has no stolen reports. The certificate above is recorded immutably on the blockchain.'
                       : 'One or more checks above did not pass. Please review the details carefully before proceeding with any purchase.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: allClear ? const Color(0xFF0D2E35) : Colors.red[900],
-                  ),
+                  style: AppTheme.body(13, color: allClear ? AppTheme.textPrimary : AppTheme.error),
                 ),
               ],
             ),
@@ -2156,15 +2019,11 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
   Widget _certSectionTitle({required IconData icon, required String label}) {
     return Row(
       children: [
-        Icon(icon, size: 20, color: const Color(0xFF1A4F5C)),
+        Icon(icon, size: 20, color: AppTheme.primaryStart),
         const SizedBox(width: 8),
         Text(
           label,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 15,
-            color: Color(0xFF1A4F5C),
-          ),
+          style: AppTheme.heading(15, color: AppTheme.primaryStart),
         ),
       ],
     );
@@ -2180,13 +2039,13 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
             width: 140,
             child: Text(
               '$label:',
-              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              style: AppTheme.body(13),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              style: AppTheme.heading(13),
             ),
           ),
         ],
@@ -2207,13 +2066,13 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
           width: 28,
           height: 28,
           decoration: BoxDecoration(
-            color: passed ? const Color(0xFFD0E8EC) : Colors.red[100],
+            color: passed ? AppTheme.primaryStart.withOpacity(0.1) : AppTheme.error.withOpacity(0.1),
             shape: BoxShape.circle,
           ),
           child: Icon(
             passed ? Icons.check : Icons.close,
             size: 16,
-            color: passed ? const Color(0xFF1A4F5C) : Colors.red[700],
+            color: passed ? AppTheme.primaryStart : AppTheme.error,
           ),
         ),
         const SizedBox(width: 12),
@@ -2223,18 +2082,12 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
             children: [
               Text(
                 label,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
+                style: AppTheme.heading(14),
               ),
               const SizedBox(height: 2),
               Text(
                 passed ? passText : failText,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: passed ? const Color(0xFF1A4F5C) : Colors.red[700],
-                ),
+                style: AppTheme.body(12),
               ),
             ],
           ),

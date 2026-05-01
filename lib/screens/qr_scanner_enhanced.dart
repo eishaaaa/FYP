@@ -4,6 +4,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
+import '../theme.dart';
 // import 'user_screens.dart';
 // import 'shared_screens.dart';
 import 'transfer_history_screen.dart';
@@ -199,7 +200,12 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan Asset QR')),
+      appBar: AppBar(
+        title: Text('Scan Asset QR', style: AppTheme.heading(18, color: Colors.white)),
+        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
+        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
+      ),
       body: Stack(
         children: [
           MobileScanner(
@@ -234,16 +240,17 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
           if (_processing)
             Container(
               color: Colors.black54,
-              child: const Center(
+              child: Center(
                 child: Card(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                   child: Padding(
-                    padding: EdgeInsets.all(24),
+                    padding: const EdgeInsets.all(32),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 16),
-                        Text('Verifying on blockchain...'),
+                        const CircularProgressIndicator(color: AppTheme.primaryStart),
+                        const SizedBox(height: 20),
+                        Text('Verifying on blockchain...', style: AppTheme.body(15, weight: FontWeight.w600)),
                       ],
                     ),
                   ),
@@ -286,14 +293,15 @@ class VerificationResultDialog extends StatelessWidget {
     final isVerified = blockchainData['isVerified'] == true;
 
     return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       title: Row(
         children: [
           Icon(
             isVerified ? Icons.verified : Icons.verified_outlined,
-            color: isVerified ? Colors.green : Colors.blue,
+            color: isVerified ? Colors.green : AppTheme.primaryStart,
           ),
-          const SizedBox(width: 8),
-          const Text('Asset Verified'),
+          const SizedBox(width: 10),
+          Text('Asset Verified', style: AppTheme.heading(20)),
         ],
       ),
       content: SingleChildScrollView(
@@ -303,26 +311,24 @@ class VerificationResultDialog extends StatelessWidget {
           children: [
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: isVerified ? Colors.green[100] : Colors.blue[100],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: isVerified ? Colors.green : Colors.blue),
+                color: isVerified ? Colors.green[50] : AppTheme.primaryStart.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: isVerified ? Colors.green : AppTheme.primaryStart.withOpacity(0.3)),
               ),
               child: Text(
                 isVerified ? '✓ OFFICIALLY VERIFIED' : '✓ AUTHENTIC ASSET',
-                style: TextStyle(
-                    color: isVerified ? Colors.green[900] : Colors.blue[900],
-                    fontWeight: FontWeight.bold
-                ),
+                style: AppTheme.body(12, 
+                    weight: FontWeight.bold, 
+                    color: isVerified ? Colors.green[900]! : AppTheme.primaryStartDark),
                 textAlign: TextAlign.center,
               ),
             ),
 
             const SizedBox(height: 16),
-            const Divider(),
-
-            const Text('Blockchain Record:', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Divider(height: 32),
+            Text('Blockchain Record', style: AppTheme.heading(14)),
             const SizedBox(height: 8),
             _buildDetailRow('Token ID', '#$blockchainId'),
             _buildDetailRow('Original Minter', _shortenAddress(blockchainData['originalOwner']?.toString() ?? 'Unknown')),
@@ -373,12 +379,12 @@ class VerificationResultDialog extends StatelessWidget {
               ),),
             );
           },
-          icon: const Icon(Icons.history),
-          label: const Text('History'),
+          icon: const Icon(Icons.history, color: AppTheme.primaryStart),
+          label: Text('History', style: AppTheme.body(14, color: AppTheme.primaryStart, weight: FontWeight.w600)),
         ),
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Close'),
+          child: Text('Close', style: AppTheme.body(14, color: AppTheme.textSecondary)),
         ),
       ],
     );

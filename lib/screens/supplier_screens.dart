@@ -16,6 +16,7 @@ import 'asset_screen.dart';
 import '../services/push_notification_service.dart';
 import 'shared_screens.dart';
 import 'qr_generator_screen.dart';
+import '../theme.dart';
 import 'qr_scanner_enhanced.dart';
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
@@ -282,7 +283,7 @@ class SupplierHome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FE),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -295,12 +296,12 @@ class SupplierHome extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: const Color(0xFF2A7F8F).withOpacity(0.12),
+                color: AppTheme.primaryStart.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Icon(
                 Icons.store_rounded,
-                color: Color(0xFF2A7F8F),
+                color: AppTheme.primaryStart,
                 size: 20,
               ),
             ),
@@ -310,19 +311,11 @@ class SupplierHome extends StatelessWidget {
               children: [
                 Text(
                   '${type.capitalize()} Supplier',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87,
-                  ),
+                  style: AppTheme.heading(15, color: AppTheme.textPrimary),
                 ),
-                const Text(
+                Text(
                   'My Assets',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.black45,
-                    fontWeight: FontWeight.w400,
-                  ),
+                  style: AppTheme.body(12, color: AppTheme.textSecondary),
                 ),
               ],
             ),
@@ -376,7 +369,7 @@ class SupplierHome extends StatelessWidget {
           FloatingActionButton.small(
             heroTag: 'chat_fab',
             backgroundColor: Colors.white,
-            foregroundColor: const Color(0xFF2A7F8F),
+            foregroundColor: AppTheme.primaryStart,
             elevation: 2,
             child: const Icon(Icons.chat_bubble_outline_rounded),
             onPressed: () => Navigator.push(
@@ -391,13 +384,13 @@ class SupplierHome extends StatelessWidget {
             offset: const Offset(-100, -10),
             child: FloatingActionButton.extended(
               heroTag: 'add_asset_fab',
-              backgroundColor: const Color(0xFF2A7F8F),
+              backgroundColor: AppTheme.primaryStart,
               foregroundColor: Colors.white,
               elevation: 2,
               icon: const Icon(Icons.add_rounded),
-              label: const Text(
+              label: Text(
                 'Add Asset',
-                style: TextStyle(fontWeight: FontWeight.w600),
+                style: AppTheme.button(14),
               ),
               onPressed: () => Navigator.push(
                 context,
@@ -424,7 +417,9 @@ class AssetManagementScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Distribute Rent'),
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Distribute Rent', style: AppTheme.heading(20)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -434,9 +429,11 @@ class AssetManagementScreen extends StatelessWidget {
             TextField(
               controller: _rentCtrl,
               keyboardType: TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Amount (MATIC)',
+                labelStyle: AppTheme.body(14),
                 suffixText: 'MATIC',
+                suffixStyle: AppTheme.body(12),
               ),
             ),
           ],
@@ -494,7 +491,7 @@ class AssetManagementScreen extends StatelessWidget {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Rent Distributed Successfully!'),
-                    backgroundColor: const Color(0xFF2A7F8F),
+                    backgroundColor: AppTheme.primaryStart,
                   ),
                 );
               } catch (e) {
@@ -543,7 +540,7 @@ class AssetManagementScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2A7F8F).withOpacity(0.08),
+                    color: AppTheme.primaryStart.withOpacity(0.08),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -551,22 +548,18 @@ class AssetManagementScreen extends StatelessWidget {
                         ? Icons.landscape_rounded
                         : Icons.devices_rounded,
                     size: 48,
-                    color: const Color(0xFF2A7F8F),
+                    color: AppTheme.primaryStart,
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'No assets yet',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black54,
-                  ),
+                  style: AppTheme.heading(16, color: AppTheme.textSecondary),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   'Tap + Add Asset to mint your first NFT',
-                  style: TextStyle(fontSize: 13, color: Colors.grey[400]),
+                  style: AppTheme.body(13, color: AppTheme.textMid),
                 ),
               ],
             ),
@@ -634,11 +627,7 @@ class AssetManagementScreen extends StatelessWidget {
                         Expanded(
                           child: Text(
                             title,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                              color: Colors.black87,
-                            ),
+                            style: AppTheme.heading(15, color: AppTheme.textPrimary),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -650,12 +639,12 @@ class AssetManagementScreen extends StatelessWidget {
                           ),
                           decoration: BoxDecoration(
                             color: isMinted
-                                ? const Color(0xFF2A7F8F).withOpacity(0.1)
+                                ? AppTheme.primaryStart.withOpacity(0.1)
                                 : Colors.grey[100],
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color: isMinted
-                                  ? const Color(0xFF2A7F8F).withOpacity(0.3)
+                                  ? AppTheme.primaryStart.withOpacity(0.3)
                                   : Colors.grey[300]!,
                             ),
                           ),
@@ -668,19 +657,15 @@ class AssetManagementScreen extends StatelessWidget {
                                     : Icons.edit_note_rounded,
                                 size: 11,
                                 color: isMinted
-                                    ? const Color(0xFF2A7F8F)
+                                    ? AppTheme.primaryStart
                                     : Colors.grey[500],
                               ),
                               const SizedBox(width: 4),
                               Text(
                                 isMinted ? 'NFT Minted' : 'Draft',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: isMinted
-                                      ? const Color(0xFF2A7F8F)
-                                      : Colors.grey[500],
-                                ),
+                                style: AppTheme.heading(10, color: isMinted
+                                      ? AppTheme.primaryStart
+                                      : AppTheme.textSecondary),
                               ),
                             ],
                           ),
@@ -702,11 +687,7 @@ class AssetManagementScreen extends StatelessWidget {
                         const SizedBox(width: 5),
                         Text(
                           'PKR $price',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
+                          style: AppTheme.heading(13, color: AppTheme.textPrimary),
                         ),
                         if (isMinted) ...[
                           const Spacer(),
@@ -751,7 +732,7 @@ class AssetManagementScreen extends StatelessWidget {
                                     child: _actionButton(
                                       icon: Icons.qr_code_rounded,
                                       label: 'QR Code',
-                                      color: const Color(0xFF2A7F8F),
+                                      color: AppTheme.primaryStart,
                                       bgColor: const Color(
                                         0xFF2A7F8F,
                                       ).withOpacity(0.08),
@@ -796,7 +777,7 @@ class AssetManagementScreen extends StatelessWidget {
                                 child: _actionButton(
                                   icon: Icons.qr_code_rounded,
                                   label: 'QR Code',
-                                  color: const Color(0xFF2A7F8F),
+                                  color: AppTheme.primaryStart,
                                   bgColor: const Color(
                                     0xFF2A7F8F,
                                   ).withOpacity(0.08),
@@ -868,11 +849,7 @@ class AssetManagementScreen extends StatelessWidget {
                 label,
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: color,
-                ),
+                style: AppTheme.heading(12, color: color),
               ),
             ),
           ],
@@ -885,11 +862,11 @@ class AssetManagementScreen extends StatelessWidget {
     return Container(
       width: double.infinity,
       height: 160,
-      color: const Color(0xFF2A7F8F).withOpacity(0.06),
+      color: AppTheme.primaryStart.withOpacity(0.06),
       child: Icon(
         type == 'land' ? Icons.landscape_rounded : Icons.devices_rounded,
         size: 48,
-        color: const Color(0xFF2A7F8F).withOpacity(0.35),
+        color: AppTheme.primaryStart.withOpacity(0.35),
       ),
     );
   }
@@ -1117,21 +1094,22 @@ class _AssetFormState extends State<AssetForm> {
           children: [
             TextFormField(
               controller: _titleCtrl,
-              decoration: const InputDecoration(labelText: 'Title'),
+              decoration: InputDecoration(labelText: 'Title', labelStyle: AppTheme.body(14)),
               validator: (v) => v!.isEmpty ? 'Required' : null,
+              style: AppTheme.body(14),
             ),
             TextFormField(
               controller: _descCtrl,
-              decoration: const InputDecoration(labelText: 'Description'),
+              decoration: InputDecoration(labelText: 'Description', labelStyle: AppTheme.body(14)),
               maxLines: 3,
+              style: AppTheme.body(14),
             ),
             // FIX: Using decimal input type
             TextFormField(
               controller: _priceCtrl,
-              decoration: const InputDecoration(labelText: 'Price'),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
+              decoration: InputDecoration(labelText: 'Price', labelStyle: AppTheme.body(14)),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              style: AppTheme.body(14),
             ),
             const SizedBox(height: 12),
 
@@ -1147,21 +1125,20 @@ class _AssetFormState extends State<AssetForm> {
               ),
               TextFormField(
                 controller: _plotCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Plot Area (Integer)',
-                ),
+                decoration: InputDecoration(labelText: 'Plot Area (Integer)', labelStyle: AppTheme.body(14)),
                 keyboardType: TextInputType.number,
+                style: AppTheme.body(14),
               ),
               TextFormField(
                 controller: _cityCtrl,
-                decoration: const InputDecoration(labelText: 'City / Address'),
+                decoration: InputDecoration(labelText: 'City / Address', labelStyle: AppTheme.body(14)),
+                style: AppTheme.body(14),
               ),
               TextFormField(
                 controller: _fractionsCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Total Fractions (Default 100)',
-                ),
+                decoration: InputDecoration(labelText: 'Total Fractions (Default 100)', labelStyle: AppTheme.body(14)),
                 keyboardType: TextInputType.number,
+                style: AppTheme.body(14),
               ),
             ] else ...[
               TextFormField(
@@ -1249,9 +1226,15 @@ class _AssetFormState extends State<AssetForm> {
             ElevatedButton.icon(
               onPressed: _uploadingDocuments ? null : _pickDocuments,
               icon: _uploadingDocuments
-                  ? const CircularProgressIndicator()
-                  : const Icon(Icons.file_upload),
-              label: const Text('Attach Documents'),
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryStart))
+                  : const Icon(Icons.file_upload, color: AppTheme.primaryStart),
+              label: Text('Attach Documents', style: AppTheme.body(14, weight: FontWeight.w500, color: AppTheme.primaryStart)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryStart.withOpacity(0.1),
+                foregroundColor: AppTheme.primaryStart,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
             ),
 
             const SizedBox(height: 24),
@@ -1265,12 +1248,14 @@ class _AssetFormState extends State<AssetForm> {
                 }
               },
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size.fromHeight(50),
-                backgroundColor: const Color(0xFF2A7F8F),
+                minimumSize: const Size.fromHeight(54),
+                backgroundColor: AppTheme.primaryStart,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 2,
               ),
               child: Text(
                 widget.isEdit ? 'Save Changes' : 'Mint NFT & Upload to IPFS',
-                style: const TextStyle(color: Colors.white, fontSize: 16),
+                style: AppTheme.button(16, color: Colors.white),
               ),
             ),
           ],
@@ -1510,7 +1495,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Success! Asset Minted & Uploaded.'),
-          backgroundColor: const Color(0xFF2A7F8F),
+          backgroundColor: AppTheme.primaryStart,
         ),
       );
       await addTransaction(
@@ -1545,7 +1530,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        backgroundColor: const Color(0xFFF8F9FE),
+        backgroundColor: AppTheme.background,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -1553,11 +1538,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
           leading: const SizedBox(),
           title: Text(
             'Add ${widget.type.capitalize()}',
-            style: const TextStyle(
-              color: Colors.black87,
-              fontSize: 17,
-              fontWeight: FontWeight.w600,
-            ),
+            style: AppTheme.heading(17, color: AppTheme.textPrimary),
           ),
           centerTitle: true,
         ),
@@ -1570,23 +1551,18 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2A7F8F).withOpacity(0.08),
+                    color: AppTheme.primaryStart.withOpacity(0.08),
                     shape: BoxShape.circle,
                   ),
                   child: const CircularProgressIndicator(
-                    color: Color(0xFF2A7F8F),
+                    color: AppTheme.primaryStart,
                     strokeWidth: 3,
                   ),
                 ),
                 const SizedBox(height: 28),
                 Text(
                   _statusMessage,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black87,
-                    height: 1.5,
-                  ),
+                  style: AppTheme.body(15, weight: FontWeight.w500, color: AppTheme.textPrimary),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 10),
@@ -1602,23 +1578,19 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FE),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: AppTheme.primaryStart,
+        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, size: 28),
-          color: Colors.black87,
+          icon: const Icon(Icons.chevron_left, size: 28, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           'Add ${widget.type.capitalize()}',
-          style: const TextStyle(
-            color: Colors.black87,
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-          ),
+          style: AppTheme.heading(18, color: Colors.white),
         ),
         centerTitle: true,
       ),
@@ -1763,7 +1735,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Asset updated successfully'),
-            backgroundColor: const Color(0xFF2A7F8F),
+            backgroundColor: AppTheme.primaryStart,
           ),
         );
         Navigator.pop(context);
@@ -1791,7 +1763,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
               color: const Color(0xFFE8F4F6),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, size: 18, color: const Color(0xFF2A7F8F)),
+            child: Icon(icon, size: 18, color: AppTheme.primaryStart),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1846,7 +1818,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                   Icon(
                     icon,
                     size: 16,
-                    color: titleColor ?? const Color(0xFF2A7F8F),
+                    color: titleColor ?? AppTheme.primaryStart,
                   ),
                   const SizedBox(width: 6),
                 ],
@@ -1855,7 +1827,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
-                    color: titleColor ?? const Color(0xFF1A4F5C),
+                    color: titleColor ?? AppTheme.primaryStartDark,
                   ),
                 ),
               ],
@@ -1872,7 +1844,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return Scaffold(
-        backgroundColor: const Color(0xFFF8F9FE),
+        backgroundColor: AppTheme.background,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -1902,13 +1874,13 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
     final category = (d['category'] ?? widget.type).toString();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FE),
+      backgroundColor: AppTheme.background,
       body: CustomScrollView(
         slivers: [
           // ── App Bar ───────────────────────────────────────────────────
           SliverAppBar(
             pinned: true,
-            backgroundColor: const Color(0xFFF8F9FE),
+            backgroundColor: AppTheme.background,
             surfaceTintColor: Colors.transparent,
             elevation: 0,
             scrolledUnderElevation: 0,
@@ -1977,7 +1949,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                                 vertical: 3,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF2A7F8F).withOpacity(0.1),
+                                color: AppTheme.primaryStart.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
                                   color: const Color(
@@ -1990,14 +1962,14 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                                 children: [
                                   const Icon(
                                     Icons.verified_rounded,
-                                    color: Color(0xFF2A7F8F),
+                                    color: AppTheme.primaryStart,
                                     size: 10,
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
                                     'Token #${d['blockchainTokenId']}',
                                     style: const TextStyle(
-                                      color: Color(0xFF2A7F8F),
+                                      color: AppTheme.primaryStart,
                                       fontSize: 10,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -2126,7 +2098,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                           fillColor: const Color(0xFFF5F7F8),
                           prefixIcon: const Icon(
                             Icons.monetization_on_outlined,
-                            color: const Color(0xFF2A7F8F),
+                            color: AppTheme.primaryStart,
                           ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
@@ -2150,7 +2122,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                           fillColor: const Color(0xFFF5F7F8),
                           prefixIcon: const Icon(
                             Icons.description_outlined,
-                            color: const Color(0xFF2A7F8F),
+                            color: AppTheme.primaryStart,
                           ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
@@ -2254,9 +2226,9 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                         icon: const Icon(Icons.add_photo_alternate_outlined),
                         label: const Text('Add Images'),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF2A7F8F),
+                          foregroundColor: AppTheme.primaryStart,
                           side: const BorderSide(
-                            color: const Color(0xFF2A7F8F),
+                            color: AppTheme.primaryStart,
                           ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
@@ -2299,7 +2271,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                               Icon(
                                 Icons.insert_drive_file,
                                 size: 18,
-                                color: const Color(0xFF2A7F8F),
+                                color: AppTheme.primaryStart,
                               ),
                               const SizedBox(width: 10),
                               Expanded(
@@ -2328,9 +2300,9 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                         icon: const Icon(Icons.attach_file),
                         label: const Text('Attach Documents'),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF2A7F8F),
+                          foregroundColor: AppTheme.primaryStart,
                           side: const BorderSide(
-                            color: const Color(0xFF2A7F8F),
+                            color: AppTheme.primaryStart,
                           ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
@@ -2349,14 +2321,14 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                     gradient: LinearGradient(
                       colors: _saving
                           ? [Colors.grey[400]!, Colors.grey[400]!]
-                          : [const Color(0xFF1A4F5C), const Color(0xFF2A7F8F)],
+                          : [AppTheme.primaryStartDark, AppTheme.primaryStart],
                     ),
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: _saving
                         ? []
                         : [
                             BoxShadow(
-                              color: const Color(0xFF2A7F8F).withOpacity(0.35),
+                              color: AppTheme.primaryStart.withOpacity(0.35),
                               blurRadius: 12,
                               offset: const Offset(0, 4),
                             ),

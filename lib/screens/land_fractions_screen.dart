@@ -4,15 +4,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../blockchain/blockchain_service.dart';
+import '../theme.dart';
 
 // ─── Brand Colors ─────────────────────────────────────────────────────────────
-const kTeal        = Color(0xFF2D7D7D);
-const kTealDark    = Color(0xFF1F5C5C);
-const kTealLight   = Color(0xFFE8F4F4);
-const kTealAccent  = Color(0xFF3AAFA9);
-const kScaffoldBg  = Color(0xFFF5F8F8);
-const kTextPrimary = Color(0xFF1A2E2E);
-const kTextSecondary = Color(0xFF6B8E8E);
+// Migration to AppTheme: The constants below are now derived from AppTheme
+const kTeal        = AppTheme.primaryStart;
+const kTealDark    = AppTheme.primaryStartDark;
+const kTealLight   = Color(0xFFE8F4F4); // Kept for light background variations
+const kTealAccent  = AppTheme.accent;
+const kScaffoldBg  = AppTheme.background;
+const kTextPrimary = AppTheme.textPrimary;
+const kTextSecondary = AppTheme.textSecondary;
 
 class LandFractionsScreen extends StatefulWidget {
   final String assetId;
@@ -196,8 +198,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
           ),
           Container(
             decoration: BoxDecoration(
-              gradient    : const LinearGradient(
-                  colors: [kTealDark, kTealAccent]),
+              gradient    : AppTheme.primaryGradient,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Material(
@@ -210,9 +211,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
                   padding: const EdgeInsets.symmetric(
                       horizontal: 18, vertical: 10),
                   child: Text('Send Request',
-                      style: GoogleFonts.poppins(
-                          color     : Colors.white,
-                          fontWeight: FontWeight.w700)),
+                      style: AppTheme.body(14, color: Colors.white, weight: FontWeight.w700)),
                 ),
               ),
             ),
@@ -303,10 +302,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
         backgroundColor: kScaffoldBg,
         body: Container(
           decoration: const BoxDecoration(
-            gradient: LinearGradient(
-                colors: [kTealDark, kTeal],
-                begin : Alignment.topLeft,
-                end   : Alignment.bottomRight),
+            gradient: AppTheme.primaryGradient,
           ),
           child: const Center(
             child: Column(
@@ -435,10 +431,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
       backgroundColor: kTeal,
       flexibleSpace  : Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-              colors: [kTealDark, kTeal],
-              begin : Alignment.topLeft,
-              end   : Alignment.bottomRight),
+          gradient: AppTheme.primaryGradient,
         ),
       ),
       leading: IconButton(
@@ -456,10 +449,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
   Widget _buildAppBarWidget(int totalFractions, double ownershipPct) {
     return Container(
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-            colors: [kTealDark, kTeal],
-            begin : Alignment.topLeft,
-            end   : Alignment.bottomRight),
+        gradient: AppTheme.primaryGradient,
         borderRadius: BorderRadius.only(
           bottomLeft : Radius.circular(28),
           bottomRight: Radius.circular(28),
@@ -815,12 +805,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
       duration   : const Duration(milliseconds: 200),
       height     : 54,
       decoration : BoxDecoration(
-        gradient    : _checkingRequest
-            ? null
-            : const LinearGradient(
-            colors: [kTealDark, kTealAccent],
-            begin : Alignment.topLeft,
-            end   : Alignment.bottomRight),
+        gradient    : _checkingRequest ? null : AppTheme.primaryGradient,
         color       : _checkingRequest ? Colors.grey.shade300 : null,
         borderRadius: BorderRadius.circular(16),
         boxShadow   : _checkingRequest

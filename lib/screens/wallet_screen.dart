@@ -11,23 +11,25 @@ import '../blockchain/wallet_service.dart';
 import '../blockchain/contract_config.dart';
 import '../blockchain/explorer_service.dart';
 import '../screens/transaction_model.dart';
+import '../theme.dart';
+import 'package:showcaseview/showcaseview.dart';
 
 // ─── Design Tokens ──────────────────────────────────────────
 class _C {
-  static const bg         = Color(0xFFF8FAFB);
-  static const surface    = Color(0xFFFFFFFF);
-  static const primary    = Color(0xFF00C896);   // emerald‑teal
-  static const primaryDk  = Color(0xFF009E78);
-  static const accent     = Color(0xFF6C63FF);   // indigo accent
-  static const textDark   = Color(0xFF0D1B2A);
-  static const textMid    = Color(0xFF4A5568);
-  static const textLight  = Color(0xFF9AA5B4);
-  static const sent       = Color(0xFFFF5C6A);
-  static const received   = Color(0xFF00C896);
-  static const nft        = Color(0xFF6C63FF);
-  static const contract   = Color(0xFFFF9F43);
-  static const cardBorder = Color(0xFFE8EFF5);
-  static const shimmer    = Color(0xFFEDF2F7);
+  static const bg         = AppTheme.background;
+  static const surface    = Colors.white;
+  static const primary    = AppTheme.primaryStart;
+  static const primaryDk  = AppTheme.primaryStartDark;
+  static const accent     = AppTheme.accent;
+  static const textDark   = AppTheme.textPrimary;
+  static const textMid    = AppTheme.textSecondary;
+  static const textLight  = AppTheme.textSecondary;
+  static const sent       = AppTheme.error;
+  static const received   = AppTheme.primaryStart;
+  static const nft        = AppTheme.accent;
+  static const contract   = Colors.orange;
+  static final cardBorder = AppTheme.primaryStart.withOpacity(0.05);
+  static final shimmer    = AppTheme.primaryStart.withOpacity(0.05);
 }
 
 // ─── Shadows ────────────────────────────────────────────────
@@ -36,8 +38,7 @@ BoxDecoration _card({double radius = 20}) => BoxDecoration(
   borderRadius: BorderRadius.circular(radius),
   border: Border.all(color: _C.cardBorder, width: 1),
   boxShadow: [
-    BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4)),
-    BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4,  offset: const Offset(0, 1)),
+    BoxShadow(color: AppTheme.primaryStart.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4)),
   ],
 );
 
@@ -333,17 +334,17 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: _C.surface,
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(title, style: const TextStyle(color: _C.textDark, fontWeight: FontWeight.w700)),
-        content: const Text("Are you sure you want to continue?", style: TextStyle(color: _C.textMid)),
+        title: Text(title, style: AppTheme.heading(20)),
+        content: const Text("Are you sure you want to continue?", style: TextStyle(color: AppTheme.textMid)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx),
-              child: const Text("Cancel", style: TextStyle(color: _C.textMid))),
+              child: const Text("Cancel", style: TextStyle(color: AppTheme.textMid))),
           ElevatedButton(
             onPressed: () async { Navigator.pop(ctx); await onConfirm(); },
             style: ElevatedButton.styleFrom(
-              backgroundColor: _C.primary, foregroundColor: Colors.white,
+              backgroundColor: AppTheme.primaryStart, foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             child: const Text("Confirm"),
@@ -372,35 +373,18 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
   // ─── AppBar ──────────────────────────────────────────────
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: _C.surface,
+      title: Text("Wallet", style: AppTheme.heading(20, color: Colors.white)),
+      flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
       elevation: 0,
       centerTitle: true,
-      systemOverlayStyle: SystemUiOverlayStyle.dark,
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 8, height: 8,
-            decoration: const BoxDecoration(color: _C.primary, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 8),
-          const Text(
-            "Wallet",
-            style: TextStyle(
-              color: _C.textDark, fontWeight: FontWeight.w700,
-              fontSize: 18, letterSpacing: -0.3,
-            ),
-          ),
-        ],
-      ),
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(1),
-        child: Container(color: _C.cardBorder, height: 1),
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+        onPressed: () => Navigator.of(context).maybePop(),
       ),
       actions: [
         if (_address != null)
           IconButton(
-            icon: const Icon(Icons.more_vert, color: _C.textDark),
+            icon: const Icon(Icons.more_vert, color: Colors.white),
             onPressed: _showWalletOptions,
           ),
       ],
@@ -464,18 +448,15 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                   size: 48, color: _C.primary),
             ),
             const SizedBox(height: 28),
-            const Text(
+            Text(
               "Connect your wallet",
-              style: TextStyle(
-                fontSize: 22, fontWeight: FontWeight.w800,
-                color: _C.textDark, letterSpacing: -0.5,
-              ),
+              style: AppTheme.heading(22),
             ),
             const SizedBox(height: 10),
-            const Text(
+            Text(
               "Link a Web3 wallet to view your balance, NFTs and transactions.",
               textAlign: TextAlign.center,
-              style: TextStyle(color: _C.textMid, fontSize: 14, height: 1.5),
+              style: AppTheme.body(14, color: _C.textMid),
             ),
             const SizedBox(height: 36),
             SizedBox(
@@ -498,7 +479,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                     : const Icon(Icons.account_balance_wallet, size: 20),
                 label: Text(
                   _connecting ? "Opening wallet…" : "Connect Wallet",
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  style: AppTheme.button(16),
                 ),
               ),
             ),
@@ -533,11 +514,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF00C896), Color(0xFF00A878)],
-        ),
+        gradient: AppTheme.primaryGradient,
         boxShadow: [
           BoxShadow(color: _C.primary.withOpacity(0.35), blurRadius: 24, offset: const Offset(0, 8)),
         ],
@@ -563,10 +540,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                   children: [
                     Text(
                       _userName ?? "User",
-                      style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                      ),
+                      style: AppTheme.heading(15, color: Colors.white),
                     ),
                     const SizedBox(height: 2),
                     GestureDetector(
@@ -586,7 +560,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                         children: [
                           Text(
                             _shorten(_address ?? ""),
-                            style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12),
+                            style: AppTheme.body(12, color: Colors.white.withOpacity(0.8)),
                           ),
                           const SizedBox(width: 4),
                           Icon(Icons.copy, size: 12, color: Colors.white.withOpacity(0.7)),
@@ -604,11 +578,11 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: Colors.white.withOpacity(0.4)),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.verified, size: 12, color: Colors.white),
-                    SizedBox(width: 4),
-                    Text("Verified", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                    const Icon(Icons.verified, size: 12, color: Colors.white),
+                    const SizedBox(width: 4),
+                    Text("Verified", style: AppTheme.heading(11, color: Colors.white)),
                   ],
                 ),
               ),
@@ -616,9 +590,9 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
           ),
 
           const SizedBox(height: 28),
-          const Text(
+          Text(
             "TOTAL BALANCE",
-            style: TextStyle(color: Colors.white60, fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w600),
+            style: AppTheme.heading(11, color: Colors.white60).copyWith(letterSpacing: 1.4),
           ),
           const SizedBox(height: 6),
           Row(
@@ -627,10 +601,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
               Expanded(
                 child: Text(
                   _hideBalance ? "••••••• POL" : "${_balance.toStringAsFixed(4)} POL",
-                  style: const TextStyle(
-                    color: Colors.white, fontSize: 30,
-                    fontWeight: FontWeight.w800, letterSpacing: -0.8,
-                  ),
+                  style: AppTheme.heading(30, color: Colors.white).copyWith(letterSpacing: -0.8),
                 ),
               ),
               GestureDetector(
@@ -645,7 +616,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
           const SizedBox(height: 4),
           Text(
             "≈ ₨${pkr.toStringAsFixed(2)} PKR",
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
+            style: AppTheme.body(13, color: Colors.white70),
           ),
 
           const SizedBox(height: 20),
@@ -658,14 +629,14 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: Colors.white.withOpacity(0.3)),
             ),
-            child: const Row(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.circle, size: 7, color: Colors.white),
                 SizedBox(width: 6),
                 Text(
                   "Polygon Amoy",
-                  style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                  style: AppTheme.heading(12, color: Colors.white),
                 ),
               ],
             ),
@@ -719,8 +690,8 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: _C.textDark, letterSpacing: -0.5)),
-              Text(label, style: const TextStyle(fontSize: 12, color: _C.textLight, fontWeight: FontWeight.w500)),
+              Text(value, style: AppTheme.heading(22, color: _C.textDark).copyWith(letterSpacing: -0.5)),
+              Text(label, style: AppTheme.body(12, color: _C.textLight)),
             ],
           ),
         ],
@@ -733,9 +704,9 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
     if (_transactions.isEmpty) {
       return Column(
         children: [
-          const Row(
+          Row(
             children: [
-              Text("Recent Activity", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _C.textDark)),
+              Text("Recent Activity", style: AppTheme.heading(16, color: _C.textDark)),
             ],
           ),
           const SizedBox(height: 24),
@@ -750,7 +721,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                   child: const Icon(Icons.receipt_long_outlined, color: _C.textLight, size: 32),
                 ),
                 const SizedBox(height: 12),
-                const Text("No transactions yet", style: TextStyle(color: _C.textMid, fontWeight: FontWeight.w500)),
+                Text("No transactions yet", style: AppTheme.body(14, color: _C.textMid)),
               ],
             ),
           ),
@@ -764,8 +735,8 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text("Recent Activity", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _C.textDark)),
-            Text("${_transactions.length} items", style: const TextStyle(fontSize: 12, color: _C.textLight)),
+            Text("Recent Activity", style: AppTheme.heading(16, color: _C.textDark)),
+            Text("${_transactions.length} items", style: AppTheme.body(12, color: _C.textLight)),
           ],
         ),
         const SizedBox(height: 12),
@@ -833,9 +804,9 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: _C.textDark)),
+                  Text(label, style: AppTheme.heading(14, color: _C.textDark)),
                   const SizedBox(height: 2),
-                  Text(_shorten(tx.to), style: const TextStyle(fontSize: 12, color: _C.textLight)),
+                  Text(_shorten(tx.to), style: AppTheme.body(12, color: _C.textLight)),
                 ],
               ),
             ),
@@ -846,23 +817,16 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
               children: [
                 Text(
                   amountStr,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                    color: isNft      ? _C.nft
-                        : isContract ? _C.contract
-                        : isSent     ? _C.sent
-                        :              _C.received,
-                  ),
+                  style: AppTheme.heading(13, color: isNft ? _C.nft : (isContract ? _C.contract : (isSent ? _C.sent : _C.received))),
                 ),
                 const SizedBox(height: 3),
-                Text(_formatTime(tx.time), style: const TextStyle(fontSize: 11, color: _C.textLight)),
+                Text(_formatTime(tx.time), style: AppTheme.body(11, color: AppTheme.textLight)),
                 const SizedBox(height: 2),
                 Row(
                   children: [
-                    Icon(Icons.open_in_new, size: 10, color: _C.textLight),
+                    Icon(Icons.open_in_new, size: 10, color: AppTheme.textLight),
                     const SizedBox(width: 2),
-                    const Text("Explorer", style: TextStyle(fontSize: 10, color: _C.textLight)),
+                    Text("Explorer", style: AppTheme.body(10, color: AppTheme.textLight)),
                   ],
                 ),
               ],
@@ -912,7 +876,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                     Expanded(
                       child: Text(
                         _shorten(_address!),
-                        style: const TextStyle(fontWeight: FontWeight.w600, color: _C.textDark),
+                        style: AppTheme.heading(14, color: _C.textDark),
                       ),
                     ),
                     Container(
@@ -921,11 +885,11 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                         color: _C.primary.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Row(
+                      child: Row(
                         children: [
-                          Icon(Icons.verified, size: 12, color: _C.primary),
-                          SizedBox(width: 4),
-                          Text("Verified", style: TextStyle(color: _C.primary, fontSize: 11, fontWeight: FontWeight.w600)),
+                          const Icon(Icons.verified, size: 12, color: _C.primary),
+                          const SizedBox(width: 4),
+                          Text("Verified", style: AppTheme.heading(11, color: _C.primary)),
                         ],
                       ),
                     ),
@@ -976,7 +940,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
           ),
         ),
         icon: Icon(icon, size: 18),
-        label: Text(text, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+        label: Text(text, style: AppTheme.button(14)),
       ),
     );
   }

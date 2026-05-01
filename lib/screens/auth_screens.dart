@@ -16,15 +16,17 @@ import 'package:image/image.dart' as img;
 import 'user_screens.dart';
 import 'supplier_screens.dart';
 import 'admin_screen.dart';
+import '../theme.dart';
 
 // ─── Brand Colors ─────────────────────────────────────────────────────────────
-const kTeal        = Color(0xFF2D7D7D);
-const kTealDark    = Color(0xFF1F5C5C);
-const kTealLight   = Color(0xFFE8F4F4);
-const kTealAccent  = Color(0xFF3AAFA9);
-const kScaffoldBg  = Color(0xFFF5F8F8);
-const kTextPrimary = Color(0xFF1A2E2E);
-const kTextSecondary = Color(0xFF6B8E8E);
+// Migration to AppTheme: The constants below are now derived from AppTheme
+const kTeal        = AppTheme.primaryStart;
+const kTealDark    = AppTheme.primaryStartDark;
+const kTealLight   = Color(0xFFE8F4F4); // Kept for light background variations
+const kTealAccent  = AppTheme.accent;
+const kScaffoldBg  = AppTheme.background;
+const kTextPrimary = AppTheme.textPrimary;
+const kTextSecondary = AppTheme.textSecondary;
 
 final FirebaseAuth      auth = FirebaseAuth.instance;
 final FirebaseFirestore db   = FirebaseFirestore.instance;
@@ -33,7 +35,7 @@ final FirebaseFirestore db   = FirebaseFirestore.instance;
 InputDecoration _inputDecoration(String label, {Widget? prefix, Widget? suffix}) {
   return InputDecoration(
     labelText      : label,
-    labelStyle     : GoogleFonts.poppins(color: kTextSecondary, fontSize: 14),
+    labelStyle     : AppTheme.body(14, color: kTextSecondary),
     prefixIcon     : prefix,
     suffixIcon     : suffix,
     filled         : true,
@@ -104,16 +106,15 @@ class OnboardingScreen extends StatelessWidget {
       globalBackgroundColor: kScaffoldBg,
       pages              : pages,
       done               : Text('Get Started',
-          style: GoogleFonts.poppins(
-              fontWeight: FontWeight.w700, color: kTeal)),
+          style: AppTheme.heading(14, color: AppTheme.primaryStart)),
       onDone             : () => _complete(context),
       next               : const Icon(Icons.arrow_forward_ios_rounded,
           color: kTeal, size: 18),
       showSkipButton     : true,
       skip               : Text('Skip',
-          style: GoogleFonts.poppins(color: kTextSecondary)),
+          style: AppTheme.body(14, color: AppTheme.textSecondary)),
       dotsDecorator      : const DotsDecorator(
-        activeColor: kTeal,
+        activeColor: AppTheme.primaryStart,
         color      : Color(0xFFB2CFCF),
         size       : Size(8, 8),
         activeSize : Size(20, 8),
@@ -131,22 +132,17 @@ class OnboardingScreen extends StatelessWidget {
     return PageViewModel(
       titleWidget: Text(
         title,
-        style: GoogleFonts.poppins(
-            fontSize: 24, fontWeight: FontWeight.w700, color: kTextPrimary),
+        style: AppTheme.heading(24, color: kTextPrimary),
       ),
       bodyWidget: Text(
         body,
         textAlign: TextAlign.center,
-        style: GoogleFonts.poppins(fontSize: 15, color: kTextSecondary),
+        style: AppTheme.body(15, color: kTextSecondary),
       ),
       image: Container(
         padding   : const EdgeInsets.all(28),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [kTealDark, kTealAccent],
-            begin : Alignment.topLeft,
-            end   : Alignment.bottomRight,
-          ),
+          gradient: AppTheme.primaryGradient,
           shape    : BoxShape.circle,
           boxShadow: [
             BoxShadow(
@@ -310,7 +306,7 @@ class _SplashScreenState extends State<SplashScreen>
                           ],
                         ),
                         child: const Icon(Icons.apartment_rounded,
-                            size: 56, color: kTeal),
+                            size: 56, color: AppTheme.primaryStart),
                       ),
                     ],
                   ),
@@ -324,21 +320,12 @@ class _SplashScreenState extends State<SplashScreen>
                       children: [
                         Text(
                           'Digital Goods',
-                          style: GoogleFonts.poppins(
-                            fontSize  : 30,
-                            fontWeight: FontWeight.w800,
-                            color     : Colors.white,
-                            letterSpacing: 1.2,
-                          ),
+                          style: AppTheme.heading(30, color: Colors.white).copyWith(letterSpacing: 1.2),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           'Verify. Secure. Own.',
-                          style: GoogleFonts.poppins(
-                            fontSize    : 15,
-                            color       : Colors.white.withOpacity(0.85),
-                            letterSpacing: 1.1,
-                          ),
+                          style: AppTheme.body(15, color: Colors.white.withOpacity(0.85)).copyWith(letterSpacing: 1.1),
                         ),
                         const SizedBox(height: 48),
                         SizedBox(
@@ -404,8 +391,8 @@ Future<User?> signInWithGoogle(BuildContext ctx) async {
 
 void _showSnack(BuildContext ctx, String msg, {Color? color}) {
   ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-    content        : Text(msg, style: GoogleFonts.poppins()),
-    backgroundColor: color ?? kTeal,
+    content        : Text(msg),
+    backgroundColor: color ?? AppTheme.primaryStart,
     behavior       : SnackBarBehavior.floating,
     shape          : RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10)),
@@ -535,19 +522,12 @@ class _LoginScreenState extends State<LoginScreen>
                       const SizedBox(height: 20),
                       Text(
                         'Welcome Back!',
-                        style: GoogleFonts.poppins(
-                          fontSize  : 28,
-                          fontWeight: FontWeight.w800,
-                          color     : Colors.white,
-                        ),
+                        style: AppTheme.heading(28, color: Colors.white),
                       ),
                       const SizedBox(height: 6),
                       Text(
                         'Sign in to continue',
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          color   : Colors.white.withOpacity(0.8),
-                        ),
+                        style: AppTheme.body(14, color: Colors.white.withOpacity(0.8)),
                       ),
                     ],
                   ),
@@ -562,7 +542,7 @@ class _LoginScreenState extends State<LoginScreen>
                     opacity: _fadeAnim,
                     child  : Container(
                       decoration: const BoxDecoration(
-                        color       : kScaffoldBg,
+                        color       : AppTheme.background,
                         borderRadius: BorderRadius.only(
                           topLeft : Radius.circular(32),
                           topRight: Radius.circular(32),
@@ -577,12 +557,11 @@ class _LoginScreenState extends State<LoginScreen>
                             TextField(
                               controller  : _emailCtrl,
                               keyboardType: TextInputType.emailAddress,
-                              style       : GoogleFonts.poppins(
-                                  fontSize: 14, color: kTextPrimary),
+                              style       : AppTheme.body(14, color: AppTheme.textPrimary),
                               decoration  : _inputDecoration(
                                 'Email Address',
                                 prefix: const Icon(Icons.email_outlined,
-                                    color: kTeal, size: 20),
+                                    color: AppTheme.primaryStart, size: 20),
                               ),
                             ),
                             const SizedBox(height: 14),
@@ -591,18 +570,17 @@ class _LoginScreenState extends State<LoginScreen>
                             TextField(
                               controller : _passCtrl,
                               obscureText: _obscure,
-                              style      : GoogleFonts.poppins(
-                                  fontSize: 14, color: kTextPrimary),
+                              style      : AppTheme.body(14, color: AppTheme.textPrimary),
                               decoration : _inputDecoration(
                                 'Password',
                                 prefix: const Icon(Icons.lock_outline_rounded,
-                                    color: kTeal, size: 20),
+                                    color: AppTheme.primaryStart, size: 20),
                                 suffix: IconButton(
                                   icon: Icon(
                                     _obscure
                                         ? Icons.visibility_outlined
                                         : Icons.visibility_off_outlined,
-                                    color: kTextSecondary,
+                                    color: AppTheme.textSecondary,
                                     size : 20,
                                   ),
                                   onPressed: () =>
@@ -624,11 +602,7 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                                 child: Text(
                                   'Forgot Password?',
-                                  style: GoogleFonts.poppins(
-                                    color     : kTeal,
-                                    fontSize  : 13,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                  style: AppTheme.heading(13, color: AppTheme.primaryStart),
                                 ),
                               ),
                             ),
@@ -651,9 +625,7 @@ class _LoginScreenState extends State<LoginScreen>
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 12),
                                 child: Text('or',
-                                    style: GoogleFonts.poppins(
-                                        color   : kTextSecondary,
-                                        fontSize: 13)),
+                                    style: AppTheme.body(13, color: AppTheme.textSecondary)),
                               ),
                               Expanded(
                                   child: Divider(
@@ -672,9 +644,7 @@ class _LoginScreenState extends State<LoginScreen>
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text("Don't have an account? ",
-                                    style: GoogleFonts.poppins(
-                                        color  : kTextSecondary,
-                                        fontSize: 13)),
+                                    style: AppTheme.body(13, color: AppTheme.textSecondary)),
                                 GestureDetector(
                                   onTap: () => Navigator.push(
                                     context,
@@ -684,11 +654,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   ),
                                   child: Text(
                                     'Register',
-                                    style: GoogleFonts.poppins(
-                                      color     : kTeal,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize  : 13,
-                                    ),
+                                    style: AppTheme.heading(13, color: AppTheme.primaryStart),
                                   ),
                                 ),
                               ],
@@ -899,14 +865,9 @@ class _RegisterScreenState extends State<RegisterScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Create Account',
-                              style: GoogleFonts.poppins(
-                                  fontSize  : 20,
-                                  fontWeight: FontWeight.w700,
-                                  color     : Colors.white)),
+                                  style: AppTheme.heading(20, color: Colors.white)),
                           Text('Join Digital Goods today',
-                              style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  color   : Colors.white.withOpacity(0.8))),
+                                  style: AppTheme.body(12, color: Colors.white.withOpacity(0.8))),
                         ],
                       ),
                     ],
@@ -922,7 +883,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                     opacity: _fadeAnim,
                     child  : Container(
                       decoration: const BoxDecoration(
-                        color       : kScaffoldBg,
+                        color       : AppTheme.background,
                         borderRadius: BorderRadius.only(
                           topLeft : Radius.circular(32),
                           topRight: Radius.circular(32),
@@ -942,13 +903,13 @@ class _RegisterScreenState extends State<RegisterScreen>
                                   children: [
                                     CircleAvatar(
                                       radius         : 50,
-                                      backgroundColor: kTealLight,
+                                      backgroundColor: AppTheme.primaryStart.withOpacity(0.12),
                                       backgroundImage: _photo != null
                                           ? MemoryImage(_photo!)
                                           : null,
                                       child: _photo == null
                                           ? const Icon(Icons.person_rounded,
-                                          size : 44, color: kTeal)
+                                          size : 44, color: AppTheme.primaryStart)
                                           : null,
                                     ),
                                     Positioned(
@@ -1067,8 +1028,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                                 Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 12),
                                   child: Text('or',
-                                      style: GoogleFonts.poppins(
-                                          color: kTextSecondary, fontSize: 13)),
+                                      style: AppTheme.body(13, color: AppTheme.textSecondary)),
                                 ),
                                 Expanded(child: Divider(color: kTeal.withOpacity(0.2))),
                               ]),
@@ -1084,16 +1044,11 @@ class _RegisterScreenState extends State<RegisterScreen>
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text('Already have an account? ',
-                                    style: GoogleFonts.poppins(
-                                        color: kTextSecondary, fontSize: 13)),
+                                    style: AppTheme.body(13, color: AppTheme.textSecondary)),
                                 GestureDetector(
                                   onTap: () => Navigator.pop(context),
                                   child: Text('Login',
-                                      style: GoogleFonts.poppins(
-                                        color     : kTeal,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize  : 13,
-                                      )),
+                                      style: AppTheme.heading(13, color: AppTheme.primaryStart)),
                                 ),
                               ],
                             ),
@@ -1201,10 +1156,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                       ),
                       const SizedBox(width: 14),
                       Text('Forgot Password',
-                          style: GoogleFonts.poppins(
-                              fontSize  : 20,
-                              fontWeight: FontWeight.w700,
-                              color     : Colors.white)),
+                          style: AppTheme.heading(20, color: Colors.white)),
                     ],
                   ),
                 ),
@@ -1257,17 +1209,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
               const SizedBox(height: 12),
               Text(
                 'Reset your password',
-                style: GoogleFonts.poppins(
-                    fontSize  : 17,
-                    fontWeight: FontWeight.w700,
-                    color     : kTextPrimary),
+                style: AppTheme.heading(17, color: AppTheme.textPrimary),
               ),
               const SizedBox(height: 6),
               Text(
                 'Enter your email and we will send a reset link.',
               textAlign: TextAlign.center,
-                style    : GoogleFonts.poppins(
-                    fontSize: 13, color: kTextSecondary),
+                style    : AppTheme.body(13, color: AppTheme.textSecondary),
               ),
             ],
           ),
@@ -1276,7 +1224,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         TextField(
           controller  : _emailCtrl,
           keyboardType: TextInputType.emailAddress,
-          style       : GoogleFonts.poppins(fontSize: 14, color: kTextPrimary),
+          style       : AppTheme.body(14, color: AppTheme.textPrimary),
           decoration  : _inputDecoration(
             'Email Address',
             prefix: const Icon(Icons.email_outlined, color: kTeal, size: 20),
@@ -1315,16 +1263,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
               ),
               const SizedBox(height: 24),
               Text('Email Sent!',
-                  style: GoogleFonts.poppins(
-                      fontSize  : 22,
-                      fontWeight: FontWeight.w700,
-                      color     : kTextPrimary)),
+                  style: AppTheme.heading(22, color: AppTheme.textPrimary)),
               const SizedBox(height: 10),
               Text(
                 'Check your inbox for the password reset link.',
                 textAlign: TextAlign.center,
-                style    : GoogleFonts.poppins(
-                    fontSize: 14, color: kTextSecondary, height: 1.5),
+                style    : AppTheme.body(14, color: AppTheme.textSecondary).copyWith(height: 1.5),
               ),
               const SizedBox(height: 32),
               SizedBox(
@@ -1339,7 +1283,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                     padding        : const EdgeInsets.symmetric(vertical: 14),
                   ),
                   child: Text('Back to Login',
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                      style: AppTheme.heading(14, color: AppTheme.primaryStart)),
                 ),
               ),
             ],
@@ -1370,12 +1314,7 @@ class _GradientButton extends StatelessWidget {
       duration   : const Duration(milliseconds: 200),
       height     : 52,
       decoration : BoxDecoration(
-        gradient    : loading
-            ? null
-            : const LinearGradient(
-            colors: [kTealDark, kTealAccent],
-            begin : Alignment.topLeft,
-            end   : Alignment.bottomRight),
+        gradient    : loading ? null : AppTheme.primaryGradient,
         color       : loading ? Colors.grey.shade300 : null,
         borderRadius: BorderRadius.circular(14),
         boxShadow   : loading
@@ -1408,11 +1347,7 @@ class _GradientButton extends StatelessWidget {
                   const SizedBox(width: 8),
                 ],
                 Text(label,
-                    style: GoogleFonts.poppins(
-                      color     : Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize  : 15,
-                    )),
+                    style: AppTheme.body(15, weight: FontWeight.w700, color: Colors.white)),
               ],
             ),
           ),
@@ -1452,11 +1387,7 @@ class _GoogleButton extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Text(label,
-                style: GoogleFonts.poppins(
-                  color     : kTextPrimary,
-                  fontWeight: FontWeight.w600,
-                  fontSize  : 14,
-                )),
+                style: AppTheme.heading(14, color: AppTheme.textPrimary)),
           ],
         ),
       ),
@@ -1506,11 +1437,7 @@ class _RoleChip extends StatelessWidget {
                 color: selected ? Colors.white : kTextSecondary),
             const SizedBox(width: 6),
             Text(label,
-                style: GoogleFonts.poppins(
-                  color     : selected ? Colors.white : kTextSecondary,
-                  fontWeight: FontWeight.w600,
-                  fontSize  : 13,
-                )),
+                style: AppTheme.heading(13, color: selected ? Colors.white : AppTheme.textSecondary)),
           ],
         ),
       ),
@@ -1525,11 +1452,7 @@ class _SectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
     text,
-    style: GoogleFonts.poppins(
-      fontWeight: FontWeight.w700,
-      fontSize  : 13,
-      color     : kTextPrimary,
-    ),
+    style: AppTheme.heading(13, color: AppTheme.textPrimary),
   );
 }
 
@@ -1573,7 +1496,7 @@ class _PasswordField extends StatelessWidget {
   Widget build(BuildContext context) => TextField(
     controller : ctrl,
     obscureText: obscure,
-    style      : GoogleFonts.poppins(fontSize: 14, color: kTextPrimary),
+    style      : AppTheme.body(14, color: AppTheme.textPrimary),
     decoration : _inputDecoration(
       label,
       prefix: const Icon(Icons.lock_outline_rounded, color: kTeal, size: 20),

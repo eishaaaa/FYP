@@ -10,15 +10,9 @@ import 'asset_detail_screen.dart';
 import 'chat_screen.dart';
 import 'transfer_screen.dart';
 import '../blockchain/blockchain_service.dart';
+import '../theme.dart';
 
-
-final db   = FirebaseFirestore.instance;
-final auth = FirebaseAuth.instance;
-
-const kTeal = Color(0xFF2D7D7D);
-const kTealDark = Color(0xFF1F5C5C);
-const kTealLight = Color(0xFFE8F4F4);
-const kTealAccent = Color(0xFF3AAFA9);
+// Brand colors removed - using AppTheme
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GLOBAL HELPERS
@@ -86,8 +80,8 @@ Widget buildAssetImage(
   if (s == null || s.isEmpty) {
     return Container(
       width: width, height: height,
-      color: Colors.grey[200],
-      child: const Icon(Icons.image, size: 36),
+      color: AppTheme.primaryStart.withOpacity(0.05),
+      child: Icon(Icons.image, size: 36, color: AppTheme.textMid),
     );
   }
 
@@ -98,8 +92,8 @@ Widget buildAssetImage(
         s, width: width, height: height, fit: fit,
         errorBuilder: (_, __, ___) => Container(
           width: width, height: height,
-          color: Colors.grey[200],
-          child: const Icon(Icons.broken_image),
+          color: AppTheme.primaryStart.withOpacity(0.05),
+          child: Icon(Icons.broken_image, color: AppTheme.textMid),
         ),
       ),
     );
@@ -113,8 +107,8 @@ Widget buildAssetImage(
         bytes, width: width, height: height, fit: fit,
         errorBuilder: (_, __, ___) => Container(
           width: width, height: height,
-          color: Colors.grey[200],
-          child: const Icon(Icons.broken_image),
+          color: AppTheme.primaryStart.withOpacity(0.05),
+          child: Icon(Icons.broken_image, color: AppTheme.textMid),
         ),
       ),
     );
@@ -122,8 +116,8 @@ Widget buildAssetImage(
 
   return Container(
     width: width, height: height,
-    color: Colors.grey[200],
-    child: const Icon(Icons.image),
+    color: AppTheme.primaryStart.withOpacity(0.05),
+    child: Icon(Icons.image, color: AppTheme.textMid),
   );
 }
 
@@ -135,10 +129,10 @@ Widget getDocumentIcon(String type) {
     case 'jpg':
     case 'jpeg':
     case 'png':
-      return const Icon(Icons.image, color: Color(0xFF2A7F8F));
+      return const Icon(Icons.image, color: AppTheme.accent);
     case 'doc':
     case 'docx':
-      return const Icon(Icons.description, color: Color(0xFF2A7F8F));
+      return const Icon(Icons.description, color: AppTheme.accent);
     default:
       return const Icon(Icons.insert_drive_file);
   }
@@ -162,7 +156,7 @@ Widget assetDetailChip(IconData icon, String label, {Color? color}) {
         Expanded(
           child: Text(
             label,
-            style: TextStyle(fontSize: 12, color: color ?? Colors.grey[700]),
+            style: AppTheme.body(12, color: color ?? AppTheme.textMid),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -204,9 +198,9 @@ class _TransactionsScreenState extends State<TransactionsScreen>
 
   Color _statusColor(String status) {
     switch (status) {
-      case 'approved':  return const Color(0xFF2A7F8F);
-      case 'rejected':  return Colors.red;
-      case 'completed': return const Color(0xFF2A7F8F);
+      case 'approved':  return AppTheme.accent;
+      case 'rejected':  return AppTheme.error;
+      case 'completed': return AppTheme.accent;
       default:          return Colors.orange;
     }
   }
@@ -241,9 +235,15 @@ class _TransactionsScreenState extends State<TransactionsScreen>
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(_isBuyingMode! ? 'My Purchases' : 'My Sales'),
+            backgroundColor: AppTheme.primaryStart,
+            flexibleSpace: Container(
+              decoration: const BoxDecoration(
+                gradient: AppTheme.primaryGradient,
+              ),
+            ),
+            title: Text(_isBuyingMode! ? 'My Purchases' : 'My Sales', style: AppTheme.heading(18, color: Colors.white)),
             leading: IconButton(
-              icon: const Icon(Icons.chevron_left),
+              icon: const Icon(Icons.chevron_left, color: Colors.white),
               onPressed: () => Navigator.pop(context),
             ),
             actions: [
@@ -251,17 +251,20 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                 padding: const EdgeInsets.only(right: 8),
                 child: TextButton.icon(
                   onPressed: () => setState(() => _isBuyingMode = !_isBuyingMode!),
-                  icon: Icon(_isBuyingMode! ? Icons.sell : Icons.shopping_cart, size: 18),
-                  label: Text(_isBuyingMode! ? 'Switch to Selling' : 'Switch to Buying'),
-                  style: TextButton.styleFrom(foregroundColor: kTeal),
+                  icon: Icon(_isBuyingMode! ? Icons.sell : Icons.shopping_cart, size: 18, color: Colors.white),
+                  label: Text(_isBuyingMode! ? 'Switch to Selling' : 'Switch to Buying', style: AppTheme.body(12, weight: FontWeight.w600, color: Colors.white)),
+                  style: TextButton.styleFrom(foregroundColor: Colors.white),
                 ),
               ),
             ],
             bottom: TabBar(
               controller: _tabController,
-              indicatorColor: kTeal,
-              labelColor: kTeal,
-              unselectedLabelColor: Colors.grey[400],
+              indicatorColor: Colors.white,
+              indicatorWeight: 3,
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white.withOpacity(0.7),
+              labelStyle: AppTheme.heading(13, color: Colors.white),
+              unselectedLabelStyle: AppTheme.body(13, color: Colors.white.withOpacity(0.7)),
               isScrollable: true,
               tabs: [
                 _buildTab(Icons.hourglass_empty, 'Pending'),
@@ -321,13 +324,13 @@ class _TransactionsScreenState extends State<TransactionsScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.pie_chart_outline, size: 60, color: Colors.grey[300]),
+                Icon(Icons.pie_chart_outline, size: 60, color: AppTheme.primaryStart.withOpacity(0.15)),
                 const SizedBox(height: 12),
                 Text(
                   isSupplier
                       ? 'No fraction requests received'
                       : 'You have not requested any fractions',
-                  style: TextStyle(color: Colors.grey[500], fontSize: 16),
+                  style: AppTheme.body(16, color: AppTheme.textMid),
                 ),
               ],
             ),
@@ -370,23 +373,22 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                       children: [
                         _statusBadge(status),
                         Text(date,
-                            style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                            style: AppTheme.body(12, color: AppTheme.textMid)),
                       ],
                     ),
                     const SizedBox(height: 10),
                     FutureBuilder<DocumentSnapshot>(
                       future: db.collection('assets').doc(assetId).get(),
                       builder: (ctx, assetSnap) {
-                        final title = assetSnap.hasData && assetSnap.data!.exists
+                        final title = assetSnap.hasData
                             ? (assetSnap.data!.data() as Map<String, dynamic>)['title'] ?? 'Asset'
                             : 'Loading…';
                         return Row(children: [
-                          const Icon(Icons.home_work_outlined, size: 16, color: Colors.grey),
+                          const Icon(Icons.home_work_outlined, size: 16, color: AppTheme.primaryStart),
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(title,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600, fontSize: 15),
+                                style: AppTheme.heading(15, color: AppTheme.textPrimary),
                                 overflow: TextOverflow.ellipsis),
                           ),
                         ]);
@@ -399,7 +401,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                         const SizedBox(width: 6),
                         Text(
                           '$fractionsReq fractions  •  ${_weiDisplay(totalCostWei)} MATIC',
-                          style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                          style: AppTheme.body(13, color: AppTheme.textMid),
                         ),
                       ],
                     ),
@@ -422,7 +424,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                           const SizedBox(width: 6),
                           Text(
                             isSupplier ? 'Buyer: $name' : 'Seller: $name',
-                            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                            style: AppTheme.body(13, color: AppTheme.textMid),
                           ),
                         ]);
                       },
@@ -437,7 +439,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                           icon: const Icon(Icons.visibility_outlined, size: 16),
                           label: const Text('View'),
                           style: TextButton.styleFrom(
-                            foregroundColor: const Color(0xFF2A7F8F),
+                            foregroundColor: AppTheme.accent,
                             padding: const EdgeInsets.symmetric(horizontal: 8),
                           ),
                           onPressed: () => Navigator.push(
@@ -451,7 +453,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                             icon: const Icon(Icons.check, size: 16),
                             label: const Text('Approve'),
                             style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF2A7F8F),
+                              foregroundColor: AppTheme.accent,
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                             ),
                             onPressed: () => _updateFractionRequest(
@@ -520,10 +522,10 @@ class _TransactionsScreenState extends State<TransactionsScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(_statusIcon(status), size: 60, color: Colors.grey[300]),
+                Icon(_statusIcon(status), size: 60, color: AppTheme.primaryStart.withOpacity(0.15)),
                 const SizedBox(height: 12),
                 Text('No $status transactions',
-                    style: TextStyle(color: Colors.grey[500], fontSize: 16)),
+                    style: AppTheme.body(16, color: AppTheme.textMid)),
               ],
             ),
           );
@@ -558,7 +560,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                       children: [
                         _statusBadge(txStatus),
                         Text(date,
-                            style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                            style: AppTheme.body(12, color: AppTheme.textMid)),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -575,13 +577,12 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                         }
                         return Row(
                           children: [
-                            const Icon(Icons.inventory_2_outlined,
-                                size: 16, color: Colors.grey),
+                            Icon(Icons.inventory_2_outlined,
+                                size: 16, color: AppTheme.textMid),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(title,
-                                  style: const TextStyle(
-                                      fontSize: 15, fontWeight: FontWeight.w600),
+                                  style: AppTheme.heading(15, color: AppTheme.textPrimary),
                                   overflow: TextOverflow.ellipsis),
                             ),
                           ],
@@ -593,32 +594,30 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                       children: [
                         Icon(
                           isSupplier ? Icons.person_outline : Icons.store_outlined,
-                          size: 14, color: Colors.grey,
+                          size: 14, color: AppTheme.textMid,
                         ),
                         const SizedBox(width: 6),
                         Text(
                           isSupplier
                               ? 'Buyer: ${_shorten(t['buyerUid'] ?? '—')}'
                               : 'Seller: ${_shorten(t['sellerUid'] ?? '—')}',
-                          style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                          style: AppTheme.body(13, color: AppTheme.textMid),
                         ),
                       ],
                     ),
                     if (t['requestType'] == 'rent_request') ...[
                       const SizedBox(height: 4),
                       Row(children: [
-                        const Icon(Icons.calendar_month_outlined, size: 14, color: Colors.grey),
+                        Icon(Icons.calendar_month_outlined, size: 14, color: AppTheme.textMid),
                         const SizedBox(width: 6),
                         Text('Monthly Rent: ${t['amount']} MATIC',
-                            style: const TextStyle(fontSize: 13, color: kTeal, fontWeight: FontWeight.bold)),
+                            style: AppTheme.heading(13, color: AppTheme.primaryStart)),
                       ]),
                     ] else if (t['price'] != null) ...[
                       const SizedBox(height: 4),
                       Row(children: [
-                        const Icon(Icons.attach_money, size: 14, color: Colors.grey),
-                        const SizedBox(width: 6),
                         Text('${t['price']}',
-                            style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                            style: AppTheme.body(13, color: AppTheme.textMid)),
                       ]),
                     ],
                     const SizedBox(height: 12),
@@ -631,7 +630,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                           icon: const Icon(Icons.visibility_outlined, size: 16),
                           label: const Text('View'),
                           style: TextButton.styleFrom(
-                            foregroundColor: const Color(0xFF2A7F8F),
+                            foregroundColor: AppTheme.accent,
                             padding: const EdgeInsets.symmetric(horizontal: 8),
                           ),
                           onPressed: () => Navigator.push(
@@ -648,7 +647,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                             icon: const Icon(Icons.chat_outlined, size: 16),
                             label: const Text('Chat'),
                             style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF2A7F8F),
+                              foregroundColor: AppTheme.accent,
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                             ),
                             onPressed: () async {
@@ -681,7 +680,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                             icon: const Icon(Icons.check, size: 16),
                             label: const Text('Accept'),
                             style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF2A7F8F),
+                              foregroundColor: AppTheme.accent,
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                             ),
                             onPressed: () {
@@ -715,7 +714,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                             icon: const Icon(Icons.account_balance_wallet, size: 16),
                             label: const Text('My Wallet'),
                             style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF2A7F8F),
+                              foregroundColor: AppTheme.accent,
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                             ),
                             onPressed: () {
@@ -742,7 +741,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                             icon: const Icon(Icons.move_to_inbox, size: 16),
                             label: const Text('Ownership'),
                             style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF2A7F8F),
+                              foregroundColor: AppTheme.accent,
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                             ),
                             onPressed: () {
@@ -805,12 +804,12 @@ class _TransactionsScreenState extends State<TransactionsScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFE8F4F6),
+        color: AppTheme.primaryStart.withOpacity(0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF2A7F8F)),
+        border: Border.all(color: AppTheme.accent.withOpacity(0.3)),
       ),
       child: Text(label,
-          style: const TextStyle(color: Color(0xFF2A7F8F), fontSize: 12)),
+          style: AppTheme.body(12, color: AppTheme.accent)),
     );
   }
 
@@ -840,7 +839,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
             ? '✅ Request approved'
             : '❌ Request rejected'),
         backgroundColor:
-        newStatus == 'approved' ? const Color(0xFF2A7F8F) : Colors.red,
+        newStatus == 'approved' ? AppTheme.accent : AppTheme.error,
       ));
     }
   }
@@ -914,7 +913,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('✅ Fraction transfer completed successfully!'),
-          backgroundColor: Color(0xFF2A7F8F),
+          backgroundColor: AppTheme.accent,
         ));
       }
     }
@@ -951,13 +950,13 @@ class _TransactionsScreenState extends State<TransactionsScreen>
           
           await batch.commit();
           if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Rent request approved!'), backgroundColor: Color(0xFF2A7F8F)));
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Rent request approved!'), backgroundColor: AppTheme.accent));
           }
         }
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.error));
       }
     }
   }

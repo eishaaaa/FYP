@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'chat_screen.dart';
+import '../theme.dart';
 
 class ChatListScreen extends StatelessWidget {
   const ChatListScreen({super.key});
@@ -11,7 +12,11 @@ class ChatListScreen extends StatelessWidget {
     final uid = FirebaseAuth.instance.currentUser!.uid;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Chats')),
+      appBar: AppBar(
+        title: Text('Messages', style: AppTheme.heading(20, color: Colors.white)),
+        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
+        elevation: 0,
+      ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('chats')
@@ -66,20 +71,23 @@ class ChatListScreen extends StatelessWidget {
                           ? const Icon(Icons.person)
                           : null,
                     ),
-                    title: Text(userData['name'] ?? 'User'),
+                    title: Text(userData['name'] ?? 'User', style: AppTheme.heading(16)),
                     subtitle: Text(
                       chatData['lastMessage'] ?? '',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      style: AppTheme.body(14, color: AppTheme.textSecondary),
                     ),
                     trailing: unread > 0
-                        ? CircleAvatar(
-                      radius: 10,
-                      backgroundColor: Colors.red,
+                        ? Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: const BoxDecoration(
+                        color: AppTheme.primaryStart,
+                        shape: BoxShape.circle,
+                      ),
                       child: Text(
                         unread.toString(),
-                        style: const TextStyle(
-                            fontSize: 11, color: Colors.white),
+                        style: AppTheme.body(11, weight: FontWeight.bold, color: Colors.white),
                       ),
                     )
                         : null,

@@ -1,8 +1,10 @@
 // lib/screens/transfer_history_screen.dart
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../blockchain/transfer_service.dart';
+import '../theme.dart';
 
 
 class TransferHistoryScreen extends StatefulWidget {
@@ -22,8 +24,8 @@ class _TransferHistoryScreenState extends State<TransferHistoryScreen> {
   List<Map<String, dynamic>> _transfers = [];
 
   // ── Design tokens ────────────────────────────────────────────
-  static const _surface = Color(0xFFF8F9FE);
-  static const _cardRadius = 16.0;
+  static const _surface = AppTheme.background;
+  static const _cardRadius = 18.0;
 
   @override
   void initState() {
@@ -125,33 +127,24 @@ class _TransferHistoryScreenState extends State<TransferHistoryScreen> {
     return Scaffold(
       backgroundColor: _surface,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        title: Text('Transfer History', style: AppTheme.heading(20, color: Colors.white)),
+        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
         elevation: 0,
-        scrolledUnderElevation: 0,
+        centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, size: 28),
-          color: Colors.black87,
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Transfer History',
-          style: TextStyle(
-            color: Colors.black87,
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded, size: 22),
-            color: Colors.black54,
+            color: Colors.white,
             onPressed: _loadHistory,
           ),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryStart))
           : _error != null
           ? _buildErrorView()
           : _transfers.isEmpty
@@ -172,16 +165,13 @@ class _TransferHistoryScreenState extends State<TransferHistoryScreen> {
             const SizedBox(height: 14),
             Text(
               'Something went wrong',
-              style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[700]),
+              style: AppTheme.heading(16, color: AppTheme.textPrimary),
             ),
             const SizedBox(height: 6),
             Text(
               _error!,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+              style: AppTheme.body(12, color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 20),
             OutlinedButton.icon(
@@ -218,15 +208,12 @@ class _TransferHistoryScreenState extends State<TransferHistoryScreen> {
           const SizedBox(height: 16),
           Text(
             'No transfers yet',
-            style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey[600]),
+            style: AppTheme.heading(16, color: AppTheme.textPrimary),
           ),
           const SizedBox(height: 6),
           Text(
             'Transfer activity for this asset will appear here.',
-            style: TextStyle(fontSize: 13, color: Colors.grey[400]),
+            style: AppTheme.body(13, color: AppTheme.textSecondary),
             textAlign: TextAlign.center,
           ),
         ],
@@ -258,7 +245,7 @@ class _TransferHistoryScreenState extends State<TransferHistoryScreen> {
     final isResale = transferType == 'resale';
     final isLand = assetType == 'land';
 
-    final accentColor = isResale ? Colors.orange : Colors.green;
+    final accentColor = isResale ? Colors.orange : AppTheme.primaryStart;
     final typeLabel = isResale ? 'RESALE' : 'ORIGINAL';
 
     String display(String val) {
@@ -276,8 +263,8 @@ class _TransferHistoryScreenState extends State<TransferHistoryScreen> {
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -312,10 +299,7 @@ class _TransferHistoryScreenState extends State<TransferHistoryScreen> {
                 Expanded(
                   child: Text(
                     isLand ? 'Land Fraction Transfer' : 'Electronics Transfer',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        color: Colors.black87),
+                    style: AppTheme.heading(14, color: AppTheme.textPrimary),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -325,7 +309,7 @@ class _TransferHistoryScreenState extends State<TransferHistoryScreen> {
                   _badge(typeLabel, accentColor),
                 const SizedBox(width: 6),
                 // Status badge
-                _badge(status.toUpperCase(), Colors.green),
+                _badge(status.toUpperCase(), AppTheme.primaryStart),
               ],
             ),
           ),
@@ -386,12 +370,9 @@ class _TransferHistoryScreenState extends State<TransferHistoryScreen> {
                             const SizedBox(width: 4),
                             Text(
                               'View on Explorer',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.blue[700],
-                                fontWeight: FontWeight.w500,
+                              style: AppTheme.body(12, color: AppTheme.primaryStart, weight: FontWeight.w600).copyWith(
                                 decoration: TextDecoration.underline,
-                                decorationColor: Colors.blue[700],
+                                decorationColor: AppTheme.primaryStart,
                               ),
                             ),
                           ],
@@ -480,10 +461,7 @@ class _TransferHistoryScreenState extends State<TransferHistoryScreen> {
           const SizedBox(height: 4),
           Text(
             name.isEmpty ? '—' : name,
-            style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: Colors.black87),
+            style: AppTheme.body(13, weight: FontWeight.w700, color: AppTheme.textPrimary),
             overflow: TextOverflow.ellipsis,
           ),
         ],
@@ -532,12 +510,7 @@ class _TransferHistoryScreenState extends State<TransferHistoryScreen> {
       ),
       child: Text(
         text,
-        style: TextStyle(
-          fontSize: 10,
-          color: Color(0xFF1976D2),
-          fontWeight: FontWeight.bold,
-          letterSpacing: 0.4,
-        ),
+        style: AppTheme.body(10, weight: FontWeight.bold, color: color),
       ),
     );
   }
