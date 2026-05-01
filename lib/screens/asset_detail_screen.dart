@@ -16,7 +16,8 @@ import '../blockchain/ipfs_service.dart';
 import '../services/resale_service.dart';
 import 'resale_listing_sheet.dart';
 import '../theme.dart';
-// import '../widgets/transfer_widget.dart';
+import '../widgets/rent_actions.dart';
+import 'rent_distribution_screen.dart';
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
 
@@ -947,87 +948,88 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                 border: Border.all(color: Colors.orange[300]!),
               ),
               child: Row(
-                children: [
-                  Icon(Icons.storefront, size: 16, color: Colors.orange[700]),
-                  const SizedBox(width: 8),
-                  Text(
+              children: [
+                Icon(Icons.storefront, size: 16, color: Colors.orange[700]),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
                     resalePrice != null
                         ? 'Listed on marketplace · PKR $resalePrice'
                         : 'Listed for Resale',
                     style: AppTheme.heading(13, color: Colors.orange[700]!),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
-              ),
+                ),
+              ],
+            ),
             ),
 
           Row(
             children: [
               // List / Remove listing button
               Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: !canList
-                      ? null // NFT not minted
-                      : _listingInProgress
-                      ? null // sheet already open
-                      : isListed
-                      ? _removeListing // delist
-                      : () => _listForResale(data), // list
-                  icon: _listingInProgress
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Icon(
-                          isListed
-                              ? Icons.remove_circle_outline
-                              : Icons.sell_outlined,
+                child: isListed
+                    ? ElevatedButton.icon(
+                        onPressed: _removeListing,
+                        icon: const Icon(Icons.remove_circle_outline),
+                        label: const Text('Remove Listing'),
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(50),
+                          backgroundColor: AppTheme.error,
+                          foregroundColor: Colors.white,
                         ),
-                  label: Text(
-                    !canList
-                        ? 'Pending NFT'
-                        : isListed
-                        ? 'Remove Listing'
-                        : 'List for Resale',
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(50),
-                    backgroundColor: isListed
-                        ? AppTheme.error
-                        : AppTheme.accent,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: AppTheme.textSecondary.withOpacity(0.3),
-                  ),
-                ),
+                      )
+                    : ListForSaleButton(
+                        onPressed: !canList ? null : () => _listForResale(data),
+                        isLoading: _listingInProgress,
+                      ),
               ),
 
               // Certificate button (only when NFT exists)
               if (hasBlockchainId) ...[
                 const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => NFTCertificateScreen(
-                        assetId: widget.assetId,
-                        assetData: data,
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => NFTCertificateScreen(
+                          assetId: widget.assetId,
+                          assetData: data,
+                        ),
                       ),
                     ),
-                  ),
-                  icon: const Icon(Icons.verified_user),
-                  label: const Text('Certificate'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 50),
-                    foregroundColor: AppTheme.primaryStart,
-                    side: const BorderSide(color: AppTheme.primaryStart),
+                    icon: const Icon(Icons.verified_user),
+                    label: const Text('Certificate'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 50),
+                      foregroundColor: AppTheme.primaryStart,
+                      side: const BorderSide(color: AppTheme.primaryStart),
+                    ),
                   ),
                 ),
               ],
             ],
           ),
+          if (data['category'] == 'land' && !isListed) ...[
+            const SizedBox(height: 12),
+            ListForRentButton(
+              onPressed: !canList
+                  ? null
+                  : () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => RentDistributionScreen(
+                            assetId: widget.assetId,
+                            propertyId: data['blockchainTokenId'] as int,
+                            isOwner: true,
+                          ),
+                        ),
+                      );
+                    },
+            ),
+          ],
         ],
       );
     }
@@ -1058,22 +1060,24 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
             ),
             const SizedBox(width: 8),
             if (hasBlockchainId)
-              OutlinedButton.icon(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => NFTCertificateScreen(
-                      assetId: widget.assetId,
-                      assetData: data,
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => NFTCertificateScreen(
+                        assetId: widget.assetId,
+                        assetData: data,
+                      ),
                     ),
                   ),
-                ),
-                icon: const Icon(Icons.verified_user),
-                label: const Text('Certificate'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(0, 50),
-                  foregroundColor: AppTheme.primaryStart,
-                  side: const BorderSide(color: AppTheme.primaryStart),
+                  icon: const Icon(Icons.verified_user),
+                  label: const Text('Certificate'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 50),
+                    foregroundColor: AppTheme.primaryStart,
+                    side: const BorderSide(color: AppTheme.primaryStart),
+                  ),
                 ),
               ),
           ],

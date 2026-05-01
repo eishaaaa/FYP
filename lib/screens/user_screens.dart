@@ -35,6 +35,7 @@ class UserHomeScreen extends StatefulWidget {
 class _UserHomeScreenState extends State<UserHomeScreen> {
   int _index = 0;
   String _category = "land";
+  String _landMode = "sale"; // 'sale' or 'rent'
   String _search = "";
   Map<String, dynamic> _filters = {};
 
@@ -306,6 +307,15 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               ],
             ),
           ),
+
+          // ── Land Mode Toggle (Sale/Rent) ──────────────────────────
+          if (isLand) ...[
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: _landModeToggle(),
+            ),
+          ],
           const SizedBox(height: 26),
 
           // ── Latest 5 — horizontal scroll ─────────────────────────
@@ -337,6 +347,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             height: 230,
             child: _LatestAssetsRow(
               category: _category,
+              mode: isLand ? _landMode : null,
               currentUserId: FirebaseAuth.instance.currentUser?.uid ?? '',
             ),
           ),
@@ -367,11 +378,73 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           const SizedBox(height: 12),
           AssetListView(
             category: _category,
+            mode: isLand ? _landMode : null,
             search: _search,
             filters: _filters,
             shrinkWrap: true,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _landModeToggle() {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: _landModeBtn('sale', 'For Sale', Icons.sell_outlined)),
+          Expanded(child: _landModeBtn('rent', 'For Rent', Icons.key_outlined)),
+        ],
+      ),
+    );
+  }
+
+  Widget _landModeBtn(String value, String label, IconData icon) {
+    final selected = _landMode == value;
+    return GestureDetector(
+      onTap: () => setState(() => _landMode = value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
+                ]
+              : null,
+        ),
+        child: Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: selected ? AppTheme.primaryStart : AppTheme.textSecondary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: AppTheme.heading(
+                  14,
+                  color: selected ? AppTheme.primaryStart : AppTheme.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1257,9 +1330,14 @@ class _SafeCard extends StatelessWidget {
 
 class _LatestAssetsRow extends StatelessWidget {
   final String category;
+  final String? mode;
   final String currentUserId;
 
-  const _LatestAssetsRow({required this.category, required this.currentUserId});
+  const _LatestAssetsRow({
+    required this.category,
+    this.mode,
+    required this.currentUserId,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1282,6 +1360,12 @@ class _LatestAssetsRow extends StatelessWidget {
           final owner = (d['ownerId'] ?? d['ownerUid']) as String?;
           if (currentUserId.isNotEmpty && owner == currentUserId) return false;
           if (d['isStolenReported'] == true) return false;
+
+          if (category == 'land' && mode != null) {
+            if (mode == 'sale') return d['isListedForResale'] == true;
+            if (mode == 'rent') return d['isForRent'] == true;
+          }
+
           final wasPurchased = d['previousOwnerId'] != null;
           return wasPurchased
               ? d['isListedForResale'] == true
@@ -1466,6 +1550,7 @@ class _LatestAssetsRow extends StatelessWidget {
 
 class AssetListView extends StatelessWidget {
   final String category;
+  final String? mode;
   final String search;
   final Map<String, dynamic> filters;
   final bool shrinkWrap;
@@ -1473,6 +1558,7 @@ class AssetListView extends StatelessWidget {
   const AssetListView({
     super.key,
     required this.category,
+    this.mode,
     required this.search,
     required this.filters,
     this.shrinkWrap = false,
@@ -1582,6 +1668,12 @@ class AssetListView extends StatelessWidget {
           final owner = (d['ownerId'] ?? d['ownerUid']) as String?;
           if (currentUid != null && owner == currentUid) return false;
           if (d['isStolenReported'] == true) return false;
+
+          if (category == 'land' && mode != null) {
+            if (mode == 'sale') return d['isListedForResale'] == true;
+            if (mode == 'rent') return d['isForRent'] == true;
+          }
+
           final isListedForResale = d['isListedForResale'];
           final wasPurchased = d['previousOwnerId'] != null;
           return wasPurchased

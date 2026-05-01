@@ -49,3 +49,13 @@ class AcceptRentRequestButton extends RentActionButton {
   const AcceptRentRequestButton({super.key, super.onPressed, super.isLoading})
       : super(label: "Accept Tenant", icon: Icons.check_circle_outline, color: AppTheme.accent);
 }
+
+class ListForSaleButton extends RentActionButton {
+  const ListForSaleButton({super.key, super.onPressed, super.isLoading})
+      : super(label: "List for Sale", icon: Icons.sell_rounded, color: AppTheme.accent);
+}
+
+class BuyNowButton extends RentActionButton {
+  const BuyNowButton({super.key, super.onPressed, super.isLoading})
+      : super(label: "Buy Now", icon: Icons.shopping_cart_outlined, color: AppTheme.primaryStart);
+}

@@ -1094,23 +1094,38 @@ class _AssetFormState extends State<AssetForm> {
           children: [
             TextFormField(
               controller: _titleCtrl,
-              decoration: InputDecoration(labelText: 'Title', labelStyle: AppTheme.body(14)),
+              decoration: InputDecoration(
+                labelText: 'Title',
+                labelStyle: AppTheme.body(14),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
               validator: (v) => v!.isEmpty ? 'Required' : null,
               style: AppTheme.body(14),
             ),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _descCtrl,
-              decoration: InputDecoration(labelText: 'Description', labelStyle: AppTheme.body(14)),
+              decoration: InputDecoration(
+                labelText: 'Description',
+                labelStyle: AppTheme.body(14),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
               maxLines: 3,
               style: AppTheme.body(14),
             ),
+            const SizedBox(height: 16),
             // FIX: Using decimal input type
             TextFormField(
               controller: _priceCtrl,
-              decoration: InputDecoration(labelText: 'Price', labelStyle: AppTheme.body(14)),
+              decoration: InputDecoration(
+                labelText: 'Price',
+                labelStyle: AppTheme.body(14),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               style: AppTheme.body(14),
             ),
+            const SizedBox(height: 16),
             const SizedBox(height: 12),
 
             if (widget.type == 'land') ...[
@@ -1121,22 +1136,40 @@ class _AssetFormState extends State<AssetForm> {
                   DropdownMenuItem(value: 'kanal', child: Text('Kanal')),
                 ],
                 onChanged: (v) => setState(() => _plotUnit = v!),
-                decoration: const InputDecoration(labelText: 'Plot Unit'),
+                decoration: InputDecoration(
+                  labelText: 'Plot Unit',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
               ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _plotCtrl,
-                decoration: InputDecoration(labelText: 'Plot Area (Integer)', labelStyle: AppTheme.body(14)),
+                decoration: InputDecoration(
+                  labelText: 'Plot Area (Integer)',
+                  labelStyle: AppTheme.body(14),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
                 keyboardType: TextInputType.number,
                 style: AppTheme.body(14),
               ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _cityCtrl,
-                decoration: InputDecoration(labelText: 'City / Address', labelStyle: AppTheme.body(14)),
+                decoration: InputDecoration(
+                  labelText: 'City / Address',
+                  labelStyle: AppTheme.body(14),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
                 style: AppTheme.body(14),
               ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _fractionsCtrl,
-                decoration: InputDecoration(labelText: 'Total Fractions (Default 100)', labelStyle: AppTheme.body(14)),
+                decoration: InputDecoration(
+                  labelText: 'Total Fractions (Default 100)',
+                  labelStyle: AppTheme.body(14),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
                 keyboardType: TextInputType.number,
                 style: AppTheme.body(14),
               ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'shared_screens.dart';
 import 'asset_detail_screen.dart';
 import 'resale_listing_sheet.dart';
+import 'rent_distribution_screen.dart';
 import '../services/resale_service.dart';
 import '../theme.dart';
 
@@ -351,34 +352,56 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
                           _listForSale(id, d);
                         },
                       ),
-                      secondaryAction: _ActionButton(
-                        label: isListedForSale ? 'On Marketplace' : 'View Asset',
-                        icon: isListedForSale
-                            ? Icons.storefront_outlined
-                            : Icons.visibility_outlined,
-                        outlined: false,
-                        onPressed: () {
-                          if (isListedForSale) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  d['resalePrice'] != null
-                                      ? 'Listed for PKR ${d['resalePrice']}'
-                                      : 'Asset is live on the marketplace.',
-                                ),
-                                backgroundColor: AppTheme.primaryStart,
-                              ),
-                            );
-                            return;
-                          }
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => AssetDetailScreen(assetId: id),
+                      secondaryAction: isLand && !isListedForSale
+                          ? _ActionButton(
+                              label: d['isForRent'] == true
+                                  ? 'Renting Active'
+                                  : 'List for Rent',
+                              icon: d['isForRent'] == true
+                                  ? Icons.key_rounded
+                                  : Icons.key_outlined,
+                              outlined: false,
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => RentDistributionScreen(
+                                      assetId: id,
+                                      propertyId: d['blockchainTokenId'] as int,
+                                      isOwner: true,
+                                    ),
+                                  ),
+                                );
+                              },
+                            )
+                          : _ActionButton(
+                              label: isListedForSale ? 'On Marketplace' : 'View Asset',
+                              icon: isListedForSale
+                                  ? Icons.storefront_outlined
+                                  : Icons.visibility_outlined,
+                              outlined: false,
+                              onPressed: () {
+                                if (isListedForSale) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        d['resalePrice'] != null
+                                            ? 'Listed for PKR ${d['resalePrice']}'
+                                            : 'Asset is live on the marketplace.',
+                                      ),
+                                      backgroundColor: AppTheme.primaryStart,
+                                    ),
+                                  );
+                                  return;
+                                }
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => AssetDetailScreen(assetId: id),
+                                  ),
+                                );
+                              },
                             ),
-                          );
-                        },
-                      ),
                     );
                   },
                 );
@@ -581,20 +604,18 @@ class _AssetCard extends StatelessWidget {
 
                     // Price + Actions
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              price,
-                              style: AppTheme.heading(15, color: AppTheme.primaryStart),
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                        Flexible(
+                          child: Text(
+                            price,
+                            style: AppTheme.heading(15, color: AppTheme.primaryStart),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Flexible(
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
                           child: Align(
                             alignment: Alignment.centerRight,
                             child: Wrap(
@@ -659,7 +680,17 @@ class _ActionButton extends StatelessWidget {
 
     final child = Row(
       mainAxisSize: MainAxisSize.min,
-      children: [Icon(icon, size: 14), const SizedBox(width: 4), Text(label)],
+      children: [
+        Icon(icon, size: 14),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            label,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
+        ),
+      ],
     );
 
     return outlined

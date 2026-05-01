@@ -24,7 +24,7 @@ ThemeData get adminTheme => ThemeData(
     backgroundColor: AppTheme.primaryStart,
     foregroundColor: Colors.white,
     elevation: 0,
-    centerTitle: false,
+    centerTitle: true,
     titleTextStyle: TextStyle(
       fontFamily: 'Poppins',
       fontSize: 18,
@@ -190,6 +190,7 @@ class AdminDashboard extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
                   child: Column(
@@ -327,6 +328,7 @@ class AdminDashboard extends StatelessWidget {
                       ],
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Container(
                           width: 44,
@@ -345,10 +347,13 @@ class AdminDashboard extends StatelessWidget {
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
                                 data['title'] ?? 'New Property',
                                 style: AppTheme.heading(14, color: AppTheme.textPrimary),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 3),
                               Text(
@@ -358,6 +363,7 @@ class AdminDashboard extends StatelessWidget {
                             ],
                           ),
                         ),
+                        const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
@@ -545,28 +551,14 @@ class UserManagement extends StatelessWidget {
                       ),
                       title: Row(
                         children: [
-                          Text(
-                            name,
-                            style: AppTheme.heading(14, color: AppTheme.textPrimary),
+                          Expanded(
+                            child: Text(
+                              name,
+                              style: AppTheme.heading(14, color: AppTheme.textPrimary),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                           const SizedBox(width: 8),
-                          if (verified)
-                            const Icon(Icons.verified_rounded,
-                                color: AppTheme.primaryStart, size: 16),
-                          if (suspended)
-                            const Icon(Icons.block_rounded,
-                                color: Colors.red, size: 16),
-                        ],
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 3),
-                          Text(
-                            user['email'] ?? '',
-                            style: AppTheme.body(12, color: AppTheme.textMid),
-                          ),
-                          const SizedBox(height: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 2),
@@ -576,8 +568,30 @@ class UserManagement extends StatelessWidget {
                             ),
                             child: Text(
                               role.toUpperCase(),
-                              style: AppTheme.heading(10, color: AppTheme.primaryStart),
+                              style: AppTheme.heading(9, color: AppTheme.primaryStart),
                             ),
+                          ),
+                          if (verified)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: const Icon(Icons.verified_rounded,
+                                  color: AppTheme.primaryStart, size: 16),
+                            ),
+                          if (suspended)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: const Icon(Icons.block_rounded,
+                                  color: Colors.red, size: 16),
+                            ),
+                        ],
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 3),
+                          Text(
+                            user['email'] ?? '',
+                            style: AppTheme.body(12, color: AppTheme.textMid),
                           ),
                         ],
                       ),
