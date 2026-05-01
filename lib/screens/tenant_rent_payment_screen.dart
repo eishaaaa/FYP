@@ -37,6 +37,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../blockchain/blockchain_service.dart';
+import '../services/push_notification_service.dart';
 
 class TenantRentPaymentScreen extends StatefulWidget {
   final int propertyId;
@@ -61,8 +62,9 @@ class _TenantRentPaymentScreenState extends State<TenantRentPaymentScreen>
     with SingleTickerProviderStateMixin {
   // ── Services ────────────────────────────────────────────────────────────────
   final _blockchain = BlockchainServiceEnhanced();
-  final _firestore = FirebaseFirestore.instance;
-  final _auth = FirebaseAuth.instance;
+  final _firestore  = FirebaseFirestore.instance;
+  final _auth       = FirebaseAuth.instance;
+  final _notif      = PushNotificationService();
 
   // ── State ────────────────────────────────────────────────────────────────────
   bool _loading = true;
@@ -170,6 +172,12 @@ class _TenantRentPaymentScreenState extends State<TenantRentPaymentScreen>
 
     setState(() => _paying = true);
 
+    // Resolved once — used for all notifications in this method
+    final tenantUid  = _auth.currentUser?.uid ?? '';
+    final ownerUid   = _leaseData?['ownerUid']  as String? ?? '';
+    final amountStr  = widget.monthlyRentMatic.toString();
+    final location   = widget.propertyLocation;
+
     // Firestore reference created early so we can update it on failure too
     final paymentRef = _firestore
         .collection('leases')
@@ -184,25 +192,50 @@ class _TenantRentPaymentScreenState extends State<TenantRentPaymentScreen>
         if (!_blockchain.isConnected) throw Exception('Wallet not connected');
       }
 
-      final weiAmount =
-      _blockchain.etherToWei(widget.monthlyRentMatic);
+      final weiAmount = _blockchain.etherToWei(widget.monthlyRentMatic);
 
       // 2. Write a pending record first — gives the user proof even if the
       //    app crashes before confirmation arrives
       await paymentRef.set({
-        'txHash': null,
-        'amountMatic': widget.monthlyRentMatic,
-        'paidAt': FieldValue.serverTimestamp(),
-        'status': 'pending',
-        'tenantAddress': _blockchain.connectedAddress,
-        'propertyId': widget.propertyId,
-        'tenantUid': _auth.currentUser?.uid,
+        'txHash'        : null,
+        'amountMatic'   : widget.monthlyRentMatic,
+        'paidAt'        : FieldValue.serverTimestamp(),
+        'status'        : 'pending',
+        'tenantAddress' : _blockchain.connectedAddress,
+        'propertyId'    : widget.propertyId,
+        'tenantUid'     : tenantUid,
       });
+
+      // ── Notify tenant: payment is being processed ─────────────
+      if (tenantUid.isNotEmpty) {
+        await _notif.notifyTransactionPending(
+          userUid      : tenantUid,
+          amount       : amountStr,
+          currency     : 'MATIC',
+          transactionId: paymentRef.id,
+        );
+      }
+
+      // ── Notify landlord: incoming rent payment started ─────────
+      if (ownerUid.isNotEmpty) {
+        await _notif.notify(
+          receiverUid: ownerUid,
+          title      : '⏳ Rent Payment In Progress',
+          body       : 'Your tenant is paying rent for "$location". Awaiting blockchain confirmation.',
+          type       : NotificationType.transactionPending,
+          relatedId  : paymentRef.id,
+          payload    : {
+            'leaseId'   : widget.leaseId,
+            'propertyId': widget.propertyId.toString(),
+            'amount'    : amountStr,
+          },
+        );
+      }
 
       // 3. Send the on-chain transaction
       final txHash = await _blockchain.payLandMonthlyRent(
         propertyId: widget.propertyId,
-        amount: weiAmount,
+        amount    : weiAmount,
       );
 
       if (txHash == null) throw Exception('Transaction was rejected');
@@ -230,6 +263,44 @@ class _TenantRentPaymentScreenState extends State<TenantRentPaymentScreen>
 
       await batch.commit();
 
+      // ── Notify tenant: payment confirmed ──────────────────────
+      if (tenantUid.isNotEmpty) {
+        await _notif.notifyTransactionSent(
+          senderUid    : tenantUid,
+          amount       : amountStr,
+          currency     : 'MATIC',
+          recipientName: 'Landlord ($location)',
+          transactionId: txHash,
+        );
+      }
+
+      // ── Notify landlord: rent received ────────────────────────
+      if (ownerUid.isNotEmpty) {
+        await _notif.notifyTransactionReceived(
+          receiverUid  : ownerUid,
+          amount       : amountStr,
+          currency     : 'MATIC',
+          senderName   : 'Tenant',
+          transactionId: txHash,
+        );
+        // Extra context notification for the landlord
+        await _notif.notify(
+          receiverUid: ownerUid,
+          title      : _isOverdue ? '✅ Overdue Rent Received!' : '🏠 Rent Received',
+          body       : _isOverdue
+              ? 'Overdue rent of $amountStr MATIC for "$location" has been paid and confirmed on-chain.'
+              : 'Rent of $amountStr MATIC for "$location" has been confirmed on-chain.',
+          type       : NotificationType.walletTopUp,
+          relatedId  : txHash,
+          payload    : {
+            'leaseId'   : widget.leaseId,
+            'propertyId': widget.propertyId.toString(),
+            'txHash'    : txHash,
+            'nextDue'   : nextDue.toIso8601String(),
+          },
+        );
+      }
+
       // 6. Refresh UI
       await Future.wait([_loadLease(), _loadPaymentHistory()]);
 
@@ -239,14 +310,40 @@ class _TenantRentPaymentScreenState extends State<TenantRentPaymentScreen>
     } catch (e) {
       // Mark the pending record as failed so the owner / tenant can see it
       await paymentRef
-          .update({'status': 'failed', 'error': e.toString()}).catchError(
-              (_) {});
+          .update({'status': 'failed', 'error': e.toString()}).catchError((_) {});
+
+      // ── Notify tenant: payment failed ─────────────────────────
+      if (tenantUid.isNotEmpty) {
+        await _notif.notifyTransactionFailed(
+          userUid      : tenantUid,
+          amount       : amountStr,
+          currency     : 'MATIC',
+          reason       : 'Rent payment for "$location" could not be completed. Please try again.',
+          transactionId: paymentRef.id,
+        );
+      }
+
+      // ── Notify landlord: payment attempt failed ────────────────
+      if (ownerUid.isNotEmpty) {
+        await _notif.notify(
+          receiverUid: ownerUid,
+          title      : '⚠️ Rent Payment Failed',
+          body       : 'Your tenant\'s rent payment for "$location" failed on-chain. They will retry.',
+          type       : NotificationType.transactionFailed,
+          relatedId  : paymentRef.id,
+          payload    : {
+            'leaseId'   : widget.leaseId,
+            'propertyId': widget.propertyId.toString(),
+            'error'     : e.toString(),
+          },
+        );
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Payment failed: $e'),
-            backgroundColor: Colors.red[700],
+            content         : Text('Payment failed: $e'),
+            backgroundColor : Colors.red[700],
           ),
         );
       }
