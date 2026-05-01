@@ -971,36 +971,51 @@ class _AssetModerationState extends State<AssetModeration> {
     );
   }
 
-  Future<void> _approveAsset(
-      String assetId, Map<String, dynamic> assetData) async {
+  Future<void> _approveAsset(String assetId, Map<String, dynamic> assetData) async {
     try {
-      // 1. Update Firebase
+      final tokenId = assetData['blockchainTokenId'];
+      final category = assetData['category']?.toString().toLowerCase() ?? '';
+      final id = (tokenId is int) ? tokenId : int.tryParse(tokenId.toString());
+
+      if (id == null) {
+        _showSnack('❌ Invalid Blockchain ID', color: Colors.red);
+        return;
+      }
+
+      _showSnack('⏳ Initiating blockchain verification...', color: AppTheme.primaryStart);
+
+      // 1. Trigger Blockchain Verification
+      String? txHash;
+      if (category == 'land') {
+        txHash = await _blockchainService.verifyProperty(id);
+      } else {
+        txHash = await _blockchainService.verifyDevice(id);
+      }
+
+      if (txHash == null) {
+        throw Exception('Transaction rejected or failed to initiate.');
+      }
+
+      _showSnack('⏳ Waiting for blockchain confirmation...', color: Colors.orange);
+
+      // 2. Wait for confirmation
+      final success = await _blockchainService.waitForConfirmation(txHash);
+      if (!success) {
+        throw Exception('Blockchain verification failed on-chain.');
+      }
+
+      // 3. Update Firebase ONLY after blockchain success
       await db.collection('assets').doc(assetId).update({
         'verified': true,
         'isMinted': true,
         'verifiedAt': FieldValue.serverTimestamp(),
       });
 
-      // 2. Trigger Blockchain Verification (Fixes 'Pending' status)
-      final tokenId = assetData['blockchainTokenId'];
-      if (tokenId != null) {
-        final category = assetData['category']?.toString().toLowerCase() ?? '';
-        final id = (tokenId is int) ? tokenId : int.tryParse(tokenId.toString());
-        
-        if (id != null) {
-          if (category == 'land') {
-            await _blockchainService.verifyProperty(id);
-          } else {
-            await _blockchainService.verifyDevice(id);
-          }
-        }
-      }
-
       if (mounted) {
         _showSnack('✅ Asset approved & verified on blockchain!', color: Colors.green);
       }
     } catch (e) {
-      if (mounted) _showSnack('Error during verification: $e', color: Colors.red);
+      if (mounted) _showSnack('❌ Approval failed: $e', color: Colors.red);
     }
   }
 

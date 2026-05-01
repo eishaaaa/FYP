@@ -70,17 +70,38 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
   Future<void> _loadData() async {
     try {
       await _blockchainService.init();
-      final property =
-      await _blockchainService.getLandProperty(widget.propertyId);
+      
+      int currentId = widget.propertyId;
+      var property = await _blockchainService.getLandProperty(currentId);
+
+      // SELF-HEALING: If ID 1 was saved but contract is 0-indexed, try ID 0.
+      if (property == null && currentId > 0) {
+        debugPrint("Self-healing: Property not found at ID $currentId. Trying ${currentId - 1}...");
+        final fallbackProperty = await _blockchainService.getLandProperty(currentId - 1);
+        
+        // Verify fallback property matches our Firestore metadata (e.g. location/city)
+        if (fallbackProperty != null) {
+          final assetDoc = await _db.collection('assets').doc(widget.assetId).get();
+          final fsTitle = assetDoc.data()?['title']?.toString().toLowerCase();
+          final chainTitle = fallbackProperty['location']?.toString().toLowerCase();
+          
+          if (fsTitle != null && chainTitle != null && (fsTitle.contains(chainTitle) || chainTitle.contains(fsTitle))) {
+             debugPrint("Self-healing: Found match at ID ${currentId - 1}. Updating Firestore...");
+             await _db.collection('assets').doc(widget.assetId).update({'blockchainTokenId': currentId - 1});
+             property = fallbackProperty;
+             currentId = currentId - 1;
+          }
+        }
+      }
 
       if (_blockchainService.isConnected) {
         _unclaimedRent = await _blockchainService.getUnclaimedRent(
           _blockchainService.connectedAddress!,
-          widget.propertyId,
+          currentId,
         );
         _userFractions = await _blockchainService.getUserFractions(
           _blockchainService.connectedAddress!,
-          widget.propertyId,
+          currentId,
         );
       }
 
@@ -93,14 +114,14 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
           _propertyData = Map<String, dynamic>.from(property);
           _propertyData!['originalOwnerUid'] = ownerUid;
         } else {
-          _errorMessage = "Property not found on blockchain (ID: ${widget.propertyId})";
+          _errorMessage = "Property not found on blockchain (ID: $currentId).\n\nPlease verify your connection and that the property was minted correctly.";
         }
         _loading = false;
       });
     } catch (e) {
       debugPrint("RentDataLoadError: $e");
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = "Load Error: $e";
         _loading = false;
       });
     }

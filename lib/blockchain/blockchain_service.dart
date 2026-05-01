@@ -255,14 +255,15 @@ class BlockchainServiceEnhanced {
       // FIX: Unwrap the struct (it is the first item in the result list)
       final deviceData = result[0] as List<dynamic>;
 
+      // SAFE PARSING: Check length to prevent RangeError
       return {
-        'brand': deviceData[0],
-        'model': deviceData[1],
-        'serialNumber': deviceData[2],
-        'warrantyExpiry': deviceData[3],
-        'mintedAt': (deviceData[4] as BigInt).toInt(),
-        'originalOwner': (deviceData[5] as EthereumAddress).toString(),
-        'isVerified': deviceData[6],
+        'brand': deviceData.isNotEmpty ? deviceData[0] : 'Unknown',
+        'model': deviceData.length > 1 ? deviceData[1] : 'Unknown',
+        'serialNumber': deviceData.length > 2 ? deviceData[2] : 'Unknown',
+        'warrantyExpiry': deviceData.length > 3 ? deviceData[3] : 'Unknown',
+        'mintedAt': deviceData.length > 4 ? (deviceData[4] as BigInt).toInt() : 0,
+        'originalOwner': deviceData.length > 5 ? (deviceData[5] as EthereumAddress).toString() : '0x0',
+        'isVerified': deviceData.length > 6 ? deviceData[6] : false,
         'status': deviceData.length > 7 ? (deviceData[7] as BigInt).toInt() : 0,
         'ownerCount': deviceData.length > 8 ? (deviceData[8] as BigInt).toInt() : 0,
       };
@@ -337,7 +338,8 @@ class BlockchainServiceEnhanced {
         function: function,
         params: [],
       );
-      return (result.first as BigInt).toInt();
+        final count = (result.first as BigInt).toInt();
+        return count > 0 ? count - 1 : 0; // IDs are 0-indexed
     } catch (e) {
       debugPrint('getLastElectronicsTokenId error: $e');
       return null;
@@ -355,7 +357,8 @@ class BlockchainServiceEnhanced {
         function: function,
         params: [],
       );
-      return (result.first as BigInt).toInt();
+        final count = (result.first as BigInt).toInt();
+        return count > 0 ? count - 1 : 0; // IDs are 0-indexed
     } catch (e) {
       debugPrint('getLastLandPropertyId error: $e');
       return null;
@@ -375,21 +378,23 @@ class BlockchainServiceEnhanced {
       // FIX: Unwrap the struct (same logic as getDevice)
       final landData = result[0] as List<dynamic>;
 
+      // SAFE PARSING: Check length to prevent RangeError (The contract ABI has 10 fields)
       return {
-        'location': landData[0],
-        'city': landData[1],
-        'totalArea': (landData[2] as BigInt).toInt(),
-        'areaUnit': landData[3],
-        'totalFractions': (landData[4] as BigInt).toInt(),
-        'pricePerFraction': landData[5] as BigInt,
-        'createdAt': (landData[6] as BigInt).toInt(),
-        'originalOwner': (landData[7] as EthereumAddress).toString(),
-        'ipfsMetadata': landData[8],
-        'isVerified': landData[9],
-        'isForRent': landData[10],
-        'monthlyRent': landData[11] as BigInt,
-        'currentTenant': (landData[12] as EthereumAddress).toString(),
-        'pendingTenant': (landData[13] as EthereumAddress).toString(),
+        'location': landData.isNotEmpty ? landData[0] : 'Unknown',
+        'city': landData.length > 1 ? landData[1] : 'Unknown',
+        'totalArea': landData.length > 2 ? (landData[2] as BigInt).toInt() : 0,
+        'areaUnit': landData.length > 3 ? landData[3] : 'unit',
+        'totalFractions': landData.length > 4 ? (landData[4] as BigInt).toInt() : 0,
+        'pricePerFraction': landData.length > 5 ? (landData[5] as BigInt) : BigInt.zero,
+        'createdAt': landData.length > 6 ? (landData[6] as BigInt).toInt() : 0,
+        'originalOwner': landData.length > 7 ? (landData[7] as EthereumAddress).toString() : '0x0',
+        'ipfsMetadata': landData.length > 8 ? landData[8] : '',
+        'isVerified': landData.length > 9 ? landData[9] : false,
+        // FALLBACKS for rental fields (if not in current ABI)
+        'isForRent': landData.length > 10 ? landData[10] : false,
+        'monthlyRent': landData.length > 11 ? (landData[11] as BigInt) : BigInt.zero,
+        'currentTenant': landData.length > 12 ? (landData[12] as EthereumAddress).toString() : '0x0000000000000000000000000000000000000000',
+        'pendingTenant': landData.length > 13 ? (landData[13] as EthereumAddress).toString() : '0x0000000000000000000000000000000000000000',
       };
     } catch (e) {
       debugPrint('Error getLandProperty: $e');
