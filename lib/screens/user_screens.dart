@@ -503,14 +503,18 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
   bool _listingInProgress = false;
 
   // ── Owned-asset state ────────────────────────────────────────
-  List<QueryDocumentSnapshot> _ownedAssets = [];
+  List<DocumentSnapshot> _ownedAssets = [];
   bool _assetsLoading = true;
   String? _assetsError;
 
   QuerySnapshot? _snap1;
   QuerySnapshot? _snap2;
+  QuerySnapshot? _snap3;
   StreamSubscription? _sub1;
   StreamSubscription? _sub2;
+  StreamSubscription? _sub3;
+  Map<String, DocumentSnapshot> _fractionalAssetDocs = {};
+  Map<String, int> _fractionsCount = {};
 
   @override
   void initState() {
@@ -559,20 +563,79 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
         }
       },
     );
+
+    // Query 3 — fractional_holdings (new model for multi-user land)
+    _sub3 = db
+        .collection('fractional_holdings')
+        .where('userId', isEqualTo: uid)
+        .where('fractionsOwned', isGreaterThan: 0)
+        .snapshots()
+        .listen(
+      (snap) async {
+        _snap3 = snap;
+        await _fetchFractionalAssetDetails(snap);
+        _mergeAndSetState();
+      },
+      onError: (e) {
+        if (mounted) {
+          setState(() {
+            _assetsError = e.toString();
+            _assetsLoading = false;
+          });
+        }
+      },
+    );
+  }
+
+  Future<void> _fetchFractionalAssetDetails(QuerySnapshot snap) async {
+    for (var doc in snap.docs) {
+      final assetId = doc['assetId'] as String;
+      if (!_fractionalAssetDocs.containsKey(assetId)) {
+        final assetSnap = await db.collection('assets').doc(assetId).get();
+        if (assetSnap.exists) {
+          _fractionalAssetDocs[assetId] = assetSnap;
+        }
+      }
+    }
   }
 
   void _mergeAndSetState() {
     final seen = <String>{};
-    final merged = <QueryDocumentSnapshot>[];
+    final merged = <DocumentSnapshot>[];
+    final counts = <String, int>{};
+    
+    // Add full ownership assets
     for (final snap in [_snap1, _snap2]) {
       if (snap == null) continue;
       for (final doc in snap.docs) {
-        if (seen.add(doc.id)) merged.add(doc);
+        if (seen.add(doc.id)) {
+          merged.add(doc);
+          // If it's land and we found it in assets, assume 100% or whatever is in doc
+          if (doc.data() is Map && (doc.data() as Map)['category'] == 'land') {
+             counts[doc.id] = (doc.data() as Map)['totalFractions'] ?? 100;
+          }
+        }
+      }
+    }
+
+    // Add fractional assets
+    if (_snap3 != null) {
+      for (final holdingDoc in _snap3!.docs) {
+        final assetId = holdingDoc['assetId'] as String;
+        final assetDoc = _fractionalAssetDocs[assetId];
+        final owned = holdingDoc['fractionsOwned'] as int? ?? 0;
+        
+        counts[assetId] = owned;
+
+        if (assetDoc != null && seen.add(assetId)) {
+          merged.add(assetDoc);
+        }
       }
     }
     if (mounted) {
       setState(() {
         _ownedAssets = merged;
+        _fractionsCount = counts;
         _assetsLoading = false;
         _assetsError = null;
       });
@@ -583,6 +646,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
   void dispose() {
     _sub1?.cancel();
     _sub2?.cancel();
+    _sub3?.cancel();
     super.dispose();
   }
 
@@ -934,12 +998,12 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                   const SizedBox(height: 6),
                                   Text(
                                     resolvedCategory == 'land'
-                                        ? 'Fractional Land Ownership'
+                                        ? 'Owned: ${_fractionsCount[assetId] ?? 100} / ${asset['totalFractions'] ?? 100} Fractions'
                                         : 'Electronic Device',
                                     style: TextStyle(
-                                      color: Colors.grey[600],
+                                      color: (_fractionsCount[assetId] ?? 0) > 0 ? AppTheme.primaryStart : Colors.grey[600],
                                       fontSize: 13,
-                                      fontWeight: FontWeight.w500,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ],

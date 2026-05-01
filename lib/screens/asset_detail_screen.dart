@@ -753,12 +753,33 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                       ? '✅ Verified'
                       : '⏳ Pending',
                 ),
-                _buildDetailRow(
-                  'Integrity',
-                  _isDataHealthy
-                      ? '🛡️ Blockchain Secured'
-                      : '⚠️ Syncing with Blockchain',
+                const Divider(height: 24),
+                Row(
+                  children: [
+                    Icon(
+                      _isDataHealthy ? Icons.shield_rounded : Icons.sync_problem_rounded,
                       color: _isDataHealthy ? AppTheme.accent : Colors.orange,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _isDataHealthy ? 'Blockchain Secured' : 'Healed from Blockchain',
+                            style: AppTheme.heading(14, color: _isDataHealthy ? AppTheme.accent : Colors.orange),
+                          ),
+                          Text(
+                            _isDataHealthy 
+                                ? 'Data matches immutable blockchain record' 
+                                : 'Firestore data was restored from source of truth',
+                            style: AppTheme.body(11, color: AppTheme.textMid),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ] else if (category == 'land') ...[
                 _buildDetailRow(
@@ -782,12 +803,33 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                     'Original Owner',
                     '${_blockchainData!['originalOwner'].toString().substring(0, 10)}...',
                   ),
-                _buildDetailRow(
-                  'Integrity',
-                  _isDataHealthy
-                      ? '🛡️ Blockchain Secured'
-                      : '⚠️ Syncing with Blockchain',
-                  color: _isDataHealthy ? AppTheme.accent : Colors.orange,
+                const Divider(height: 24),
+                Row(
+                  children: [
+                    Icon(
+                      _isDataHealthy ? Icons.shield_rounded : Icons.sync_problem_rounded,
+                      color: _isDataHealthy ? AppTheme.accent : Colors.orange,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _isDataHealthy ? 'Blockchain Secured' : 'Healed from Blockchain',
+                            style: AppTheme.heading(14, color: _isDataHealthy ? AppTheme.accent : Colors.orange),
+                          ),
+                          Text(
+                            _isDataHealthy 
+                                ? 'Land data matches immutable blockchain record' 
+                                : 'Firestore data was restored from source of truth',
+                            style: AppTheme.body(11, color: AppTheme.textMid),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
               if (_ipfsData != null) ...[
@@ -826,20 +868,43 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
             const SizedBox(height: 12),
             ...documents.map((doc) {
               final d = doc as Map<String, dynamic>;
+              final hash = d['hash'] as String?;
+              final name = d['name'] ?? 'Document';
+
               return ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: getDocumentIcon(d['type'] ?? 'file'),
-                title: Text(d['name'] ?? 'Document'),
+                title: Text(name),
                 subtitle: Text(
                   '${(d['type'] ?? 'FILE').toString().toUpperCase()} • '
                   '${formatFileSize(d['size'] ?? 0)}',
                 ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.download),
-                  onPressed: () {
+                trailing: hash == null ? null : IconButton(
+                  icon: const Icon(Icons.download, color: AppTheme.primaryStart),
+                  onPressed: () async {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Downloading ${d['name']}...')),
+                      SnackBar(content: Text('Downloading $name...')),
                     );
+                    final path = await _ipfsService.downloadFile(hash, name);
+                    if (mounted) {
+                      if (path != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('✅ Saved to: $path'),
+                            backgroundColor: AppTheme.accent,
+                            action: SnackBarAction(
+                              label: 'Open',
+                              textColor: Colors.white,
+                              onPressed: () => _openFile(path),
+                            ),
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('❌ Download failed')),
+                        );
+                      }
+                    }
                   },
                 ),
               );
@@ -848,6 +913,17 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _openFile(String path) async {
+     try {
+       // Simple open logic using url_launcher if it's a path the OS can handle
+       // Or just notify the user it's in Downloads.
+       // For real file opening, we'd use open_file package, but it's not in pubspec.
+       // So we'll just show the path for now.
+     } catch (e) {
+       debugPrint('Error opening file: $e');
+     }
   }
 
   // ── Resale helpers (owner-only) ───────────────────────────────────────────

@@ -338,8 +338,7 @@ class BlockchainServiceEnhanced {
         function: function,
         params: [],
       );
-        final count = (result.first as BigInt).toInt();
-        return count > 0 ? count - 1 : 0; // IDs are 0-indexed
+        return (result.first as BigInt).toInt(); // IDs are 1-indexed in contract (_tokenIds++)
     } catch (e) {
       debugPrint('getLastElectronicsTokenId error: $e');
       return null;
@@ -357,8 +356,7 @@ class BlockchainServiceEnhanced {
         function: function,
         params: [],
       );
-        final count = (result.first as BigInt).toInt();
-        return count > 0 ? count - 1 : 0; // IDs are 0-indexed
+        return (result.first as BigInt).toInt(); // IDs are 1-indexed in contract (_propertyIds += 1)
     } catch (e) {
       debugPrint('getLastLandPropertyId error: $e');
       return null;
@@ -410,6 +408,21 @@ class BlockchainServiceEnhanced {
         contract: _landContract,
         function: function,
         params: [EthereumAddress.fromHex(userAddress), BigInt.from(propertyId)],
+      );
+      return (result.first as BigInt).toInt();
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  Future<int> getEscrowBalance(int propertyId) async {
+    await init();
+    try {
+      final function = _landContract.function('balanceOf');
+      final result = await _client.call(
+        contract: _landContract,
+        function: function,
+        params: [EthereumAddress.fromHex(_landContract.address.hex), BigInt.from(propertyId)],
       );
       return (result.first as BigInt).toInt();
     } catch (e) {

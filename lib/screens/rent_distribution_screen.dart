@@ -37,6 +37,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
   Map<String, dynamic>? _propertyData;
   BigInt _unclaimedRent = BigInt.zero;
   int    _userFractions = 0;
+  int    _escrowFractions = 0;
   bool   _loading       = true;
   String? _errorMessage;
 
@@ -74,27 +75,50 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
       int currentId = widget.propertyId;
       var property = await _blockchainService.getLandProperty(currentId);
 
-      // SELF-HEALING: If ID 1 was saved but contract is 0-indexed, try ID 0.
-      if (property == null && currentId > 0) {
-        debugPrint("Self-healing: Property not found at ID $currentId. Trying ${currentId - 1}...");
-        final fallbackProperty = await _blockchainService.getLandProperty(currentId - 1);
-        
-        // Verify fallback property matches our Firestore metadata (e.g. location/city)
-        if (fallbackProperty != null) {
-          final assetDoc = await _db.collection('assets').doc(widget.assetId).get();
-          final fsTitle = assetDoc.data()?['title']?.toString().toLowerCase();
-          final chainTitle = fallbackProperty['location']?.toString().toLowerCase();
-          
-          if (fsTitle != null && chainTitle != null && (fsTitle.contains(chainTitle) || chainTitle.contains(fsTitle))) {
-             debugPrint("Self-healing: Found match at ID ${currentId - 1}. Updating Firestore...");
+      // BIDIRECTIONAL SELF-HEALING: Try id-1 AND id+1 if needed
+      if (property == null) {
+        // Try id - 1
+        if (currentId > 0) {
+           debugPrint("Self-healing: Trying ID ${currentId - 1}...");
+           final fallback = await _blockchainService.getLandProperty(currentId - 1);
+           if (fallback != null && await _isMatch(fallback)) {
              await _db.collection('assets').doc(widget.assetId).update({'blockchainTokenId': currentId - 1});
-             property = fallbackProperty;
+             property = fallback;
              currentId = currentId - 1;
-          }
+           }
+        }
+        // Try id + 1 if still null
+        if (property == null) {
+           debugPrint("Self-healing: Trying ID ${currentId + 1}...");
+           final fallback = await _blockchainService.getLandProperty(currentId + 1);
+           if (fallback != null && await _isMatch(fallback)) {
+             await _db.collection('assets').doc(widget.assetId).update({'blockchainTokenId': currentId + 1});
+             property = fallback;
+             currentId = currentId + 1;
+           }
         }
       }
+      
+      // --- SECURITY & SELF-HEALING ---
+      if (property != null) {
+        bool isHealthy = await _blockchainService.verifyAndHealAsset(
+          type: 'land',
+          blockchainId: currentId,
+          firestoreDocId: widget.assetId,
+          firestore: _db,
+        );
+        if (!isHealthy && mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(
+               content: Text('Security Check: Rental data synchronized with Blockchain'),
+               backgroundColor: AppTheme.accent,
+             ),
+           );
+        }
+      }
+      // -------------------------------
 
-      if (_blockchainService.isConnected) {
+      if (_blockchainService.isConnected && property != null) {
         _unclaimedRent = await _blockchainService.getUnclaimedRent(
           _blockchainService.connectedAddress!,
           currentId,
@@ -103,6 +127,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
           _blockchainService.connectedAddress!,
           currentId,
         );
+        _escrowFractions = await _blockchainService.getEscrowBalance(currentId);
       }
 
       // Fetch owner info from Firestore
@@ -114,7 +139,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
           _propertyData = Map<String, dynamic>.from(property);
           _propertyData!['originalOwnerUid'] = ownerUid;
         } else {
-          _errorMessage = "Property not found on blockchain (ID: $currentId).\n\nPlease verify your connection and that the property was minted correctly.";
+          _errorMessage = "Property not found on blockchain (ID: $currentId).\n\nPlease verify your connection.";
         }
         _loading = false;
       });
@@ -125,6 +150,13 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
         _loading = false;
       });
     }
+  }
+
+  Future<bool> _isMatch(Map<String, dynamic> chainData) async {
+    final assetDoc = await _db.collection('assets').doc(widget.assetId).get();
+    final fsTitle = assetDoc.data()?['title']?.toString().toLowerCase() ?? '';
+    final chainTitle = chainData['location']?.toString().toLowerCase() ?? '';
+    return fsTitle.contains(chainTitle) || chainTitle.contains(fsTitle);
   }
 
   // ── Distribute ────────────────────────────────────────────────────────────
@@ -271,6 +303,66 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
       if (mounted) Navigator.pop(context);
       _showSnack('Error: $e', color: Colors.red);
     }
+  }
+
+  void _showHowItWorks() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            const Icon(Icons.auto_awesome_rounded, color: AppTheme.primaryStart),
+            const SizedBox(width: 10),
+            Text('How it Works', style: AppTheme.heading(20)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _stepRow('1', 'Owner Deposits', 'The property owner distributes rent MATIC to the smart contract.'),
+            const SizedBox(height: 16),
+            _stepRow('2', 'Shares Calculated', 'The contract automatically divides the rent based on fractional ownership.'),
+            const SizedBox(height: 16),
+            _stepRow('3', 'Users Claim', 'Fraction holders must manually click "Claim" to withdraw their share to their wallet.'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Got it!', style: AppTheme.button(14, color: AppTheme.primaryStart)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stepRow(String number, String title, String desc) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: const BoxDecoration(color: AppTheme.primaryStart, shape: BoxShape.circle),
+          child: Center(
+            child: Text(number, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: AppTheme.heading(14)),
+              const SizedBox(height: 2),
+              Text(desc, style: AppTheme.body(12, color: AppTheme.textSecondary)),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -479,17 +571,30 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
                   ),
                   if (widget.isOwner) ...[
                     const Spacer(),
+                    GestureDetector(
+                      onTap: _showHowItWorks,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.help_outline_rounded,
+                            color: Colors.white, size: 20),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     Container(
-                      padding   : const EdgeInsets.symmetric(
+                      padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
-                        color       : Colors.white.withOpacity(0.2),
+                        color: Colors.white.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text('Owner',
                           style: GoogleFonts.poppins(
-                            color     : Colors.white,
-                            fontSize  : 11,
+                            color: Colors.white,
+                            fontSize: 11,
                             fontWeight: FontWeight.w700,
                           )),
                     ),
@@ -514,9 +619,9 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
                   ),
                   const SizedBox(width: 10),
                   _HeaderStat(
-                    icon : Icons.grid_view_rounded,
-                    label: 'Total',
-                    value: '${_propertyData!['totalFractions']}',
+                    icon : Icons.shopping_bag_rounded,
+                    label: 'In Escrow',
+                    value: '$_escrowFractions',
                   ),
                 ],
               ),
@@ -959,6 +1064,8 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
       'Rent is distributed proportionally based on fraction ownership',
       'You can claim your share at any time',
       'All transactions are recorded on the blockchain',
+      if (_escrowFractions > 0)
+        'Note: $_escrowFractions fractions are currently held in escrow for sale. These do not receive rent until purchased.',
       'Your share: ${ownershipPct.toStringAsFixed(2)}% of total rent',
     ];
 

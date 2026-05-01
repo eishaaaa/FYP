@@ -12,7 +12,7 @@ import '../blockchain/contract_config.dart';
 import '../blockchain/explorer_service.dart';
 import '../screens/transaction_model.dart';
 import '../theme.dart';
-import 'package:showcaseview/showcaseview.dart';
+// import 'package:showcaseview/showcaseview.dart';
 
 // ─── Design Tokens ──────────────────────────────────────────
 class _C {
