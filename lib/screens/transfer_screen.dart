@@ -8,6 +8,7 @@ import 'dart:convert';
 import '../theme.dart';
 
 import '../blockchain/blockchain_service.dart';
+import '../services/push_notification_service.dart';
 
 enum AssetType { electronics, land }
 
@@ -44,6 +45,7 @@ class TransferScreen extends StatefulWidget {
 class _TransferScreenState extends State<TransferScreen> {
   final _db = FirebaseFirestore.instance;
   final _bs = BlockchainServiceEnhanced();
+  final _notif = PushNotificationService();
 
   // ── Stepper state ────────────────────────────────────────────
   int _currentStep = 0;
@@ -146,11 +148,34 @@ class _TransferScreenState extends State<TransferScreen> {
       _statusMessage = 'Preparing transaction…';
     });
 
+    final isLand    = widget.assetType == AssetType.land;
+    final assetLabel = _assetTitle ?? 'Asset';
+
     try {
       // Flag asset as syncing to prevent race conditions in the UI
       await _db.collection('assets').doc(widget.assetId).update({
         'isSyncingWithBlockchain': true,
       });
+
+      // ── Notify both parties: transfer is starting ─────────────
+      await Future.wait([
+        _notif.notify(
+          receiverUid: widget.sellerUid,
+          title       : '⏳ Transfer Initiated',
+          body        : 'Blockchain transfer of "$assetLabel" to ${widget.buyerName} is in progress.',
+          type        : NotificationType.transactionPending,
+          relatedId   : widget.transactionId,
+          payload     : {'assetId': widget.assetId, 'assetType': isLand ? 'land' : 'electronics'},
+        ),
+        _notif.notify(
+          receiverUid: widget.buyerUid,
+          title       : '⏳ Transfer In Progress',
+          body        : 'The seller is transferring "$assetLabel" to your wallet. This may take a minute.',
+          type        : NotificationType.transactionPending,
+          relatedId   : widget.transactionId,
+          payload     : {'assetId': widget.assetId},
+        ),
+      ]);
 
       String? txHash;
 
@@ -221,6 +246,23 @@ class _TransferScreenState extends State<TransferScreen> {
 
       await _finalizeOwnership();
 
+      // ── Notify both parties: transfer fully complete ──────────────
+      final typeLabel = isLand ? 'Land fraction(s)' : 'Device';
+      await Future.wait([
+        _notif.notifyProductSold(
+          sellerUid  : widget.sellerUid,
+          productName: assetLabel,
+          amount     : widget.assetPrice,
+          orderId    : widget.transactionId,
+        ),
+        _notif.notifyProductPurchased(
+          buyerUid   : widget.buyerUid,
+          productName: assetLabel,
+          amount     : widget.assetPrice,
+          orderId    : widget.transactionId,
+        ),
+      ]);
+
       setState(() {
         _success = true;
         _transferring = false;
@@ -239,9 +281,30 @@ class _TransferScreenState extends State<TransferScreen> {
         });
       } catch (_) {}
 
+      final errorMsg = e.toString().replaceFirst('Exception: ', '');
+      final assetLabel = _assetTitle ?? 'Asset';
+
+      // Notify both parties about the failure
+      await Future.wait([
+        _notif.notifyTransactionFailed(
+          userUid  : widget.sellerUid,
+          amount   : widget.assetPrice,
+          currency : 'PKR',
+          reason   : 'Transfer of "$assetLabel" could not be completed.',
+          transactionId: widget.transactionId,
+        ),
+        _notif.notifyTransactionFailed(
+          userUid  : widget.buyerUid,
+          amount   : widget.assetPrice,
+          currency : 'PKR',
+          reason   : 'Transfer of "$assetLabel" by seller failed. Please contact support.',
+          transactionId: widget.transactionId,
+        ),
+      ]);
+
       setState(() {
         _transferring = false;
-        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+        _errorMessage = errorMsg;
       });
     }
   }
@@ -1081,6 +1144,7 @@ class _BuyerOwnershipAcceptScreenState extends State<BuyerOwnershipAcceptScreen>
   final _db = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
   final _bs = BlockchainServiceEnhanced();
+  final _notif = PushNotificationService();
 
   Map<String, dynamic>? _assetData;
   Map<String, dynamic>? _txData;
@@ -1129,6 +1193,35 @@ class _BuyerOwnershipAcceptScreenState extends State<BuyerOwnershipAcceptScreen>
       if (uid == null) return;
 
       await _db.collection('users').doc(uid).update({'walletAddress': addr});
+
+      // Fetch the transaction to get the sellerUid and asset title
+      final txDoc    = await _db.collection('transactions').doc(widget.transactionId).get();
+      final txData   = txDoc.data() ?? {};
+      final sellerUid = txData['sellerUid'] as String? ?? '';
+      final assetTitle = _assetData?['title'] as String? ?? 'Asset';
+
+      // Notify the buyer — wallet saved
+      if (uid.isNotEmpty) {
+        await _notif.notify(
+          receiverUid: uid,
+          title       : '✅ Wallet Registered',
+          body        : 'Your wallet address has been saved. The seller can now initiate the transfer.',
+          type        : NotificationType.general,
+          relatedId   : widget.transactionId,
+        );
+      }
+
+      // Notify the seller — buyer's wallet is now ready, they can proceed
+      if (sellerUid.isNotEmpty) {
+        await _notif.notify(
+          receiverUid: sellerUid,
+          title       : '🟢 Buyer Wallet Ready',
+          body        : '${widget.sellerName.isNotEmpty ? "The buyer" : "Buyer"} has registered their wallet for "$assetTitle". You can now execute the blockchain transfer.',
+          type        : NotificationType.transactionPending,
+          relatedId   : widget.transactionId,
+          payload     : {'assetId': widget.assetId, 'buyerWallet': addr},
+        );
+      }
 
       if (mounted) {
         setState(() {

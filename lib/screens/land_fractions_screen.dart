@@ -4,17 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../blockchain/blockchain_service.dart';
+import '../services/push_notification_service.dart';
 import '../theme.dart';
-
-// ─── Brand Colors ─────────────────────────────────────────────────────────────
-// Migration to AppTheme: The constants below are now derived from AppTheme
-const kTeal        = AppTheme.primaryStart;
-const kTealDark    = AppTheme.primaryStartDark;
-const kTealLight   = Color(0xFFE8F4F4); // Kept for light background variations
-const kTealAccent  = AppTheme.accent;
-const kScaffoldBg  = AppTheme.background;
-const kTextPrimary = AppTheme.textPrimary;
-const kTextSecondary = AppTheme.textSecondary;
 
 class LandFractionsScreen extends StatefulWidget {
   final String assetId;
@@ -33,6 +24,7 @@ class LandFractionsScreen extends StatefulWidget {
 class _LandFractionsScreenState extends State<LandFractionsScreen>
     with SingleTickerProviderStateMixin {
   final _blockchainService = BlockchainServiceEnhanced();
+  final _notif = PushNotificationService();
   final _db   = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
 
@@ -141,7 +133,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
             borderRadius: BorderRadius.circular(20)),
         title: Text('Confirm Request',
             style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w700, color: kTextPrimary)),
+                fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
         content: Column(
           mainAxisSize     : MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -160,7 +152,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
             Container(
               padding   : const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color       : kTealLight,
+                color       : AppTheme.primaryLight,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -169,13 +161,13 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
                   Text('Estimated Total',
                       style: GoogleFonts.poppins(
                           fontWeight: FontWeight.w700,
-                          color     : kTextPrimary)),
+                          color     : AppTheme.textPrimary)),
                   Text(
                     '${_formatPrice(_calculateTotal())} MATIC',
                     style: GoogleFonts.poppins(
                       fontWeight: FontWeight.w700,
                       fontSize  : 16,
-                      color     : kTeal,
+                      color     : AppTheme.primaryStart,
                     ),
                   ),
                 ],
@@ -186,7 +178,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
               'A purchase request will be sent to the supplier. '
                   'The blockchain transaction will only proceed once approved.',
               style: GoogleFonts.poppins(
-                  fontSize: 12, color: kTextSecondary, height: 1.5),
+                  fontSize: 12, color: AppTheme.textMid, height: 1.5),
             ),
           ],
         ),
@@ -194,11 +186,12 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child    : Text('Cancel',
-                style: GoogleFonts.poppins(color: kTextSecondary)),
+                style: GoogleFonts.poppins(color: AppTheme.textMid)),
           ),
           Container(
             decoration: BoxDecoration(
-              gradient    : AppTheme.primaryGradient,
+              gradient    : const LinearGradient(
+                  colors: [AppTheme.primaryStartDark, AppTheme.primaryEnd]),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Material(
@@ -211,7 +204,9 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
                   padding: const EdgeInsets.symmetric(
                       horizontal: 18, vertical: 10),
                   child: Text('Send Request',
-                      style: AppTheme.body(14, color: Colors.white, weight: FontWeight.w700)),
+                      style: GoogleFonts.poppins(
+                          color     : Colors.white,
+                          fontWeight: FontWeight.w700)),
                 ),
               ),
             ),
@@ -228,6 +223,16 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
       final sellerUid = assetDoc.data()?['ownerId'] ??
           assetDoc.data()?['ownerUid'];
       if (sellerUid == null) throw Exception('Could not find the asset owner.');
+      final propertyLabel =
+          assetDoc.data()?['title']?.toString() ??
+          _propertyData?['location']?.toString() ??
+          'property';
+      final buyerName =
+          user.displayName?.trim().isNotEmpty == true
+              ? user.displayName!.trim()
+              : (user.email?.trim().isNotEmpty == true
+                  ? user.email!.trim()
+                  : 'A buyer');
 
       final sharedId = _db.collection('fraction_requests').doc().id;
       final batch    = _db.batch();
@@ -260,6 +265,33 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
       });
 
       await batch.commit();
+      await Future.wait([
+        _notif.notify(
+          receiverUid: user.uid,
+          title: '✅ Fraction Request Sent',
+          body:
+              'Your request for $_selectedFractions fraction(s) of "$propertyLabel" has been sent.',
+          type: NotificationType.transactionPending,
+          relatedId: sharedId,
+          payload: {
+            'assetId': widget.assetId,
+            'requestType': 'fraction_purchase',
+          },
+        ),
+        _notif.notify(
+          receiverUid: sellerUid.toString(),
+          title: '📩 New Fraction Request',
+          body:
+              '$buyerName requested $_selectedFractions fraction(s) of "$propertyLabel".',
+          type: NotificationType.transactionPending,
+          relatedId: sharedId,
+          payload: {
+            'assetId': widget.assetId,
+            'requestType': 'fraction_purchase',
+            'buyerUid': user.uid,
+          },
+        ),
+      ]);
       setState(() {
         _hasExistingRequest = true;
         _loading            = false;
@@ -287,7 +319,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
   void _showSnack(String msg, {Color? color}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content        : Text(msg, style: GoogleFonts.poppins()),
-      backgroundColor: color ?? kTeal,
+        backgroundColor: color ?? AppTheme.primaryStart,
       behavior       : SnackBarBehavior.floating,
       shape          : RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10)),
@@ -299,10 +331,13 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
   Widget build(BuildContext context) {
     if (_loading) {
       return Scaffold(
-        backgroundColor: kScaffoldBg,
+        backgroundColor: AppTheme.background,
         body: Container(
           decoration: const BoxDecoration(
-            gradient: AppTheme.primaryGradient,
+            gradient: LinearGradient(
+                colors: [AppTheme.primaryStartDark, AppTheme.primaryStart],
+                begin : Alignment.topLeft,
+                end   : Alignment.bottomRight),
           ),
           child: const Center(
             child: Column(
@@ -319,18 +354,18 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
 
     if (_propertyData == null) {
       return Scaffold(
-        backgroundColor: kScaffoldBg,
+        backgroundColor: AppTheme.background,
         appBar          : _buildAppBar(),
         body            : Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(Icons.error_outline_rounded,
-                  size: 48, color: kTextSecondary),
+                  size: 48, color: AppTheme.textMid),
               const SizedBox(height: 12),
               Text('Failed to load property data',
                   style: GoogleFonts.poppins(
-                      color: kTextSecondary, fontSize: 15)),
+                      color: AppTheme.textMid, fontSize: 15)),
             ],
           ),
         ),
@@ -345,7 +380,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
         : 0.0;
 
     return Scaffold(
-      backgroundColor: kScaffoldBg,
+      backgroundColor: AppTheme.background,
       body: Column(
         children: [
           _buildAppBarWidget(totalFractions, ownershipPct),
@@ -428,10 +463,13 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
   // ── App bar (plain, used for error/loading states) ────────────────────────
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: kTeal,
+      backgroundColor: AppTheme.primaryStart,
       flexibleSpace  : Container(
         decoration: const BoxDecoration(
-          gradient: AppTheme.primaryGradient,
+          gradient: LinearGradient(
+              colors: [AppTheme.primaryStartDark, AppTheme.primaryStart],
+              begin : Alignment.topLeft,
+              end   : Alignment.bottomRight),
         ),
       ),
       leading: IconButton(
@@ -449,7 +487,10 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
   Widget _buildAppBarWidget(int totalFractions, double ownershipPct) {
     return Container(
       decoration: const BoxDecoration(
-        gradient: AppTheme.primaryGradient,
+        gradient: LinearGradient(
+            colors: [AppTheme.primaryStartDark, AppTheme.primaryStart],
+            begin : Alignment.topLeft,
+            end   : Alignment.bottomRight),
         borderRadius: BorderRadius.only(
           bottomLeft : Radius.circular(28),
           bottomRight: Radius.circular(28),
@@ -528,11 +569,11 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
               Container(
                 padding   : const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color       : kTealLight,
+                  color       : AppTheme.primaryLight,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.location_on_rounded,
-                    color: kTeal, size: 22),
+                    color: AppTheme.primaryStart, size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -544,12 +585,12 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
                       style: GoogleFonts.poppins(
                           fontSize  : 16,
                           fontWeight: FontWeight.w700,
-                          color     : kTextPrimary),
+                          color     : AppTheme.textPrimary),
                     ),
                     Text(
                       _propertyData!['city'] ?? '',
                       style: GoogleFonts.poppins(
-                          fontSize: 13, color: kTextSecondary),
+                          fontSize: 13, color: AppTheme.textMid),
                     ),
                   ],
                 ),
@@ -557,7 +598,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
             ],
           ),
           const SizedBox(height: 14),
-          Divider(color: kTeal.withOpacity(0.1)),
+          Divider(color: AppTheme.primaryStart.withOpacity(0.1)),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -578,7 +619,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
           const SizedBox(height: 16),
           Text('Your ownership',
               style: GoogleFonts.poppins(
-                  fontSize: 12, color: kTextSecondary)),
+                  fontSize: 12, color: AppTheme.textMid)),
           const SizedBox(height: 6),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
@@ -587,8 +628,8 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
                   ? _userFractions / totalFractions
                   : 0,
               minHeight      : 8,
-              backgroundColor: kTealLight,
-              valueColor     : const AlwaysStoppedAnimation<Color>(kTeal),
+              backgroundColor: AppTheme.primaryLight,
+              valueColor     : const AlwaysStoppedAnimation<Color>(AppTheme.primaryStart),
             ),
           ),
           const SizedBox(height: 4),
@@ -597,10 +638,10 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
             children: [
               Text('$_userFractions owned',
                   style: GoogleFonts.poppins(
-                      fontSize: 11, color: kTextSecondary)),
+                      fontSize: 11, color: AppTheme.textMid)),
               Text('$totalFractions total',
                   style: GoogleFonts.poppins(
-                      fontSize: 11, color: kTextSecondary)),
+                      fontSize: 11, color: AppTheme.textMid)),
             ],
           ),
         ],
@@ -619,12 +660,12 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
             children: [
               Text('Fractions to request',
                   style: GoogleFonts.poppins(
-                      fontSize: 13, color: kTextSecondary)),
+                      fontSize: 13, color: AppTheme.textMid)),
               Container(
                 padding   : const EdgeInsets.symmetric(
                     horizontal: 16, vertical: 6),
                 decoration: BoxDecoration(
-                  color       : kTeal,
+                  color       : AppTheme.primaryStart,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -641,10 +682,10 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
           const SizedBox(height: 8),
           SliderTheme(
             data: SliderThemeData(
-              activeTrackColor  : kTeal,
-              inactiveTrackColor: kTealLight,
-              thumbColor        : kTealDark,
-              overlayColor      : kTeal.withOpacity(0.15),
+              activeTrackColor  : AppTheme.primaryStart,
+              inactiveTrackColor: AppTheme.primaryLight,
+              thumbColor        : AppTheme.primaryStartDark,
+              overlayColor      : AppTheme.primaryStart.withOpacity(0.15),
               trackHeight       : 6,
             ),
             child: Slider(
@@ -664,10 +705,10 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
             children: [
               Text('1',
                   style: GoogleFonts.poppins(
-                      fontSize: 11, color: kTextSecondary)),
+                      fontSize: 11, color: AppTheme.textMid)),
               Text('$availableFractions available',
                   style: GoogleFonts.poppins(
-                      fontSize: 11, color: kTextSecondary)),
+                      fontSize: 11, color: AppTheme.textMid)),
             ],
           ),
         ],
@@ -685,20 +726,20 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
             label     : 'Price per fraction',
             value     :
             '${_formatPrice(_propertyData!['pricePerFraction'])} MATIC',
-            iconColor : kTeal,
+            iconColor : AppTheme.primaryStart,
           ),
-          Divider(height: 18, color: kTeal.withOpacity(0.1)),
+          Divider(height: 18, color: AppTheme.primaryStart.withOpacity(0.1)),
           _PriceRow(
             icon     : Icons.layers_rounded,
             label    : 'Fractions selected',
             value    : '$_selectedFractions',
-            iconColor: kTealAccent,
+            iconColor: AppTheme.primaryEnd,
           ),
-          Divider(height: 18, color: kTeal.withOpacity(0.1)),
+          Divider(height: 18, color: AppTheme.primaryStart.withOpacity(0.1)),
           Container(
             padding   : const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color       : kTealLight,
+              color       : AppTheme.primaryLight,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -707,13 +748,13 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
                 Row(
                   children: [
                     const Icon(Icons.account_balance_wallet_rounded,
-                        color: kTeal, size: 18),
+                        color: AppTheme.primaryStart, size: 18),
                     const SizedBox(width: 8),
                     Text('Estimated Total',
                         style: GoogleFonts.poppins(
                           fontWeight: FontWeight.w700,
                           fontSize  : 14,
-                          color     : kTextPrimary,
+                          color     : AppTheme.textPrimary,
                         )),
                   ],
                 ),
@@ -722,7 +763,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
                   style: GoogleFonts.poppins(
                     fontWeight: FontWeight.w800,
                     fontSize  : 15,
-                    color     : kTeal,
+                    color     : AppTheme.primaryStart,
                   ),
                 ),
               ],
@@ -760,7 +801,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
                   style: GoogleFonts.poppins(
                     fontWeight: FontWeight.w700,
                     fontSize  : 14,
-                    color     : kTextPrimary,
+                    color     : AppTheme.textPrimary,
                   )),
             ],
           ),
@@ -771,7 +812,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
                 child: _PreviewStat(
                   label: 'Your Fractions',
                   value: '$newTotal',
-                  color: kTeal,
+                  color: AppTheme.primaryStart,
                 ),
               ),
               const SizedBox(width: 12),
@@ -790,8 +831,8 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
             child       : LinearProgressIndicator(
               value          : totalFractions > 0 ? newTotal / totalFractions : 0,
               minHeight      : 8,
-              backgroundColor: kTealLight,
-              valueColor     : const AlwaysStoppedAnimation<Color>(kTeal),
+              backgroundColor: AppTheme.primaryLight,
+              valueColor     : const AlwaysStoppedAnimation<Color>(AppTheme.primaryStart),
             ),
           ),
         ],
@@ -805,14 +846,19 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
       duration   : const Duration(milliseconds: 200),
       height     : 54,
       decoration : BoxDecoration(
-        gradient    : _checkingRequest ? null : AppTheme.primaryGradient,
+        gradient    : _checkingRequest
+            ? null
+            : const LinearGradient(
+            colors: [AppTheme.primaryStartDark, AppTheme.primaryEnd],
+            begin : Alignment.topLeft,
+            end   : Alignment.bottomRight),
         color       : _checkingRequest ? Colors.grey.shade300 : null,
         borderRadius: BorderRadius.circular(16),
         boxShadow   : _checkingRequest
             ? []
             : [
           BoxShadow(
-            color     : kTeal.withOpacity(0.35),
+            color     : AppTheme.primaryStart.withOpacity(0.35),
             blurRadius: 14,
             offset    : const Offset(0, 5),
           )
@@ -859,20 +905,20 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
     return Container(
       padding   : const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color       : kTealLight,
+        color       : AppTheme.primaryLight,
         borderRadius: BorderRadius.circular(14),
-        border      : Border.all(color: kTeal.withOpacity(0.2)),
+        border      : Border.all(color: AppTheme.primaryStart.withOpacity(0.2)),
       ),
       child: Row(
         children: [
           Container(
             padding   : const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color       : kTeal.withOpacity(0.15),
+              color       : AppTheme.primaryStart.withOpacity(0.15),
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(Icons.info_outline_rounded,
-                size: 18, color: kTeal),
+                size: 18, color: AppTheme.primaryStart),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -881,7 +927,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
                   'The blockchain transaction only happens after supplier approval.',
               style: GoogleFonts.poppins(
                 fontSize: 12,
-                color   : kTealDark,
+                color   : AppTheme.primaryStartDark,
                 height  : 1.5,
               ),
             ),
@@ -945,7 +991,7 @@ class _LandFractionsScreenState extends State<LandFractionsScreen>
         style: GoogleFonts.poppins(
           fontWeight: FontWeight.w700,
           fontSize  : 14,
-          color     : kTextPrimary,
+          color     : AppTheme.textPrimary,
         )),
   );
 }
@@ -963,7 +1009,7 @@ class _Card extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       boxShadow   : [
         BoxShadow(
-          color     : kTeal.withOpacity(0.07),
+          color     : AppTheme.primaryStart.withOpacity(0.07),
           blurRadius: 14,
           offset    : const Offset(0, 4),
         ),
@@ -1019,18 +1065,18 @@ class _InfoChip extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding   : const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
     decoration: BoxDecoration(
-      color       : kTealLight,
+      color       : AppTheme.primaryLight,
       borderRadius: BorderRadius.circular(20),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children    : [
-        Icon(icon, size: 14, color: kTeal),
+        Icon(icon, size: 14, color: AppTheme.primaryStart),
         const SizedBox(width: 6),
         Text(label,
             style: GoogleFonts.poppins(
                 fontSize: 12,
-                color   : kTeal,
+                color   : AppTheme.primaryStart,
                 fontWeight: FontWeight.w600)),
       ],
     ),
@@ -1056,13 +1102,13 @@ class _PriceRow extends StatelessWidget {
       Expanded(
         child: Text(label,
             style: GoogleFonts.poppins(
-                fontSize: 13, color: kTextSecondary)),
+                fontSize: 13, color: AppTheme.textMid)),
       ),
       Text(value,
           style: GoogleFonts.poppins(
               fontSize  : 13,
               fontWeight: FontWeight.w600,
-              color     : kTextPrimary)),
+              color     : AppTheme.textPrimary)),
     ],
   );
 }
@@ -1093,7 +1139,7 @@ class _PreviewStat extends StatelessWidget {
         const SizedBox(height: 4),
         Text(label,
             style: GoogleFonts.poppins(
-                fontSize: 11, color: kTextSecondary),
+                fontSize: 11, color: AppTheme.textMid),
             textAlign: TextAlign.center),
       ],
     ),
@@ -1111,12 +1157,12 @@ class _DialogRow extends StatelessWidget {
     children: [
       Text(label,
           style: GoogleFonts.poppins(
-              fontSize: 13, color: kTextSecondary)),
+              fontSize: 13, color: AppTheme.textMid)),
       Text(value,
           style: GoogleFonts.poppins(
               fontSize  : 13,
               fontWeight: FontWeight.w600,
-              color     : kTextPrimary)),
+              color     : AppTheme.textPrimary)),
     ],
   );
 }

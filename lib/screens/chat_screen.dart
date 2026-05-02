@@ -12,10 +12,14 @@ import 'package:permission_handler/permission_handler.dart';
 import '../blockchain/ipfs_service.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
-import '../theme.dart';
-import '../widgets/transfer_widget.dart';
-
-// Brand colors removed - using AppTheme
+// ─── Brand Colors ─────────────────────────────────────────────────────────────
+const kTeal        = Color(0xFF2D7D7D);
+const kTealDark    = Color(0xFF1F5C5C);
+const kTealLight   = Color(0xFFE8F4F4);
+const kTealAccent  = Color(0xFF3AAFA9);
+const kScaffoldBg  = Color(0xFFF5F8F8);
+const kTextPrimary = Color(0xFF1A2E2E);
+const kTextSecondary = Color(0xFF6B8E8E);
 
 // ─── Chat Screen ──────────────────────────────────────────────────────────────
 class ChatScreen extends StatefulWidget {
@@ -161,7 +165,7 @@ class _ChatScreenState extends State<ChatScreen>
           const SizedBox(width: 12),
           Text('Downloading…', style: GoogleFonts.poppins()),
         ]),
-        backgroundColor: AppTheme.primaryStart,
+        backgroundColor: kTeal,
         behavior       : SnackBarBehavior.floating,
         duration       : const Duration(seconds: 30),
         shape          : RoundedRectangleBorder(
@@ -351,18 +355,18 @@ class _ChatScreenState extends State<ChatScreen>
       ) {
     return Container(
       margin : const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      decoration: AppTheme.roundedBox(
-        gradient: const LinearGradient(
+      decoration: BoxDecoration(
+        gradient    : const LinearGradient(
           colors: [Color(0xFFE65100), Color(0xFFFF8F00)],
           begin : Alignment.topLeft,
           end   : Alignment.bottomRight,
         ),
-        radius: 14,
-        shadows: [
+        borderRadius: BorderRadius.circular(14),
+        boxShadow   : [
           BoxShadow(
-            color: Colors.orange.withOpacity(0.3),
+            color     : Colors.orange.withOpacity(0.3),
             blurRadius: 12,
-            offset: const Offset(0, 4),
+            offset    : const Offset(0, 4),
           ),
         ],
       ),
@@ -371,19 +375,53 @@ class _ChatScreenState extends State<ChatScreen>
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          onTap: () {
-            _showTransferDialog(assetId, assetTypeStr, sellerUid);
+          onTap: () async {
+            try {
+              String resolvedTxId;
+              Map<String, dynamic> resolvedTxData;
+
+              if (transactionId != null) {
+                resolvedTxId   = transactionId;
+                resolvedTxData = txData;
+              } else {
+                final assetSnap  = await _db.collection('assets').doc(assetId).get();
+                final assetTitle = assetSnap.data()?['title'] ?? 'Asset';
+                final docRef     = await _db.collection('transactions').add({
+                  'assetId'  : assetId,
+                  'assetType': assetTypeStr,
+                  'sellerUid': sellerUid,
+                  'buyerUid' : widget.otherUserId,
+                  'status'   : 'accepted',
+                  'assetTitle': assetTitle,
+                  'createdAt': FieldValue.serverTimestamp(),
+                });
+                resolvedTxId   = docRef.id;
+                resolvedTxData = {};
+              }
+              if (mounted) {
+                _navigateToTransferScreen(
+                    context, assetId, assetTypeStr,
+                    sellerUid, resolvedTxId, resolvedTxData);
+              }
+            } catch (e) {
+              if (mounted) _showSnack('Error: $e', color: Colors.red);
+            }
           },
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 14),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.swap_horiz_rounded, color: Colors.white, size: 20),
+                const Icon(Icons.swap_horiz_rounded,
+                    color: Colors.white, size: 20),
                 const SizedBox(width: 10),
                 Text(
-                  'Quick Transfer',
-                  style: AppTheme.button(15),
+                  'Proceed to Transfer',
+                  style: GoogleFonts.poppins(
+                    color     : Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize  : 15,
+                  ),
                 ),
               ],
             ),
@@ -391,55 +429,6 @@ class _ChatScreenState extends State<ChatScreen>
         ),
       ),
     );
-  }
-
-  void _showTransferDialog(String assetId, String assetTypeStr, String sellerUid) async {
-    final assetSnap = await _db.collection('assets').doc(assetId).get();
-    if (!assetSnap.exists) return;
-    final assetData = assetSnap.data()!;
-    final tokenId = assetData['blockchainTokenId']?.toString();
-    final isLand = assetTypeStr == 'land';
-
-    int? maxFractions;
-    if (isLand && tokenId != null) {
-       final bs = BlockchainServiceEnhanced();
-       await bs.init();
-       maxFractions = await bs.getUserFractions(bs.connectedAddress!, int.parse(tokenId));
-    }
-
-    if (!mounted) return;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: TransferWidget(
-          assetId: assetId,
-          isLand: isLand,
-          propertyId: isLand ? tokenId : null,
-          tokenId: !isLand ? tokenId : null,
-          initialRecipientAddress: "", // Can be fetched from user doc
-          maxFractions: maxFractions,
-          onSuccess: () {
-            // Send a message about the transfer
-            _sendTransferSystemMessage(assetId, assetTypeStr);
-          },
-        ),
-      ),
-    );
-  }
-
-  void _sendTransferSystemMessage(String assetId, String assetType) {
-    final chatRef = _db.collection('chats').doc(widget.chatId);
-    chatRef.collection('messages').add({
-      'text': 'Asset transfer completed successfully! ✅',
-      'type': 'system',
-      'senderId': myUid,
-      'timestamp': FieldValue.serverTimestamp(),
-      'seen': false,
-    });
   }
 
   void _navigateToTransferScreen(
@@ -530,7 +519,7 @@ class _ChatScreenState extends State<ChatScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: kScaffoldBg,
       appBar          : _buildAppBar(),
       body            : Column(
         children: [
@@ -552,11 +541,15 @@ class _ChatScreenState extends State<ChatScreen>
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: AppTheme.primaryStart,
+      backgroundColor: kTeal,
       elevation      : 0,
       flexibleSpace  : Container(
         decoration: const BoxDecoration(
-          gradient: AppTheme.primaryGradient,
+          gradient: LinearGradient(
+            colors: [kTealDark, kTeal],
+            begin : Alignment.topLeft,
+            end   : Alignment.bottomRight,
+          ),
         ),
       ),
       leading: IconButton(
@@ -684,7 +677,7 @@ class _ChatScreenState extends State<ChatScreen>
         }
         if (!snap.hasData) {
           return const Center(
-              child: CircularProgressIndicator(color: AppTheme.primaryStart));
+              child: CircularProgressIndicator(color: kTeal));
         }
         final docs = snap.data!.docs;
         if (docs.isEmpty) {
@@ -695,23 +688,23 @@ class _ChatScreenState extends State<ChatScreen>
                 Container(
                   padding   : const EdgeInsets.all(24),
                   decoration: const BoxDecoration(
-                    color: AppTheme.surface,
+                    color: kTealLight,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.chat_bubble_outline_rounded,
-                      size: 42, color: AppTheme.primaryStart),
+                      size: 42, color: kTeal),
                 ),
                 const SizedBox(height: 16),
                 Text('Say hello 👋',
                     style: GoogleFonts.poppins(
                       fontSize  : 16,
                       fontWeight: FontWeight.w600,
-                      color     : AppTheme.textPrimary,
+                      color     : kTextPrimary,
                     )),
                 const SizedBox(height: 6),
                 Text('Start the conversation',
                     style: GoogleFonts.poppins(
-                        fontSize: 13, color: AppTheme.textSecondary)),
+                        fontSize: 13, color: kTextSecondary)),
               ],
             ),
           );
@@ -730,7 +723,7 @@ class _ChatScreenState extends State<ChatScreen>
                       setState(() => _messageLimit += 20),
                   child: Text('Load earlier messages',
                       style: GoogleFonts.poppins(
-                          color: AppTheme.primaryStart, fontWeight: FontWeight.w600)),
+                          color: kTeal, fontWeight: FontWeight.w600)),
                 ),
               );
             }
@@ -762,7 +755,7 @@ class _ChatScreenState extends State<ChatScreen>
               const SizedBox(width: 8),
               Text('typing…',
                   style: GoogleFonts.poppins(
-                      fontSize: 12, color: AppTheme.textSecondary)),
+                      fontSize: 12, color: kTextSecondary)),
             ],
           ),
         );
@@ -792,11 +785,11 @@ class _ChatScreenState extends State<ChatScreen>
               child: Container(
                 padding   : const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color       : AppTheme.surface,
+                  color       : kTealLight,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.attach_file_rounded,
-                    color: AppTheme.primaryStart, size: 20),
+                    color: kTeal, size: 20),
               ),
             ),
             const SizedBox(width: 8),
@@ -805,15 +798,15 @@ class _ChatScreenState extends State<ChatScreen>
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color       : AppTheme.background,
+                  color       : kScaffoldBg,
                   borderRadius: BorderRadius.circular(24),
                   border      : Border.all(
-                      color: AppTheme.primaryStart.withOpacity(0.15)),
+                      color: kTeal.withOpacity(0.15)),
                 ),
                 child: TextField(
                   controller     : _controller,
                   style          : GoogleFonts.poppins(
-                      fontSize: 14, color: AppTheme.textPrimary),
+                      fontSize: 14, color: kTextPrimary),
                   onChanged: (val) {
                     _db.collection('chats').doc(widget.chatId).set(
                       {'typing': val.isNotEmpty},
@@ -825,7 +818,7 @@ class _ChatScreenState extends State<ChatScreen>
                   decoration    : InputDecoration(
                     hintText      : 'Type a message…',
                     hintStyle     : GoogleFonts.poppins(
-                        color: AppTheme.textSecondary, fontSize: 14),
+                        color: kTextSecondary, fontSize: 14),
                     contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 10),
                     border        : InputBorder.none,
@@ -841,7 +834,11 @@ class _ChatScreenState extends State<ChatScreen>
               child: Container(
                 padding   : const EdgeInsets.all(11),
                 decoration: const BoxDecoration(
-                  gradient: AppTheme.primaryGradient,
+                  gradient: LinearGradient(
+                    colors: [kTealDark, kTealAccent],
+                    begin : Alignment.topLeft,
+                    end   : Alignment.bottomRight,
+                  ),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
@@ -883,7 +880,7 @@ class _ChatScreenState extends State<ChatScreen>
                   loadingBuilder: (_, child, p) => p == null
                       ? child
                       : const Center(
-                      child: CircularProgressIndicator(color: AppTheme.primaryStart)),
+                      child: CircularProgressIndicator(color: kTeal)),
                   errorBuilder: (_, __, ___) => const Padding(
                     padding: EdgeInsets.all(32),
                     child  : Icon(Icons.broken_image_rounded,
@@ -905,16 +902,16 @@ class _ChatScreenState extends State<ChatScreen>
                 ? child
                 : Container(
               width: 200, height: 200,
-              color: AppTheme.surface,
+              color: kTealLight,
               child: const Center(
                   child: CircularProgressIndicator(color: kTeal)),
             ),
             errorBuilder: (_, __, ___) => Container(
               width : 200,
               height: 200,
-              color : AppTheme.surface,
+              color : kTealLight,
               child : const Icon(Icons.broken_image_rounded,
-                  color: AppTheme.primaryStart, size: 40),
+                  color: kTeal, size: 40),
             ),
           ),
         ),
@@ -949,7 +946,7 @@ class _ChatScreenState extends State<ChatScreen>
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(_fileIcon(msg['fileExtension'] ?? ''),
-                    color: isMe ? Colors.white : AppTheme.primaryStart, size: 22),
+                    color: isMe ? Colors.white : kTeal, size: 22),
               ),
               const SizedBox(width: 10),
               Flexible(
@@ -961,10 +958,10 @@ class _ChatScreenState extends State<ChatScreen>
                       style: GoogleFonts.poppins(
                         fontWeight: FontWeight.w600,
                         fontSize  : 13,
-                        color     : isMe ? Colors.white : AppTheme.textPrimary,
+                        color     : isMe ? Colors.white : kTextPrimary,
                         decoration: TextDecoration.underline,
                         decorationColor:
-                        isMe ? Colors.white : AppTheme.textPrimary,
+                        isMe ? Colors.white : kTextPrimary,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -976,7 +973,7 @@ class _ChatScreenState extends State<ChatScreen>
                         fontSize: 10,
                         color   : isMe
                             ? Colors.white70
-                            : AppTheme.textSecondary,
+                            : kTextSecondary,
                       ),
                     ),
                   ],
@@ -985,7 +982,7 @@ class _ChatScreenState extends State<ChatScreen>
               const SizedBox(width: 8),
               Icon(Icons.download_rounded,
                   size : 18,
-                  color: isMe ? Colors.white70 : AppTheme.primaryStart),
+                  color: isMe ? Colors.white70 : kTeal),
             ],
           ),
         ),
@@ -995,7 +992,7 @@ class _ChatScreenState extends State<ChatScreen>
         msg['text'] ?? '',
         style: GoogleFonts.poppins(
           fontSize: 14,
-          color   : isMe ? Colors.white : AppTheme.textPrimary,
+          color   : isMe ? Colors.white : kTextPrimary,
           height  : 1.4,
         ),
       );
@@ -1011,7 +1008,13 @@ class _ChatScreenState extends State<ChatScreen>
         ),
         padding    : const EdgeInsets.all(12),
         decoration : BoxDecoration(
-          gradient: isMe ? AppTheme.primaryGradient : null,
+          gradient: isMe
+              ? const LinearGradient(
+            colors: [kTealDark, kTealAccent],
+            begin : Alignment.topLeft,
+            end   : Alignment.bottomRight,
+          )
+              : null,
           color        : isMe ? null : Colors.white,
           borderRadius : BorderRadius.only(
             topLeft    : const Radius.circular(16),
@@ -1021,7 +1024,7 @@ class _ChatScreenState extends State<ChatScreen>
           ),
           boxShadow: [
             BoxShadow(
-              color     : AppTheme.primaryStart.withOpacity(0.08),
+              color     : kTeal.withOpacity(0.08),
               blurRadius: 8,
               offset    : const Offset(0, 2),
             ),
@@ -1042,7 +1045,7 @@ class _ChatScreenState extends State<ChatScreen>
                     fontSize: 10,
                     color   : isMe
                         ? Colors.white60
-                        : AppTheme.textSecondary,
+                        : kTextSecondary,
                   ),
                 ),
                 if (isMe) ...[
@@ -1162,7 +1165,7 @@ class _TypingDotsState extends State<_TypingDots>
               width    : 6,
               height   : 6,
               decoration: BoxDecoration(
-                color: AppTheme.primaryStart.withOpacity(opacity),
+                color: kTeal.withOpacity(opacity),
                 shape: BoxShape.circle,
               ),
             );

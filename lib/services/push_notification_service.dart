@@ -5,16 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import '../theme.dart';
 
 // ─── Brand Colors ─────────────────────────────────────────────────────────────
-const kTeal = Color(0xFF2D7D7D);
-const kTealDark = Color(0xFF1F5C5C);
-const kTealLight = Color(0xFFE8F4F4);
-const kTealAccent = Color(0xFF3AAFA9);
-const kScaffoldBg = Color(0xFFF5F8F8);
-const kTextPrimary = Color(0xFF1A2E2E);
-const kTextSecondary = Color(0xFF6B8E8E);
-const kCardBg = Colors.white;
+const kTeal = AppTheme.primaryStart;
+const kTealDark = AppTheme.primaryStartDark;
+const kTealLight = AppTheme.primaryLight;
+const kTealAccent = AppTheme.primaryEnd;
+const kScaffoldBg = AppTheme.background;
+const kTextPrimary = AppTheme.textPrimary;
+const kTextSecondary = AppTheme.textMid;
+const kCardBg = AppTheme.surface;
 
 // ─── Notification Types ───────────────────────────────────────────────────────
 /// All supported notification type strings.
@@ -261,15 +262,42 @@ class PushNotificationService {
     Map<String, dynamic>? payload,
   }) async {
     try {
+      final dedupeKey = _notificationDedupeKey(
+        receiverUid: receiverUid,
+        type: type,
+        relatedId: relatedId,
+      );
+      final normalizedPayload = payload ?? <String, dynamic>{};
+
+      if (dedupeKey != null) {
+        final existing = await _db
+            .collection('notifications')
+            .where('dedupeKey', isEqualTo: dedupeKey)
+            .limit(1)
+            .get();
+
+        if (existing.docs.isNotEmpty) {
+          await existing.docs.first.reference.update({
+            'title': title,
+            'body': body,
+            'isRead': false,
+            'timestamp': FieldValue.serverTimestamp(),
+            'payload': normalizedPayload,
+          });
+          return;
+        }
+      }
+
       await _db.collection('notifications').add({
         'receiverId': receiverUid,
         'title'     : title,
         'body'      : body,
         'type'      : type,
         'relatedId' : relatedId,
+        'dedupeKey' : dedupeKey,
         'isRead'    : false,
         'timestamp' : FieldValue.serverTimestamp(),
-        'payload'   : payload ?? {},
+        'payload'   : normalizedPayload,
       });
 
       // If this notification is for the currently logged-in user AND FCM
@@ -325,6 +353,25 @@ class PushNotificationService {
     }
 
     try {
+      final dedupeKey = _notificationDedupeKey(
+        receiverUid: receiverUid,
+        type: type,
+        relatedId: relatedId,
+      );
+
+      if (dedupeKey != null) {
+        final existing = await _db
+            .collection('pending_pushes')
+            .where('dedupeKey', isEqualTo: dedupeKey)
+            .limit(1)
+            .get();
+
+        if (existing.docs.isNotEmpty) {
+          debugPrint('ℹ️ Duplicate push skipped for $dedupeKey');
+          return;
+        }
+      }
+
       final userDoc  = await _db.collection('users').doc(receiverUid).get();
       final fcmToken = userDoc.data()?['fcmToken'] as String?;
       if (fcmToken == null) {
@@ -341,6 +388,7 @@ class PushNotificationService {
           'relatedId': relatedId ?? '',
           ...?data,
         },
+        'dedupeKey': dedupeKey,
         'status'   : 'pending',
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -738,8 +786,25 @@ class PushNotificationService {
     await batch.commit();
   }
 
-  Future<void> deleteNotification(String docId) async {
+  Future<void> deleteNotification(String docId, {String? dedupeKey}) async {
     try {
+      final normalizedDedupeKey = dedupeKey?.trim() ?? '';
+      if (normalizedDedupeKey.isNotEmpty) {
+        final duplicates = await _db
+            .collection('notifications')
+            .where('dedupeKey', isEqualTo: normalizedDedupeKey)
+            .get();
+
+        if (duplicates.docs.isNotEmpty) {
+          final batch = _db.batch();
+          for (final duplicate in duplicates.docs) {
+            batch.delete(duplicate.reference);
+          }
+          await batch.commit();
+          return;
+        }
+      }
+
       await _db.collection('notifications').doc(docId).delete();
     } catch (e) {
       debugPrint('❌ Error deleting notification: $e');
@@ -747,6 +812,16 @@ class PushNotificationService {
   }
 
   // ─── Internal helpers ────────────────────────────────────────────────────────
+
+  String? _notificationDedupeKey({
+    required String receiverUid,
+    required String type,
+    String? relatedId,
+  }) {
+    final normalizedRelatedId = relatedId?.trim() ?? '';
+    if (normalizedRelatedId.isEmpty) return null;
+    return '$receiverUid|$type|$normalizedRelatedId';
+  }
 
   String _channelIdForType(String type) {
     if (_isTransactionType(type)) return _txChannelId;
@@ -1089,63 +1164,7 @@ class NotificationsScreen extends StatefulWidget {
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends State<NotificationsScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  static const _tabs = ['All', 'Transactions', 'Verification', 'Security'];
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: _tabs.length, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  bool _matchesTab(int tabIndex, String type) {
-    if (tabIndex == 0) return true;
-    if (tabIndex == 1) {
-      return const {
-        NotificationType.transactionSent,
-        NotificationType.transactionReceived,
-        NotificationType.transactionFailed,
-        NotificationType.transactionPending,
-        NotificationType.transactionCancelled,
-        NotificationType.transactionRefunded,
-        NotificationType.productSold,
-        NotificationType.productPurchased,
-        NotificationType.productListed,
-        NotificationType.transfer,
-        NotificationType.transferReceived,
-        NotificationType.walletTopUp,
-        NotificationType.walletWithdrawal,
-        NotificationType.lowBalance,
-      }.contains(type);
-    }
-    if (tabIndex == 2) {
-      return const {
-        NotificationType.verificationStarted,
-        NotificationType.verificationApproved,
-        NotificationType.verificationRejected,
-        NotificationType.verificationPending,
-        NotificationType.kycRequired,
-      }.contains(type);
-    }
-    if (tabIndex == 3) {
-      return const {
-        NotificationType.loginAlert,
-        NotificationType.passwordChanged,
-        NotificationType.suspiciousActivity,
-      }.contains(type);
-    }
-    return true;
-  }
-
+class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     final String currentUserUid =
@@ -1159,23 +1178,19 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         scrolledUnderElevation: 0,
         leading: GestureDetector(
           onTap: () => Navigator.pop(context),
-          child: Container(
-            margin: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: kTealLight,
+            child: Container(
+              margin: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+              color: AppTheme.primaryLight,
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(Icons.arrow_back_ios_new_rounded,
-                color: kTeal, size: 18),
+                color: AppTheme.primaryStart, size: 18),
           ),
         ),
         title: Text(
           'Notifications',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: kTextPrimary,
-          ),
+          style: AppTheme.heading(18, color: AppTheme.textPrimary),
         ),
         actions: [
           // Unread badge
@@ -1194,15 +1209,15 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                   padding: const EdgeInsets.symmetric(
                       horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: kTealLight,
+                    color: AppTheme.primaryLight,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     '$unread unread',
-                    style: GoogleFonts.poppins(
-                      color: kTeal,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                    style: AppTheme.body(
+                      12,
+                      color: AppTheme.primaryStart,
+                      weight: FontWeight.w600,
                     ),
                   ),
                 )
@@ -1215,9 +1230,8 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               PushNotificationService().markAllAsRead(currentUserUid);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content:
-                  Text('All marked as read', style: GoogleFonts.poppins()),
-                  backgroundColor: kTeal,
+                  content: Text('All marked as read', style: AppTheme.body(14)),
+                  backgroundColor: AppTheme.primaryStart,
                   behavior: SnackBarBehavior.floating,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10)),
@@ -1228,42 +1242,23 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               margin: const EdgeInsets.only(right: 12),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: kTealLight,
+                color: AppTheme.primaryLight,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.done_all_rounded, color: kTeal, size: 20),
+              child: const Icon(
+                Icons.done_all_rounded,
+                color: AppTheme.primaryStart,
+                size: 20,
+              ),
             ),
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
-          labelStyle: GoogleFonts.poppins(
-              fontSize: 13, fontWeight: FontWeight.w600),
-          unselectedLabelStyle: GoogleFonts.poppins(fontSize: 13),
-          labelColor: kTeal,
-          unselectedLabelColor: kTextSecondary,
-          indicatorColor: kTeal,
-          indicatorWeight: 2.5,
-          tabs: _tabs.map((t) => Tab(text: t)).toList(),
-        ),
       ),
       body: currentUserUid.isEmpty
           ? _buildEmptyState(
           'Please log in to see notifications',
           Icons.lock_outline_rounded)
-          : TabBarView(
-        controller: _tabController,
-        children: List.generate(
-          _tabs.length,
-              (tabIndex) => _NotificationTabView(
-            userUid: currentUserUid,
-            tabIndex: tabIndex,
-            matchesTab: _matchesTab,
-          ),
-        ),
-      ),
+          : _NotificationListView(userUid: currentUserUid),
     );
   }
 
@@ -1322,16 +1317,12 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   }
 }
 
-// ─── Per-tab notification list ────────────────────────────────────────────────
-class _NotificationTabView extends StatelessWidget {
+// ─── Notification list ────────────────────────────────────────────────────────
+class _NotificationListView extends StatelessWidget {
   final String userUid;
-  final int tabIndex;
-  final bool Function(int tabIndex, String type) matchesTab;
 
-  const _NotificationTabView({
+  const _NotificationListView({
     required this.userUid,
-    required this.tabIndex,
-    required this.matchesTab,
   });
 
   @override
@@ -1347,13 +1338,7 @@ class _NotificationTabView extends StatelessWidget {
           return const Center(child: CircularProgressIndicator(color: kTeal));
         }
 
-        // Filter by tab, sort by timestamp descending
         final docs = (snapshot.data?.docs ?? [])
-            .where((d) {
-          final type =
-              ((d.data() as Map)['type'] as String?) ?? NotificationType.general;
-          return matchesTab(tabIndex, type);
-        })
             .toList()
           ..sort((a, b) {
             final aTs = (a.data() as Map)['timestamp'] as Timestamp?;
@@ -1364,9 +1349,20 @@ class _NotificationTabView extends StatelessWidget {
             return bTs.compareTo(aTs);
           });
 
-        if (docs.isEmpty) {
+        final seenKeys = <String>{};
+        final dedupedDocs = docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final dedupeKey = data['dedupeKey']?.toString().trim();
+          final fallbackKey =
+              '${data['receiverId'] ?? ''}|${data['type'] ?? ''}|${data['relatedId'] ?? doc.id}';
+          return seenKeys.add(
+            dedupeKey != null && dedupeKey.isNotEmpty ? dedupeKey : fallbackKey,
+          );
+        }).toList();
+
+        if (dedupedDocs.isEmpty) {
           return _emptyState(
-            'No notifications here',
+            'No notifications yet',
             Icons.notifications_off_rounded,
             subtitle: "You're all caught up!",
           );
@@ -1374,9 +1370,9 @@ class _NotificationTabView extends StatelessWidget {
 
         return ListView.builder(
           padding: const EdgeInsets.only(top: 16, bottom: 24),
-          itemCount: docs.length,
+          itemCount: dedupedDocs.length,
           itemBuilder: (context, index) {
-            final doc = docs[index];
+            final doc = dedupedDocs[index];
             final data = doc.data() as Map<String, dynamic>;
             final docId = doc.id;
 
@@ -1410,7 +1406,10 @@ class _NotificationTabView extends StatelessWidget {
                 ),
               ),
               onDismissed: (_) {
-                PushNotificationService().deleteNotification(docId);
+                PushNotificationService().deleteNotification(
+                  docId,
+                  dedupeKey: data['dedupeKey']?.toString(),
+                );
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('Notification deleted',
