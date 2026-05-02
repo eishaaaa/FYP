@@ -148,22 +148,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
             currentIndex: _selectedIndex,
             onTap: (i) => setState(() => _selectedIndex = i),
             items: const [
-              BottomNavigationBarItem(
-                icon: Icon(Icons.grid_view_rounded),
-                label: 'Dashboard',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.people_alt_rounded),
-                label: 'Users',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.gavel_rounded),
-                label: 'Disputes',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.receipt_long_rounded),
-                label: 'Transactions',
-              ),
+              BottomNavigationBarItem(icon: Icon(Icons.dashboard_rounded), label: 'Dashboard'),
+              BottomNavigationBarItem(icon: Icon(Icons.people_rounded), label: 'Users'),
+              BottomNavigationBarItem(icon: Icon(Icons.apartment_rounded), label: 'Properties'),
+              BottomNavigationBarItem(icon: Icon(Icons.gavel_rounded), label: 'Disputes'),
+              BottomNavigationBarItem(icon: Icon(Icons.receipt_long_rounded), label: 'Transactions'),
             ],
           ),
         ),
@@ -925,25 +914,7 @@ class _AssetModerationState extends State<AssetModeration> {
                                   width: double.infinity,
                                   child: Column(
                                     children: [
-                                      if (asset['category']?.toString().toLowerCase() == 'electronics' && 
-                                          (asset['currentOwnerAddress'] == null || asset['currentOwnerAddress'].toString().isEmpty))
-                                        Padding(
-                                          padding: const EdgeInsets.only(bottom: 10),
-                                          child: SizedBox(
-                                            width: double.infinity,
-                                            child: ElevatedButton.icon(
-                                              onPressed: () => _transferToSupplier(assetId, asset),
-                                              icon: const Icon(Icons.local_shipping_rounded, size: 18),
-                                              label: const Text('Transfer to Supplier'),
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.orange,
-                                                foregroundColor: Colors.white,
-                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
+                                        const SizedBox.shrink(),
                                       SizedBox(
                                         width: double.infinity,
                                         child: OutlinedButton.icon(
@@ -1065,79 +1036,6 @@ class _AssetModerationState extends State<AssetModeration> {
     if (mounted) _showSnack('Verification revoked', color: Colors.orange);
   }
 
-  Future<void> _transferToSupplier(String assetId, Map<String, dynamic> assetData) async {
-    // 1. Fetch Suppliers
-    final suppliersQuery = await db.collection('users')
-        .where('role', isGreaterThanOrEqualTo: 'supplier')
-        .where('role', isLessThanOrEqualTo: 'supplier\uf8ff')
-        .get();
-    
-    if (suppliersQuery.docs.isEmpty) {
-      _showSnack('No suppliers found in the system.', color: Colors.orange);
-      return;
-    }
-
-    if (!mounted) return;
-
-    // 2. Show Picker
-    final supplier = await showDialog<QueryDocumentSnapshot>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Select Supplier'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: suppliersQuery.docs.length,
-            itemBuilder: (_, i) {
-              final s = suppliersQuery.docs[i].data();
-              return ListTile(
-                title: Text(s['name'] ?? 'Unknown'),
-                subtitle: Text(s['email'] ?? ''),
-                onTap: () => Navigator.pop(ctx, suppliersQuery.docs[i]),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-
-    if (supplier == null) return;
-
-    try {
-      final sData = supplier.data() as Map<String, dynamic>;
-      final address = sData['walletAddress'] ?? sData['address'];
-      
-      if (address == null || address.toString().isEmpty) {
-        _showSnack('Supplier has no wallet address linked.', color: Colors.red);
-        return;
-      }
-
-      final tokenId = assetData['blockchainTokenId'];
-      if (tokenId == null) throw 'Missing Blockchain Token ID';
-
-      _showSnack('⏳ Processing blockchain transfer...');
-      
-      // Execute Transfer
-      final tx = await _blockchainService.transferElectronics(
-        toAddress: address,
-        tokenId: (tokenId is int) ? tokenId : int.parse(tokenId.toString()),
-      );
-
-      if (tx != null) {
-        // Update Firestore
-        await db.collection('assets').doc(assetId).update({
-          'currentOwnerAddress': address,
-          'supplierUid': supplier.id,
-          'status': 'InTransit', // Moving from Dell to Supplier
-        });
-        
-        _showSnack('✅ Successfully transferred to ${sData['name']}!', color: Colors.green);
-      }
-    } catch (e) {
-      _showSnack('Transfer failed: $e', color: Colors.red);
-    }
-  }
 
   void _showSnack(String msg, {Color? color}) {
     ScaffoldMessenger.of(context).showSnackBar(

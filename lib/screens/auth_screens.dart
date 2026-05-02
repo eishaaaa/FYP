@@ -446,9 +446,14 @@ class _LoginScreenState extends State<LoginScreen>
       final cred = await auth.signInWithEmailAndPassword(
           email: _emailCtrl.text.trim(), password: _passCtrl.text.trim());
       final snap = await db.collection('users').doc(cred.user!.uid).get();
-      final role = ((snap.data()?['role'] as String?) ?? 'user')
-          .toLowerCase()
-          .trim();
+      if (!snap.exists) {
+        if (mounted) {
+           _showSnack(context, 'Account record missing. Please register your role.', color: Colors.orange);
+           Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen()));
+        }
+        return;
+      }
+      final role = (snap.data()?['role'] as String? ?? 'user').toLowerCase().trim();
       if (!mounted) return;
       _navigateByRole(role);
     } catch (e) {

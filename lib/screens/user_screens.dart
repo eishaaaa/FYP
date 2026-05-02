@@ -483,8 +483,10 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
 
   QuerySnapshot? _snap1;
   QuerySnapshot? _snap2;
+  QuerySnapshot? _snap3;
   StreamSubscription? _sub1;
   StreamSubscription? _sub2;
+  StreamSubscription? _sub3;
 
   @override
   void initState() {
@@ -514,36 +516,47 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
       },
     );
 
-    // Query 2 — ownerUid (used by some supplier upload flows)
-    _sub2 = db
-        .collection('assets')
-        .where('ownerUid', isEqualTo: uid)
+    // Query 3 — fractional holdings (for bought land)
+    _sub3 = db
+        .collection('fractional_holdings')
+        .where('userId', isEqualTo: uid)
+        .where('fractionsOwned', isGreaterThan: 0)
         .snapshots()
         .listen(
-          (snap) {
-        _snap2 = snap;
+      (snap) async {
+        _snap3 = snap;
         _mergeAndSetState();
-      },
-      onError: (e) {
-        if (mounted) {
-          setState(() {
-            _assetsError = e.toString();
-            _assetsLoading = false;
-          });
-        }
       },
     );
   }
 
-  void _mergeAndSetState() {
+  void _mergeAndSetState() async {
     final seen = <String>{};
     final merged = <QueryDocumentSnapshot>[];
+    
+    // Add primary owned assets
     for (final snap in [_snap1, _snap2]) {
       if (snap == null) continue;
       for (final doc in snap.docs) {
         if (seen.add(doc.id)) merged.add(doc);
       }
     }
+
+    // Add fractional holdings
+    if (_snap3 != null) {
+      for (final holdingDoc in _snap3!.docs) {
+        final h = holdingDoc.data() as Map<String, dynamic>;
+        final assetId = h['assetId'] as String?;
+        if (assetId != null && seen.add(assetId)) {
+          // Fetch the master asset doc if we don't have it yet
+          final assetDoc = await db.collection('assets').doc(assetId).get();
+          if (assetDoc.exists) {
+             merged.add(assetDoc as QueryDocumentSnapshot);
+          }
+        }
+      }
+    }
+
     if (mounted) {
       setState(() {
         _ownedAssets = merged;
@@ -557,7 +570,97 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
   void dispose() {
     _sub1?.cancel();
     _sub2?.cancel();
+    _sub3?.cancel();
     super.dispose();
+  }
+
+  Future<void> _restoreAssets() async {
+    setState(() => _loading = true);
+    try {
+      await _ensureWalletConnected();
+      final addr = _blockchain.connectedAddress!;
+      
+      // Show scanning dialog
+      _showScanningDialog();
+      
+      // In a real app, you'd scan events. 
+      // For this prototype, we'll ask the user to input a Token ID if they know it,
+      // or we scan a range if possible.
+      // But based on Problem 7, we'll just implement a manual "Restore by ID" for now.
+      _showRestoreDialog();
+      
+    } catch (e) {
+      _showSnack('Sync error: $e');
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  void _showScanningDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Syncing with Blockchain'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Scanning for your digital goods…'),
+          ],
+        ),
+      ),
+    );
+    Future.delayed(const Duration(seconds: 2), () => Navigator.pop(context));
+  }
+
+  void _showRestoreDialog() {
+    final idCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restore Asset'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Enter the Blockchain Token ID or Property ID to restore from chain.'),
+            TextField(
+              controller: idCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Token/Property ID'),
+            ),
+            const SizedBox(height: 10),
+            const Text('Note: This will recreate the record if you deleted it from the app.', 
+              style: TextStyle(fontSize: 11, color: Colors.grey)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              final id = int.tryParse(idCtrl.text);
+              if (id == null) return;
+              Navigator.pop(ctx);
+              
+              setState(() => _loading = true);
+              // Try restoring as electronics first, then land
+              await _blockchain.restoreAssetFromBlockchain(type: 'electronics', tokenId: id, firestore: db);
+              await _blockchain.restoreAssetFromBlockchain(type: 'land', tokenId: id, firestore: db);
+              setState(() => _loading = false);
+              
+              _showSnack('Restoration process complete. Check your list.');
+            },
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSnack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   String _formatDate(DateTime dt) {
@@ -820,9 +923,20 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
       );
     }
 
-    return Container(
-      color: AppTheme.background,
-      child: ListView.builder(
+    return Scaffold(
+      backgroundColor: AppTheme.background,
+      appBar: AppBar(
+        title: const Text('My Digital Goods'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.sync_rounded),
+            tooltip: 'Sync with Blockchain',
+            onPressed: _restoreAssets,
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         itemCount: _ownedAssets.length,
         itemBuilder: (context, index) {

@@ -223,6 +223,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // ── Logout ────────────────────────────────────────────────────────────────
   Future<void> _logout() async {
+    clearRoleCache(); // 🚀 Clear cache
     await _auth.signOut();
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
@@ -304,10 +305,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _userDocStream,
       builder: (context, snap) {
-        final data = snap.hasData && snap.data!.data() != null
-            ? snap.data!.data()!
-            : <String, dynamic>{};
+        if (!snap.hasData || snap.data!.data() == null) {
+          return Scaffold(
+            backgroundColor: const Color(0xFFF5F7FA),
+            appBar: AppBar(title: const Text('Profile')),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.account_circle_outlined, size: 64, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  const Text('No profile found. Please register.', style: TextStyle(fontSize: 16, color: Colors.grey)),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+                    child: const Text('Go to Registration'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
 
+        final data = snap.data!.data()!;
         final displayEmail = user.email ?? '';
         final name         = data['name']     ?? user.displayName ?? '';
         final role         = data['role']     ?? 'user';
@@ -690,6 +710,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (confirmed != true) return;
     setState(() => _loading = true);
     try {
+      clearRoleCache(); // 🚀 Clear cache
       await _db
           .collection('users')
           .doc(user.uid)

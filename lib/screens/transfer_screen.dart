@@ -136,6 +136,12 @@ class _TransferScreenState extends State<TransferScreen> {
   }
 
   Future<void> _executeTransfer() async {
+    if (_isStolen) {
+      setState(() => _errorMessage =
+      'This asset is reported stolen and cannot be transferred.');
+      return;
+    }
+
     if (_buyerWalletAddress == null || _buyerWalletAddress!.isEmpty) {
       setState(() => _errorMessage =
       'Buyer has not connected a wallet yet. Ask them to connect their wallet in the app first.');
@@ -348,8 +354,13 @@ class _TransferScreenState extends State<TransferScreen> {
 
     final assetRef = _db.collection('assets').doc(widget.assetId);
     
-    // For Electronics: Standard 1-to-1 ownership
-    // For Land: Master record remains, fractional holdings tracked separately
+    // Global updates for both types
+    batch.update(assetRef, {
+      'isListedForResale': false,
+      'isSyncingWithBlockchain': false,
+      'lastTransferredAt': FieldValue.serverTimestamp(),
+    });
+
     if (!isLand) {
       batch.update(assetRef, {
         'ownerId': widget.buyerUid,
@@ -357,13 +368,11 @@ class _TransferScreenState extends State<TransferScreen> {
         'previousOwnerId': widget.sellerUid,
         'transferredAt': FieldValue.serverTimestamp(),
         'txHash': _txHash,
-        'isListedForResale': false,
-        'isSyncingWithBlockchain': false,
       });
     } else {
-      // Land: Just clear the syncing flag on master doc
+      // Land: Master record remains with original supplier or owner, 
+      // but fractional holdings tracked separately.
       batch.update(assetRef, {
-        'isSyncingWithBlockchain': false,
         'lastFractionTransferAt': FieldValue.serverTimestamp(),
       });
 

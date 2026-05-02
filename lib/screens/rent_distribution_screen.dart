@@ -356,31 +356,40 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
       if (txHash != null) {
         final ok = await _blockchainService.waitForConfirmation(txHash);
         if (ok) {
-          final requestId = _db.collection('rent_requests').doc().id;
+          final txId = _db.collection('transactions').doc().id;
           final batch = _db.batch();
           final rentAmount = _blockchainService.weiToEther(_propertyData!['monthlyRent']);
+          final ownerUid = _propertyData!['originalOwnerUid'] ?? '';
+          final deposit = (double.tryParse(_propertyData!['securityDeposit']?.toString() ?? '0') ?? 0.0);
 
-          batch.set(_db.collection('rent_requests').doc(requestId), {
+          batch.set(_db.collection('transactions').doc(txId), {
+            'transactionId': txId,
             'assetId': widget.assetId,
-            'propertyId': _activePropertyId ?? widget.propertyId,
-            'tenantUid': user.uid,
-            'ownerUid': _propertyData!['originalOwnerUid'] ?? '',
-            'rentAmount': rentAmount,
+            'buyerUid': user.uid,
+            'sellerUid': ownerUid,
             'status': 'pendingApproval',
+            'category': 'land',
+            'requestType': 'rental',
+            'amount': rentAmount,
+            'rentalFee': double.tryParse(rentAmount) ?? 0.0,
+            'depositAmount': deposit,
+            'blockchainPropertyId': _activePropertyId ?? widget.propertyId,
+            'blockchainTokenId': _activePropertyId ?? widget.propertyId,
             'createdAt': FieldValue.serverTimestamp(),
           });
 
-          batch.set(_db.collection('transactions').doc(requestId), {
-            'transactionId': requestId,
+          // Create Locked Chat
+          batch.set(_db.collection('chats').doc(txId), {
+            'transactionId': txId,
             'assetId': widget.assetId,
+            'assetType': 'land',
             'buyerUid': user.uid,
-            'sellerUid': _propertyData!['originalOwnerUid'] ?? '',
-            'status': 'pendingApproval',
-            'category': 'land',
-            'requestType': 'rent_request',
-            'amount': rentAmount,
-            'blockchainPropertyId': _activePropertyId ?? widget.propertyId,
+            'sellerUid': ownerUid,
+            'participants': [user.uid, ownerUid],
+            'lastMessage': 'I am interested in renting this property.',
+            'lastMessageTime': FieldValue.serverTimestamp(),
             'createdAt': FieldValue.serverTimestamp(),
+            'isLocked': true, // 🔒 Gated until approval
           });
 
           await batch.commit();
@@ -398,12 +407,18 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
   }
 
   Future<void> _payMonthlyRent() async {
-    final rentWei = _propertyData!['monthlyRent'] as BigInt;
-    _showProcessingDialog('Paying monthly rent…');
+    final monthlyRentWei = _propertyData!['monthlyRent'] as BigInt;
+    final depositMatic = double.tryParse(_currentTransaction?['depositAmount']?.toString() ?? '0') ?? 0.0;
+    final depositWei = _blockchainService.etherToWei(depositMatic);
+    
+    final isInitialPayment = _currentTransaction?['status'] == 'approved';
+    final totalWei = isInitialPayment ? (monthlyRentWei + depositWei) : monthlyRentWei;
+
+    _showProcessingDialog(isInitialPayment ? 'Paying Rent & Deposit…' : 'Paying monthly rent…');
     try {
       final txHash = await _blockchainService.payLandMonthlyRent(
         propertyId: _activePropertyId ?? widget.propertyId,
-        amount: rentWei,
+        amount: totalWei,
       );
       if (txHash != null) {
         final ok = await _blockchainService.waitForConfirmation(txHash);

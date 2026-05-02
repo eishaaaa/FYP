@@ -21,7 +21,6 @@ import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 
 import 'wallet_service.dart';
 import 'contract_config.dart';
-import '../screens/transaction_model.dart';
 
 class BlockchainServiceEnhanced {
   // Singleton Pattern
@@ -542,6 +541,69 @@ class BlockchainServiceEnhanced {
   // SECURITY & SELF-HEALING
   // ═══════════════════════════════════════════════════════════
 
+  /// Restores a missing Firestore document from blockchain truth.
+  Future<void> restoreAssetFromBlockchain({
+    required String type,
+    required int tokenId,
+    required FirebaseFirestore firestore,
+  }) async {
+    try {
+      await init();
+      final owner = await getOwnerOf(type, tokenId);
+      if (owner == null) return;
+
+      Map<String, dynamic> chainData;
+      if (type == 'electronics') {
+        final d = await getDevice(tokenId);
+        if (d == null) return;
+        chainData = {
+          'title': '${d['brand']} ${d['model']}',
+          'brand': d['brand'],
+          'model': d['model'],
+          'serial': d['serialNumber'],
+          'category': 'electronics',
+          'verified': d['isVerified'],
+        };
+      } else {
+        final l = await getLandProperty(tokenId);
+        if (l == null) return;
+        chainData = {
+          'title': l['location'],
+          'city': l['city'],
+          'plotArea': l['plotArea'],
+          'category': 'land',
+          'verified': l['isVerified'],
+          'totalFractions': l['totalFractions'],
+        };
+      }
+
+      // Resolve owner UID
+      final userQuery = await firestore.collection('users')
+          .where('walletAddress', isEqualTo: owner)
+          .limit(1).get();
+      
+      String? ownerUid;
+      if (userQuery.docs.isNotEmpty) {
+        ownerUid = userQuery.docs.first.id;
+      }
+
+      final assetId = 'restored_$tokenId';
+      await firestore.collection('assets').doc(assetId).set({
+        ...chainData,
+        'blockchainTokenId': tokenId,
+        'ownerId': ownerUid,
+        'ownerUid': ownerUid,
+        'currentOwnerAddress': owner,
+        'isRestored': true,
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      debugPrint('✅ Restored asset $assetId from blockchain');
+    } catch (e) {
+      debugPrint('❌ Restoration failed: $e');
+    }
+  }
+
   /// Verifies Firestore data against Blockchain truth and heals if tampered.
   /// Returns true if data was healthy, false if a healing operation was performed.
   Future<bool> verifyAndHealAsset({
@@ -554,7 +616,12 @@ class BlockchainServiceEnhanced {
       await init();
       final docRef = firestore.collection('assets').doc(firestoreDocId);
       final docSnap = await docRef.get();
-      if (!docSnap.exists) return true;
+      
+      if (!docSnap.exists) {
+        // 🚨 Problem 7: If deleted from Firebase, recreate it!
+        await restoreAssetFromBlockchain(type: type, tokenId: blockchainId, firestore: firestore);
+        return false;
+      }
 
       final data = docSnap.data()!;
       
@@ -734,9 +801,23 @@ class BlockchainServiceEnhanced {
     final fee = (data['rentalFee'] ?? 0.0).toDouble();
     final deposit = (data['depositAmount'] ?? 0.0).toDouble();
     final leaseMonths = data['leaseMonths'] ?? 6;
+    final ownerUid = data['sellerUid'];
 
-    // 🔒 Lock funds in escrow (Total = Rental Fee + Security Deposit)
+    // 💸 Immediate Transfer of Rent to Owner (Supplier)
+    // and Lock Deposit in Escrow
     await _walletService.lockFunds(fee + deposit);
+    await _walletService.consumeLockedFunds(fee); // Transfer rent to owner immediately
+    
+    // Log the transaction for the owner
+    if (ownerUid != null) {
+      await FirebaseFirestore.instance.collection('users').doc(ownerUid).collection('history').add({
+        'type': 'received',
+        'amount': fee,
+        'title': 'Rental Payment Received',
+        'timestamp': FieldValue.serverTimestamp(),
+        'transactionId': txId,
+      });
+    }
 
     final start = DateTime.now();
     final expiry = start.add(Duration(days: leaseMonths * 30));

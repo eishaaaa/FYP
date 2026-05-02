@@ -3,8 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'shared_screens.dart';
 import 'asset_detail_screen.dart';
-import 'resale_listing_sheet.dart';
-import 'rent_distribution_screen.dart';
 import '../services/resale_service.dart';
 import '../theme.dart';
 

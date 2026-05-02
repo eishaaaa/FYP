@@ -21,6 +21,7 @@ import 'qr_scanner_enhanced.dart';
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
 import 'wallet_screen.dart';
+import 'rental_requests_tab.dart'; // 🏠 New Import
 import '../widgets/hand_help_tooltip.dart';
 import '../theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -235,6 +236,7 @@ class _SupplierHomeScreenState extends State<SupplierHomeScreen> {
       SupplierHome(type: widget.type, showHelp: () => _showHelp),
       const QRScannerEnhanced(),
       const MyAssetsScreen(),
+      const RentalRequestsTab(), // 🏠 New Tab
       const ProfileScreen(),
     ];
   }
@@ -268,6 +270,10 @@ class _SupplierHomeScreenState extends State<SupplierHomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.inventory),
             label: 'My Assets',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.key_rounded),
+            label: 'Rent Requests',
           ),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
@@ -547,11 +553,26 @@ class AssetManagementScreen extends StatelessWidget {
         }
         if (!snap.hasData)
           return const Center(child: CircularProgressIndicator());
-        // Client-side filter by category — avoids needing a composite index
+        // Client-side filter by category & ownership
         final docs = snap.data!.docs.where((doc) {
           final d = doc.data() as Map<String, dynamic>;
-          return (d['category'] ?? '').toString().toLowerCase() ==
-              type.toLowerCase();
+          final category = (d['category'] ?? '').toString().toLowerCase();
+          if (category != type.toLowerCase()) return false;
+
+          // For land, check if the user still has fractions
+          if (category == 'land') {
+             final fractionsOwned = d['fractionsOwned'] ?? d['totalFractions'] ?? 0;
+             // If this is the original supplier, we need to check if they still hold a master stake 
+             // or if they've sold everything.
+             // Actually, it's better to check the 'fractional_holdings' but for now we'll check 
+             // if ownerId matches and they haven't transferred full ownership.
+             if (d['ownerId'] != auth.currentUser!.uid) return false;
+          } else {
+             // For electronics, ownerId must match
+             if (d['ownerId'] != auth.currentUser!.uid) return false;
+          }
+
+          return true;
         }).toList();
         if (docs.isEmpty) {
           return Center(

@@ -764,97 +764,126 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Widget _buildInputBar() {
-    return SafeArea(
-      child: Container(
-        padding   : const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color    : Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color     : kTeal.withOpacity(0.08),
-              blurRadius: 16,
-              offset    : const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // Attach button
-            GestureDetector(
-              onTap: _sendFile,
-              child: Container(
-                padding   : const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color       : kTealLight,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.attach_file_rounded,
-                    color: kTeal, size: 20),
-              ),
-            ),
-            const SizedBox(width: 8),
+    return StreamBuilder<DocumentSnapshot>(
+      stream: _db.collection('chats').doc(widget.chatId).snapshots(),
+      builder: (context, snap) {
+        final data = snap.data?.data() as Map<String, dynamic>?;
+        final isLocked = data?['isLocked'] == true;
 
-            // Text field
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color       : kScaffoldBg,
-                  borderRadius: BorderRadius.circular(24),
-                  border      : Border.all(
-                      color: kTeal.withOpacity(0.15)),
-                ),
-                child: TextField(
-                  controller     : _controller,
-                  style          : GoogleFonts.poppins(
-                      fontSize: 14, color: kTextPrimary),
-                  onChanged: (val) {
-                    _db.collection('chats').doc(widget.chatId).set(
-                      {'typing': val.isNotEmpty},
-                      SetOptions(merge: true),
-                    );
-                  },
-                  onSubmitted   : (_) => _sendMessage(),
-                  textInputAction: TextInputAction.send,
-                  decoration    : InputDecoration(
-                    hintText      : 'Type a message…',
-                    hintStyle     : GoogleFonts.poppins(
-                        color: kTextSecondary, fontSize: 14),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
-                    border        : InputBorder.none,
-                  ),
-                ),
-              ),
+        if (isLocked) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              border: Border(top: BorderSide(color: Colors.orange.shade100)),
             ),
-            const SizedBox(width: 8),
-
-            // Send button
-            GestureDetector(
-              onTap: _sendMessage,
-              child: Container(
-                padding   : const EdgeInsets.all(11),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [kTealDark, kTealAccent],
-                    begin : Alignment.topLeft,
-                    end   : Alignment.bottomRight,
-                  ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color     : Color(0x442D7D7D),
-                      blurRadius: 8,
-                      offset    : Offset(0, 3),
+            child: Row(
+              children: [
+                Icon(Icons.lock_clock_rounded, size: 18, color: Colors.orange.shade800),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Chat is locked until the owner approves the request.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: Colors.orange.shade900,
+                      fontWeight: FontWeight.w500,
                     ),
-                  ],
+                  ),
                 ),
-                child: const Icon(Icons.send_rounded,
-                    color: Colors.white, size: 18),
-              ),
+              ],
             ),
-          ],
-        ),
-      ),
+          );
+        }
+
+        return SafeArea(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: kTeal.withOpacity(0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                // Attach button
+                GestureDetector(
+                  onTap: _sendFile,
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: kTealLight,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.attach_file_rounded,
+                        color: kTeal, size: 20),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // Text field
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: kScaffoldBg,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: kTeal.withOpacity(0.15)),
+                    ),
+                    child: TextField(
+                      controller: _controller,
+                      style: GoogleFonts.poppins(fontSize: 14, color: kTextPrimary),
+                      onChanged: (val) {
+                        _db.collection('chats').doc(widget.chatId).set(
+                          {'typing': val.isNotEmpty},
+                          SetOptions(merge: true),
+                        );
+                      },
+                      onSubmitted: (_) => _sendMessage(),
+                      textInputAction: TextInputAction.send,
+                      decoration: InputDecoration(
+                        hintText: 'Type a message…',
+                        hintStyle: GoogleFonts.poppins(color: kTextSecondary, fontSize: 14),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        border: InputBorder.none,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // Send button
+                GestureDetector(
+                  onTap: _sendMessage,
+                  child: Container(
+                    padding: const EdgeInsets.all(11),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [kTealDark, kTealAccent],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0x442D7D7D),
+                          blurRadius: 8,
+                          offset: Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

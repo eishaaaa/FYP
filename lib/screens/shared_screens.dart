@@ -18,18 +18,33 @@ import '../theme.dart';
 // GLOBAL HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
+String? _cachedRole; // 🚀 Speed Optimization
+
 /// Fetch current user role
 Future<String> fetchCurrentRole() async {
   try {
     final user = auth.currentUser;
-    if (user == null) return 'user';
+    if (user == null) return '';
+    
+    // Return cached role if available
+    if (_cachedRole != null) return _cachedRole!;
+
     final snap = await db.collection('users').doc(user.uid).get();
+    if (!snap.exists) return ''; // 🚨 Fix: Don't default to 'user' if doc is missing
+
     final r = snap.data()?['role'] as String?;
     if (r == null || r.isEmpty) return 'user';
+    
+    _cachedRole = r; // Cache for next call
     return r;
   } catch (_) {
-    return 'user';
+    return '';
   }
+}
+
+/// Reset role cache (call on logout)
+void clearRoleCache() {
+  _cachedRole = null;
 }
 
 /// Decode base64 image safely
@@ -611,12 +626,12 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                         ),
                       ],
                     ),
-                    if (t['requestType'] == 'rent_request') ...[
+                    if (t['requestType'] == 'rental') ...[
                       const SizedBox(height: 4),
                       Row(children: [
                         Icon(Icons.calendar_month_outlined, size: 14, color: AppTheme.textMid),
                         const SizedBox(width: 6),
-                        Text('Monthly Rent: ${t['amount']} MATIC',
+                        Text('Monthly Rent: ${t['rentalFee'] ?? t['amount']} MATIC',
                             style: AppTheme.heading(13, color: AppTheme.primaryStart)),
                       ]),
                     ] else if (t['price'] != null) ...[
@@ -690,7 +705,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                             ),
                             onPressed: () {
-                              if (t['requestType'] == 'rent_request') {
+                              if (t['requestType'] == 'rental') {
                                 _acceptRentTransaction(context, id, t);
                               } else {
                                 _updateStatus(id, 'approved');
@@ -705,7 +720,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                             ),
                             onPressed: () {
-                              if (t['requestType'] == 'rent_request') {
+                              if (t['requestType'] == 'rental') {
                                 _updateRentRequestStatus(id, 'rejected');
                               } else {
                                 _updateStatus(id, 'rejected');
@@ -943,7 +958,6 @@ class _TransactionsScreenState extends State<TransactionsScreen>
         if (ok) {
           final batch = db.batch();
           batch.update(db.collection('transactions').doc(transactionId), {'status': 'approved'});
-          batch.update(db.collection('rent_requests').doc(transactionId), {'status': 'approved'});
 
           // Fetch property to get current pending tenant address
           final prop = await service.getLandProperty(propertyId is int ? propertyId : int.parse(propertyId.toString()));
@@ -970,7 +984,6 @@ class _TransactionsScreenState extends State<TransactionsScreen>
   Future<void> _updateRentRequestStatus(String id, String status) async {
     final batch = db.batch();
     batch.update(db.collection('transactions').doc(id), {'status': status});
-    batch.update(db.collection('rent_requests').doc(id), {'status': status});
     await batch.commit();
   }
 

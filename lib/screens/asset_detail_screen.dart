@@ -619,10 +619,6 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                           ] else ...[
                             _buildDetailRow('Listing Type', 'For Sale / Investment'),
                           ],
-                          _buildDetailRow(
-                            'Location',
-                            data['location'] ?? data['city'] ?? '—',
-                          ),
                           _buildDetailRow('City', data['city'] ?? '—'),
                           _buildDetailRow('Location', data['location'] ?? '—'),
                         ] else ...[
