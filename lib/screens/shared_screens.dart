@@ -235,15 +235,17 @@ class _TransactionsScreenState extends State<TransactionsScreen>
 
         return Scaffold(
           appBar: AppBar(
-            backgroundColor: AppTheme.primaryStart,
-            flexibleSpace: Container(
-              decoration: const BoxDecoration(
-                gradient: AppTheme.primaryGradient,
-              ),
-            ),
-            title: Text(_isBuyingMode! ? 'My Purchases' : 'My Sales', style: AppTheme.heading(18, color: Colors.white)),
+            backgroundColor: Colors.white,
+            elevation: 0,
+            centerTitle: true,
+            automaticallyImplyLeading: false,
+            title: Text(_isBuyingMode! ? 'My Purchases' : 'My Sales',
+                style: TextStyle(
+                    color: Color(0xFF1A1A2E),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600),),
             leading: IconButton(
-              icon: const Icon(Icons.chevron_left, color: Colors.white),
+              icon: const Icon(Icons.chevron_left, color: Colors.black),
               onPressed: () => Navigator.pop(context),
             ),
             actions: [
@@ -251,8 +253,12 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                 padding: const EdgeInsets.only(right: 8),
                 child: TextButton.icon(
                   onPressed: () => setState(() => _isBuyingMode = !_isBuyingMode!),
-                  icon: Icon(_isBuyingMode! ? Icons.sell : Icons.shopping_cart, size: 18, color: Colors.white),
-                  label: Text(_isBuyingMode! ? 'Switch to Selling' : 'Switch to Buying', style: AppTheme.body(12, weight: FontWeight.w600, color: Colors.white)),
+                  icon: Icon(_isBuyingMode! ? Icons.sell : Icons.shopping_cart, size: 18, color: Colors.black),
+                  label: Text(_isBuyingMode! ? 'Switch to Selling' : 'Switch to Buying',
+                      style: TextStyle(
+                      fontSize:12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black)),
                   style: TextButton.styleFrom(foregroundColor: Colors.white),
                 ),
               ),
@@ -922,15 +928,15 @@ class _TransactionsScreenState extends State<TransactionsScreen>
   Future<void> _acceptRentTransaction(BuildContext context, String transactionId, Map<String, dynamic> t) async {
     final assetId = t['assetId'];
     final propertyId = t['blockchainPropertyId'];
-    
+
     if (propertyId == null) return;
 
     try {
       final service = BlockchainServiceEnhanced();
       await service.init();
-      
+
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Confirming on blockchain...')));
-      
+
       final txHash = await service.acceptLandRentRequest(propertyId is int ? propertyId : int.parse(propertyId.toString()));
       if (txHash != null) {
         final ok = await service.waitForConfirmation(txHash);
@@ -938,16 +944,16 @@ class _TransactionsScreenState extends State<TransactionsScreen>
           final batch = db.batch();
           batch.update(db.collection('transactions').doc(transactionId), {'status': 'approved'});
           batch.update(db.collection('rent_requests').doc(transactionId), {'status': 'approved'});
-          
+
           // Fetch property to get current pending tenant address
           final prop = await service.getLandProperty(propertyId is int ? propertyId : int.parse(propertyId.toString()));
-          
+
           batch.update(db.collection('assets').doc(assetId), {
             'isForRent': false,
             'currentTenant': t['buyerUid'],
             'currentTenantAddress': prop?['pendingTenant'] ?? '',
           });
-          
+
           await batch.commit();
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Rent request approved!'), backgroundColor: AppTheme.accent));

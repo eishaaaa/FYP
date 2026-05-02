@@ -10,7 +10,6 @@ import 'shared_screens.dart';
 import 'asset_screen.dart';
 import 'stolen_report_screen.dart';
 import 'auth_screens.dart';
-import '../theme.dart';
 
 final FirebaseAuth _auth = FirebaseAuth.instance;
 final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -32,7 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Stream<DocumentSnapshot<Map<String, dynamic>>>? _userDocStream;
   bool _uploadingPhoto = false;
 
-
+  static const Color _teal = Color(0xFF2D8C8C);
 
   @override
   void initState() {
@@ -62,11 +61,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               height: 4,
               margin: const EdgeInsets.symmetric(vertical: 12),
               decoration: BoxDecoration(
-                  color: AppTheme.primaryStart.withOpacity(0.1),
+                  color: Colors.grey.shade300,
                   borderRadius: BorderRadius.circular(2)),
             ),
-            Text('Profile Photo',
-                style: AppTheme.heading(16)),
+            const Text('Profile Photo',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             _sheetTile(
               icon: Icons.photo_camera_rounded,
@@ -88,7 +87,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _sheetTile(
                 icon: Icons.delete_outline_rounded,
                 label: 'Remove photo',
-                color: AppTheme.error,
+                color: Colors.red.shade400,
                 onTap: () {
                   Navigator.pop(context);
                   _removePhoto(cid: currentCid);
@@ -105,7 +104,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
-    Color color = AppTheme.primaryStart,
+    Color color = _teal,
   }) {
     return ListTile(
       leading: Container(
@@ -117,7 +116,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Icon(icon, color: color),
       ),
       title: Text(label,
-          style: AppTheme.heading(15, color: color == AppTheme.primaryStart ? AppTheme.textPrimary : color)),
+          style: TextStyle(
+              color: color == _teal ? const Color(0xFF1A1A2E) : color,
+              fontWeight: FontWeight.w500)),
       onTap: onTap,
     );
   }
@@ -236,7 +237,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
-    Color iconColor = AppTheme.primaryStart,
+    Color iconColor = _teal,
     bool showDivider = true,
   }) {
     return Column(
@@ -259,16 +260,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: Text(label,
-                      style: AppTheme.heading(15, color: AppTheme.textPrimary)),
+                      style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF1A1A2E))),
                 ),
                 Icon(Icons.chevron_right_rounded,
-                    color: AppTheme.textSecondary, size: 22),
+                    color: Colors.grey.shade400, size: 22),
               ],
             ),
           ),
         ),
         if (showDivider)
-          Divider(height: 1, thickness: 1, color: AppTheme.primaryStart.withOpacity(0.05)),
+          Divider(height: 1, thickness: 1, color: Colors.grey.shade100),
       ],
     );
   }
@@ -280,7 +284,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       borderRadius: BorderRadius.circular(16),
       boxShadow: [
         BoxShadow(
-            color: AppTheme.primaryStart.withOpacity(0.04),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 8,
             offset: const Offset(0, 2))
       ],
@@ -312,20 +316,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final displayName  = name.isNotEmpty ? name : displayEmail;
 
         return Scaffold(
-          backgroundColor: AppTheme.background,
+          backgroundColor: const Color(0xFFF5F7FA),
 
           // ── AppBar ───────────────────────────────────────────────────────
           appBar: AppBar(
-            backgroundColor: AppTheme.primaryStart,
-            flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
+            backgroundColor: Colors.white,
             elevation: 0,
             centerTitle: true,
             automaticallyImplyLeading: false,
-            title: Text('Profile',
-                style: AppTheme.heading(18, color: Colors.white)),
+            title: const Text('Profile',
+                style: TextStyle(
+                    color: Color(0xFF1A1A2E),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600)),
             leading: IconButton(
-              icon: const Icon(Icons.chevron_left_rounded, color: Colors.white, size: 24),
+              icon: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                    color: const Color(0xFFF0F4F4),
+                    borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.chevron_left_rounded,
+                    color: Color(0xFF1A1A2E), size: 24),
+              ),
               onPressed: () {
+                // Switches bottom-nav back to Home (index 0) — no crash
                 if (widget.onBack != null) {
                   widget.onBack!();
                 } else if (Navigator.canPop(context)) {
@@ -355,16 +370,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             height: 74,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: AppTheme.primaryStart.withOpacity(0.12),
+                              color: _teal.withOpacity(0.12),
                               border: Border.all(
-                                  color: AppTheme.primaryStart.withOpacity(0.3),
+                                  color: _teal.withOpacity(0.3),
                                   width: 2.5),
                             ),
                             child: ClipOval(
                               child: _uploadingPhoto
                                   ? const Center(
                                   child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: AppTheme.primaryStart))
+                                      strokeWidth: 2, color: _teal))
                                   : photoUrl.isNotEmpty
                                   ? Image.network(
                                 photoUrl,
@@ -377,13 +392,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     child:
                                     CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        color: AppTheme.primaryStart)),
+                                        color: _teal)),
                                 errorBuilder: (_, __, ___) =>
                                 const Icon(Icons.person_rounded,
-                                    size: 38, color: AppTheme.primaryStart),
+                                    size: 38, color: _teal),
                               )
                                   : const Icon(Icons.person_rounded,
-                                  size: 38, color: AppTheme.primaryStart),
+                                  size: 38, color: _teal),
                             ),
                           ),
                           // Edit badge
@@ -394,7 +409,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               width: 24,
                               height: 24,
                               decoration: BoxDecoration(
-                                  color: AppTheme.primaryStart,
+                                  color: _teal,
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                       color: Colors.white, width: 2)),
@@ -414,22 +429,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(displayName,
-                              style: AppTheme.heading(18, color: AppTheme.textPrimary)),
+                              style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF1A1A2E))),
                           const SizedBox(height: 4),
                           Text(displayEmail,
-                              style: AppTheme.body(13, color: AppTheme.textMid),
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade500),
                               overflow: TextOverflow.ellipsis),
                           const SizedBox(height: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                                color: AppTheme.primaryStart.withOpacity(0.10),
+                                color: _teal.withOpacity(0.10),
                                 borderRadius: BorderRadius.circular(20)),
-                              child: Text(
-                                role.toUpperCase(),
-                                style: AppTheme.heading(10, color: AppTheme.primaryStart),
-                              ),
+                            child: Text(
+                              role.toUpperCase(),
+                              style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: _teal,
+                                  letterSpacing: 1.0),
+                            ),
                           ),
                         ],
                       ),
@@ -551,7 +575,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           height: 54,
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.primaryStart,
+                              backgroundColor: _teal,
                               foregroundColor: Colors.white,
                               elevation: 0,
                               shape: RoundedRectangleBorder(
@@ -561,8 +585,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             onPressed: _logout,
                             icon: const Icon(Icons.logout_rounded,
                                 size: 20),
-                            label: Text('Logout',
-                                style: AppTheme.body(15, weight: FontWeight.w600, color: Colors.white)),
+                            label: const Text('Logout',
+                                style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600)),
                           ),
                         ),
                       ),
@@ -595,6 +621,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _darkMode        = false;
   bool _lastSeenEnabled = true;
 
+  static const Color _teal = Color(0xFF2D8C8C);
 
   @override
   void initState() {
@@ -644,11 +671,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16)),
-        title: Text('Delete account', style: AppTheme.heading(18)),
-        content: Text(
+        title: const Text('Delete account'),
+        content: const Text(
           'This will delete your Firebase account and user document. '
               'This requires recent login. Are you sure?',
-          style: AppTheme.body(14),
         ),
         actions: [
           TextButton(
@@ -656,8 +682,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: const Text('Cancel')),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Delete',
-                  style: AppTheme.heading(14, color: AppTheme.error))),
+              child: const Text('Delete',
+                  style: TextStyle(color: Colors.red))),
         ],
       ),
     );
@@ -689,15 +715,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: Text('Settings', style: AppTheme.heading(20, color: Colors.white)),
-        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
+        backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        title: const Text('Settings',
+            style: TextStyle(
+                color: Color(0xFF1A1A2E),
+                fontSize: 17,
+                fontWeight: FontWeight.w600)),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
-          onPressed: () => Navigator.of(context).maybePop(),
+          icon: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+                color: const Color(0xFFF0F4F4),
+                borderRadius: BorderRadius.circular(10)),
+            child: const Icon(Icons.chevron_left_rounded,
+                color: Color(0xFF1A1A2E), size: 24),
+          ),
+          onPressed: () => Navigator.pop(context),
         ),
       ),
       body: Padding(
@@ -717,29 +755,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               child: Column(
                 children: [
-                   SwitchListTile(
-                     title: Text('Dark Mode',
-                         style: AppTheme.heading(15)),
-                     subtitle:
-                     Text('Save preference to your account', style: AppTheme.body(12)),
+                  SwitchListTile(
+                    title: const Text('Dark Mode',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w500, fontSize: 15)),
+                    subtitle:
+                    const Text('Save preference to your account'),
                     value: _darkMode,
-                    activeColor: AppTheme.primaryStart,
+                    activeColor: _teal,
                     onChanged: _setDarkMode,
                     shape: const RoundedRectangleBorder(
                         borderRadius: BorderRadius.vertical(
                             top: Radius.circular(16))),
                   ),
-                   Divider(
-                       height: 1,
-                       thickness: 1,
-                       color: AppTheme.primaryStart.withOpacity(0.05)),
-                   SwitchListTile(
-                     title: Text('Last Seen',
-                         style: AppTheme.heading(15)),
-                     subtitle: Text(
-                         'Show others when you were last active', style: AppTheme.body(12)),
+                  Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: Colors.grey.shade100),
+                  SwitchListTile(
+                    title: const Text('Last Seen',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w500, fontSize: 15)),
+                    subtitle: const Text(
+                        'Show others when you were last active'),
                     value: _lastSeenEnabled,
-                    activeColor: AppTheme.primaryStart,
+                    activeColor: _teal,
                     onChanged: _setLastSeen,
                     shape: const RoundedRectangleBorder(
                         borderRadius: BorderRadius.vertical(
@@ -756,18 +796,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               height: 52,
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.error.withOpacity(0.1),
-                  foregroundColor: AppTheme.error,
+                  backgroundColor: Colors.red.shade50,
+                  foregroundColor: Colors.red,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),
                 ),
                 onPressed: _deleteAccount,
-                 icon: const Icon(Icons.delete_outline_rounded,
-                     size: 20),
-                 label: Text('Delete Account',
-                     style: AppTheme.heading(14, color: AppTheme.error)),
-               ),
+                icon: const Icon(Icons.delete_outline_rounded,
+                    size: 20),
+                label: const Text('Delete Account',
+                    style:
+                    TextStyle(fontWeight: FontWeight.w600)),
+              ),
             ),
           ],
         ),
@@ -785,15 +826,27 @@ class HelpScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: Text('Help & Support', style: AppTheme.heading(20, color: Colors.white)),
-        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
+        backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        title: const Text('Help & Support',
+            style: TextStyle(
+                color: Color(0xFF1A1A2E),
+                fontSize: 17,
+                fontWeight: FontWeight.w600)),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
-          onPressed: () => Navigator.of(context).maybePop(),
+          icon: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+                color: const Color(0xFFF0F4F4),
+                borderRadius: BorderRadius.circular(10)),
+            child: const Icon(Icons.chevron_left_rounded,
+                color: Color(0xFF1A1A2E), size: 24),
+          ),
+          onPressed: () => Navigator.pop(context),
         ),
       ),
       body: const Padding(
@@ -825,15 +878,27 @@ class TermsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: Text('Terms & Privacy', style: AppTheme.heading(20, color: Colors.white)),
-        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
+        backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        title: const Text('Terms & Privacy',
+            style: TextStyle(
+                color: Color(0xFF1A1A2E),
+                fontSize: 17,
+                fontWeight: FontWeight.w600)),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
-          onPressed: () => Navigator.of(context).maybePop(),
+          icon: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+                color: const Color(0xFFF0F4F4),
+                borderRadius: BorderRadius.circular(10)),
+            child: const Icon(Icons.chevron_left_rounded,
+                color: Color(0xFF1A1A2E), size: 24),
+          ),
+          onPressed: () => Navigator.pop(context),
         ),
       ),
       body: const SingleChildScrollView(
@@ -892,16 +957,28 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Admin Tools', style: AppTheme.heading(20, color: Colors.white)),
-        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
+        backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        title: const Text('Admin Tools',
+            style: TextStyle(
+                color: Color(0xFF1A1A2E),
+                fontSize: 17,
+                fontWeight: FontWeight.w600)),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
-          onPressed: () => Navigator.of(context).maybePop(),
+          icon: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+                color: const Color(0xFFF0F4F4),
+                borderRadius: BorderRadius.circular(10)),
+            child: const Icon(Icons.chevron_left_rounded,
+                color: Color(0xFF1A1A2E), size: 24),
+          ),
+          onPressed: () => Navigator.pop(context),
         ),
       ),
-      backgroundColor: AppTheme.background,
+      backgroundColor: const Color(0xFFF5F7FA),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
@@ -953,7 +1030,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     child: ElevatedButton(
                       onPressed: _loading ? null : _grantRole,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryStart,
+                        backgroundColor: const Color(0xFF2D8C8C),
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),

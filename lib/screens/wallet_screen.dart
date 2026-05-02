@@ -11,36 +11,56 @@ import '../blockchain/wallet_service.dart';
 import '../blockchain/contract_config.dart';
 import '../blockchain/explorer_service.dart';
 import '../screens/transaction_model.dart';
-import '../theme.dart';
-import 'package:showcaseview/showcaseview.dart';
+import '../services/push_notification_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 // ─── Design Tokens ──────────────────────────────────────────
-class _C {
-  static const bg         = AppTheme.background;
-  static const surface    = Colors.white;
-  static const primary    = AppTheme.primaryStart;
-  static const primaryDk  = AppTheme.primaryStartDark;
-  static const accent     = AppTheme.accent;
-  static const textDark   = AppTheme.textPrimary;
-  static const textMid    = AppTheme.textSecondary;
-  static const textLight  = AppTheme.textSecondary;
-  static const sent       = AppTheme.error;
-  static const received   = AppTheme.primaryStart;
-  static const nft        = AppTheme.accent;
-  static const contract   = Colors.orange;
-  static final cardBorder = AppTheme.primaryStart.withOpacity(0.05);
-  static final shimmer    = AppTheme.primaryStart.withOpacity(0.05);
-}
+const kTeal = Color(0xFF2D7D7D);
+const kTealDark = Color(0xFF1F5C5C);
+const kTealLight = Color(0xFFE8F4F4);
+const kTealAccent = Color(0xFF3AAFA9);
 
-// ─── Shadows ────────────────────────────────────────────────
-BoxDecoration _card({double radius = 20}) => BoxDecoration(
-  color: _C.surface,
+// ─── Card decoration helper ─────────────────────────────────
+BoxDecoration _card({double radius = 20, Color? border}) => BoxDecoration(
+  color: Colors.white,
   borderRadius: BorderRadius.circular(radius),
-  border: Border.all(color: _C.cardBorder, width: 1),
+  border: Border.all(color: border ?? const Color(0xFFCAE8E8), width: 1),
   boxShadow: [
-    BoxShadow(color: AppTheme.primaryStart.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4)),
+    BoxShadow(color: kTeal.withOpacity(0.06), blurRadius: 20, offset: const Offset(0, 4)),
+    BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 1)),
   ],
 );
+
+// ─── Polygon / POL asset icon widget ────────────────────────
+class _PolygonIcon extends StatelessWidget {
+  final double size;
+  const _PolygonIcon({this.size = 36});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size, height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          colors: [kTealAccent, kTealDark],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Text(
+          "⬡",
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: size * 0.5,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 // ════════════════════════════════════════════════════════════
 // WIDGET
@@ -52,35 +72,54 @@ class WalletScreen extends StatefulWidget {
   State<WalletScreen> createState() => _WalletScreenState();
 }
 
-class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderStateMixin {
+class _WalletScreenState extends State<WalletScreen>
+    with SingleTickerProviderStateMixin {
   // ─── Services ───────────────────────────────────────────
   final SimpleWalletService _walletService = SimpleWalletService();
-  final FirebaseAuth       _auth           = FirebaseAuth.instance;
-  final FirebaseFirestore  _firestore      = FirebaseFirestore.instance;
-  final ExplorerService    _explorer       = ExplorerService();
-  late  Web3Client         _client;
+  final FirebaseAuth        _auth          = FirebaseAuth.instance;
+  final FirebaseFirestore   _firestore     = FirebaseFirestore.instance;
+  final ExplorerService     _explorer      = ExplorerService();
+  late  Web3Client          _client;
 
   // ─── State ──────────────────────────────────────────────
   String? _address;
   String? _userName;
-  double  _balance    = 0.0;
-  bool    _connecting = false;
-  bool    _loading    = false;
+  double  _balance     = 0.0;
+  bool    _connecting  = false;
+  bool    _loading     = false;
   bool    _hideBalance = false;
+
+  // Tracks hashes already notified so we don't re-fire on every refresh
+  final Set<String> _seenTxHashes = {};
+  final _notif = PushNotificationService();
+
+  // All deduplicated transactions shown in Recent Activity
   List<TransactionModel> _transactions = [];
-  int     _txCount  = 0;
-  int     _nftCount = 0;
+
+  // Owned assets from Firestore — source of truth for NFT count
+  List<Map<String, dynamic>> _assets = [];
+
+  // Asset lookup populated by _loadAllData — used in transaction tile builder
+  Map<String, Map<String, dynamic>> _assetByName = {};
+
+  // Secondary lookup by Firestore doc ID / assetId field
+  // Allows resolving a raw ID in tx.title to the asset's display name
+  Map<String, Map<String, dynamic>> _assetById = {};
+
+  // Counts shown in the stats cards
+  int _txCount  = 0; // send/receive transactions
+  int _nftCount = 0; // currently owned NFTs (from assets collection)
 
   late AnimationController _pulseCtrl;
   late Animation<double>   _pulseAnim;
 
-  // ─── Amoy network info ──────────────────────────────────
+  // ─── Polygon Amoy network ────────────────────────────────
   static final _amoyNetwork = ReownAppKitModalNetworkInfo(
-    name:         'Polygon Amoy',
-    chainId:      '80002',
-    currency:     'MATIC',
-    rpcUrl:       ContractConfig.rpcUrl,
-    explorerUrl:  'https://amoy.polygonscan.com',
+    name:          'Polygon Amoy',
+    chainId:       '80002',
+    currency:      'POL',
+    rpcUrl:        ContractConfig.rpcUrl,
+    explorerUrl:   'https://amoy.polygonscan.com',
     isTestNetwork: true,
   );
 
@@ -93,8 +132,11 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
     _client = Web3Client(ContractConfig.rpcUrl, http.Client());
     _checkExistingConnection();
 
-    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
-    _pulseAnim = Tween<double>(begin: 0.8, end: 1.0).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
+    _pulseCtrl = AnimationController(
+        vsync: this, duration: const Duration(seconds: 2))
+      ..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 0.7, end: 1.0).animate(
+        CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!_walletService.isInitialized) await _walletService.init(context);
@@ -120,8 +162,10 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
   void _onWalletNotify() {
     if (!mounted) return;
     setState(() {
-      if (!_walletService.appKitModal.isConnected || !_walletService.isConnected) {
-        _address = null; _balance = 0.0;
+      if (!_walletService.appKitModal.isConnected ||
+          !_walletService.isConnected) {
+        _address = null;
+        _balance = 0.0;
       } else {
         _address = _walletService.address;
       }
@@ -129,12 +173,12 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
   }
 
   // ════════════════════════════════════════════════════════
-  // AMOY CHAIN ENFORCEMENT
+  // NETWORK
   // ════════════════════════════════════════════════════════
   Future<void> _enforceAmoyNetwork() async {
     try {
-      await _walletService.appKitModal.selectChain(_amoyNetwork, switchChain: true);
-      debugPrint("✅ Switched to Polygon Amoy (chain 80002)");
+      await _walletService.appKitModal
+          .selectChain(_amoyNetwork, switchChain: true);
     } catch (e) {
       debugPrint("⚠️ Could not switch to Amoy: $e");
     }
@@ -160,29 +204,40 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
     setState(() => _connecting = true);
     try {
       if (!_walletService.isInitialized) await _walletService.init(context);
-      final address = await _walletService.connect(context)
+      final address = await _walletService
+          .connect(context)
           .timeout(const Duration(seconds: 25), onTimeout: () => null);
       await Future.delayed(const Duration(milliseconds: 500));
-      if (!_walletService.appKitModal.isConnected || !_walletService.isConnected || address == null) {
+      if (!_walletService.appKitModal.isConnected ||
+          !_walletService.isConnected ||
+          address == null) {
         throw Exception("Wallet connection failed or cancelled");
       }
       await _enforceAmoyNetwork();
       final user = _auth.currentUser;
-      if (user != null) await _saveWalletToFirestore(user.uid, address);
+      if (user != null) {
+        await _saveWalletToFirestore(user.uid, address);
+        // Notify user their wallet is now linked
+        await _notif.notify(
+          receiverUid: user.uid,
+          title: '🔗 Wallet Connected',
+          body: 'Your wallet ${_shorten(address)} is now linked to your account.',
+          type: NotificationType.general,
+        );
+      }
       if (!mounted) return;
       setState(() => _address = address);
       await _loadAllData();
     } catch (e) {
       debugPrint("Connect error: $e");
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("Wallet connection failed or timed out"),
-            backgroundColor: _C.sent,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text("Wallet connection failed or timed out"),
+          backgroundColor: kTealDark,
+          behavior: SnackBarBehavior.floating,
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
       }
     } finally {
       if (mounted) setState(() => _connecting = false);
@@ -195,18 +250,28 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
     try {
       if (_walletService.isConnected) await _walletService.disconnect();
       setState(() {
-        _address = null; _balance = 0.0;
-        _transactions.clear(); _txCount = 0; _nftCount = 0;
+        _address = null;
+        _balance = 0.0;
+        _transactions.clear();
+        _assets.clear();
+        _txCount = 0;
+        _nftCount = 0;
+        _seenTxHashes.clear();
       });
-    } catch (e) { debugPrint("Disconnect error: $e"); }
-    finally { if (mounted) setState(() => _loading = false); }
+    } catch (e) {
+      debugPrint("Disconnect error: $e");
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _switchAccount() async {
     if (_loading || _connecting) return;
     setState(() => _connecting = true);
     try {
-      try { await _walletService.disconnect(); } catch (_) {}
+      try {
+        await _walletService.disconnect();
+      } catch (_) {}
       await Future.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
       final newAddress = await _walletService.connect(context);
@@ -215,10 +280,19 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
       final user = _auth.currentUser;
       if (user != null) await _saveWalletToFirestore(user.uid, newAddress);
       if (!mounted) return;
-      setState(() { _address = newAddress; _loading = true; });
+      setState(() {
+        _address = newAddress;
+        _loading = true;
+      });
       await _loadAllData();
-    } catch (e) { debugPrint("Switch error: $e"); }
-    finally { if (mounted) setState(() { _connecting = false; _loading = false; }); }
+    } catch (e) {
+      debugPrint("Switch error: $e");
+    } finally {
+      if (mounted) setState(() {
+        _connecting = false;
+        _loading = false;
+      });
+    }
   }
 
   Future<void> _removeWallet() async {
@@ -228,14 +302,33 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
       final user = _auth.currentUser;
       if (user == null) return;
       await _walletService.disconnect();
-      await _firestore.collection("users").doc(user.uid)
+      await _firestore
+          .collection("users")
+          .doc(user.uid)
           .update({"walletAddress": FieldValue.delete()});
+
+      // Notify the user their wallet was removed
+      await _notif.notify(
+        receiverUid: user.uid,
+        title: '🔓 Wallet Removed',
+        body: 'Your wallet has been unlinked from your account. You can reconnect anytime.',
+        type: NotificationType.general,
+      );
+
       setState(() {
-        _address = null; _balance = 0.0;
-        _transactions.clear(); _txCount = 0; _nftCount = 0;
+        _address = null;
+        _balance = 0.0;
+        _transactions.clear();
+        _assets.clear();
+        _txCount = 0;
+        _nftCount = 0;
+        _seenTxHashes.clear();
       });
-    } catch (e) { debugPrint("Remove error: $e"); }
-    finally { if (mounted) setState(() => _loading = false); }
+    } catch (e) {
+      debugPrint("Remove error: $e");
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   // ════════════════════════════════════════════════════════
@@ -251,36 +344,112 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
     setState(() => _loading = true);
     try {
       await _loadBalance();
-      final normalTxs = await _explorer.getTransactions(_address!);
-      final nftTxs    = await _explorer.getNFTTransactions(_address!);
+
+      // Fetch on-chain transactions in parallel
+      final results = await Future.wait([
+        _explorer.getTransactions(_address!),
+        _explorer.getNFTTransactions(_address!),
+      ]);
+      final normalTxs = results[0];
+      final nftTxs    = results[1];
+
       List<TransactionModel> firestoreTxs = [];
+      List<Map<String, dynamic>> fetchedAssets = [];
+
       final user = _auth.currentUser;
       if (user != null) {
-        final snap = await _firestore
-            .collection("users").doc(user.uid).collection("transactions")
-            .orderBy("time", descending: true).limit(10).get();
-        firestoreTxs = snap.docs.map((doc) {
+        // ── Firestore transactions ──────────────────────────
+        final txSnap = await _firestore
+            .collection("users")
+            .doc(user.uid)
+            .collection("transactions")
+            .orderBy("time", descending: true)
+            .limit(10)
+            .get();
+        firestoreTxs = txSnap.docs.map((doc) {
           final d = doc.data();
           return TransactionModel(
-            type: d["type"] ?? "sent", title: d["title"] ?? "Transaction",
-            to: d["to"] ?? "", value: d["value"]?.toString() ?? "0",
-            gas: d["gas"]?.toString() ?? "0", time: d["time"]?.toString() ?? "0",
-            success: true, hash: d["hash"] ?? "",
+            type:    d["type"]  ?? "sent",
+            title:   d["title"] ?? "Transaction",
+            to:      d["to"]    ?? "",
+            value:   d["value"]?.toString()  ?? "0",
+            gas:     d["gas"]?.toString()    ?? "0",
+            time:    d["time"]?.toString()   ?? "0",
+            success: true,
+            hash:    d["hash"]  ?? "",
           );
         }).toList();
+
+        // ── Assets collection — source of truth for NFT ownership ──
+        // Query the global assets collection filtered by ownerId so the
+        // count reflects CURRENT ownership only (not historical transfers).
+        final assetSnap = await _firestore
+            .collection("assets")
+            .where("ownerId", isEqualTo: user.uid)
+            .get();
+        fetchedAssets = assetSnap.docs.map((d) {
+          final data = d.data();
+          // Preserve the Firestore document ID so we can resolve
+          // transaction titles that contain a raw doc ID.
+          data['_docId'] = d.id;
+          return data;
+        }).toList();
       }
-      final seen = <String>{};
-      final dedupedTxs = [...normalTxs, ...nftTxs, ...firestoreTxs]
-          .where((tx) => tx.hash.isNotEmpty && seen.add(tx.hash)).toList()
+
+      // ── Deduplicate by hash, newest first ──────────────────
+      final seen   = <String>{};
+      final allTxs = [...normalTxs, ...nftTxs, ...firestoreTxs]
+          .where((tx) => tx.hash.isNotEmpty && seen.add(tx.hash))
+          .toList()
         ..sort((a, b) => int.parse(b.time).compareTo(int.parse(a.time)));
+
+      // Build a quick lookup: assetName (lowercase) → asset data
+      // Used to enrich transaction tiles with asset price/category.
+      final assetByName = <String, Map<String, dynamic>>{
+        for (final a in fetchedAssets)
+          if (a["name"] != null)
+            (a["name"] as String).toLowerCase(): a,
+      };
+
+      // Build a secondary lookup: assetId / Firestore doc ID → asset data
+      // Lets us resolve tx.title values that are raw IDs rather than names.
+      final assetById = <String, Map<String, dynamic>>{
+        for (final a in fetchedAssets) ...{
+          if (a["assetId"] != null) a["assetId"] as String: a,
+          if (a["_docId"]  != null) a["_docId"]  as String: a,
+        },
+      };
+
+      // txCount = total number of deduplicated transactions across all types
+      final txCount = allTxs.length;
+
+      // Store asset lookups before setState so tile builder can use them
+      _assetByName = assetByName;
+      _assetById   = assetById;
+
+      // Notifications for wallet activity are sent from explicit app flows.
+      // Avoid replaying historical transactions here, which can create
+      // duplicate notifications after reconnects or refreshes.
+
       setState(() {
-        _transactions = dedupedTxs.take(15).toList();
-        _txCount  = normalTxs.length;
-        _nftCount = nftTxs.length + firestoreTxs.where((tx) => tx.type == "nft").length;
+        _transactions = allTxs.take(15).toList();
+        _assets       = fetchedAssets;
+        _txCount      = txCount;
+        // Owned NFT count comes from the assets collection, not transaction count.
+        // Fallback to counting NFT-type txs if the assets collection is empty
+        // (e.g., user hasn't opened My Assets yet to populate it).
+        _nftCount = fetchedAssets.isNotEmpty
+            ? fetchedAssets.length
+            : allTxs.where((tx) => tx.type == "nft").length;
       });
     } catch (e) {
       debugPrint("Load data error: $e");
-      setState(() { _transactions = []; _txCount = 0; _nftCount = 0; });
+      setState(() {
+        _transactions = [];
+        _assets       = [];
+        _txCount      = 0;
+        _nftCount     = 0;
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -291,21 +460,40 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
     try {
       final ethAddress = EthereumAddress.fromHex(_address!);
       final balanceWei = await _client.getBalance(ethAddress);
+      // getValueInUnit returns the value in the given unit (ether = POL on Polygon)
       _balance = balanceWei.getValueInUnit(EtherUnit.ether);
-    } catch (e) { debugPrint("Balance error: $e"); }
+
+      // Low balance alert — fire once per session when balance drops below 0.05 POL
+      final user = _auth.currentUser;
+      if (user != null && _balance < 0.05 && _balance >= 0) {
+        // Use a debounce key so we don't spam on every refresh
+        final balKey = 'low_balance_alerted';
+        if (!_seenTxHashes.contains(balKey)) {
+          _seenTxHashes.add(balKey);
+          await _notif.notifyLowBalance(
+            userUid: user.uid,
+            currentBalance: _balance.toStringAsFixed(4),
+            currency: 'POL',
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("Balance error: $e");
+    }
   }
 
   // ════════════════════════════════════════════════════════
   // FIRESTORE HELPERS
   // ════════════════════════════════════════════════════════
   Future<void> _saveWalletToFirestore(String uid, String newAddress) async {
-    final userRef  = _firestore.collection("users").doc(uid);
-    final doc      = await userRef.get();
+    final userRef    = _firestore.collection("users").doc(uid);
+    final doc        = await userRef.get();
     final oldAddress = doc.data()?["walletAddress"];
     await userRef.set({"walletAddress": newAddress}, SetOptions(merge: true));
     if (oldAddress != null && oldAddress != newAddress) {
       await userRef.collection("walletHistory").add({
-        "oldWallet": oldAddress, "newWallet": newAddress,
+        "oldWallet": oldAddress,
+        "newWallet": newAddress,
         "changedAt": FieldValue.serverTimestamp(),
       });
     }
@@ -314,38 +502,62 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
   // ════════════════════════════════════════════════════════
   // UI HELPERS
   // ════════════════════════════════════════════════════════
+
+  /// POL → PKR conversion rate (approximate; update periodically)
   double _convertPolToPkr(double pol) => pol * 280.0;
 
   String _shorten(String addr) {
     if (addr.isEmpty) return "N/A";
     if (addr.length <= 10) return addr;
-    return "${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}";
+    return "${addr.substring(0, 6)}...${addr.substring(addr.length - 2)}";
   }
 
   String _formatTime(String rawTime) {
-    final time = DateTime.fromMillisecondsSinceEpoch(int.parse(rawTime) * 1000);
+    final ts = int.tryParse(rawTime) ?? 0;
+    if (ts == 0) return "Unknown";
+    // Firestore/on-chain timestamps can be seconds (10-digit) or
+    // milliseconds (13-digit). Normalise to milliseconds.
+    final ms = ts > 9999999999 ? ts : ts * 1000;
+    final time = DateTime.fromMillisecondsSinceEpoch(ms);
     final diff = DateTime.now().difference(time);
+    if (diff.isNegative || diff.inSeconds < 60) return "Just now";
     if (diff.inMinutes < 60) return "${diff.inMinutes}m ago";
     if (diff.inHours   < 24) return "${diff.inHours}h ago";
-    return "${diff.inDays}d ago";
+    if (diff.inDays    <  7) return "${diff.inDays}d ago";
+    if (diff.inDays    < 30) return "${(diff.inDays / 7).floor()}w ago";
+    if (diff.inDays    < 365) return "${(diff.inDays / 30).floor()}mo ago";
+    return "${(diff.inDays / 365).floor()}y ago";
   }
 
-  void _confirmAction({required String title, required Future<void> Function() onConfirm}) {
+  void _confirmAction(
+      {required String title,
+        required Future<void> Function() onConfirm}) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(title, style: AppTheme.heading(20)),
-        content: const Text("Are you sure you want to continue?", style: TextStyle(color: AppTheme.textMid)),
+        title: Text(title,
+            style: const TextStyle(
+                color: Colors.black, fontWeight: FontWeight.w700)),
+        content: const Text("Are you sure you want to continue?",
+            style: TextStyle(color: Color(0xFF555555))),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx),
-              child: const Text("Cancel", style: TextStyle(color: AppTheme.textMid))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel",
+                style: TextStyle(color: Color(0xFF555555))),
+          ),
           ElevatedButton(
-            onPressed: () async { Navigator.pop(ctx); await onConfirm(); },
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await onConfirm();
+            },
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryStart, foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              backgroundColor: kTeal,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
             child: const Text("Confirm"),
           ),
@@ -360,7 +572,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _C.bg,
+      backgroundColor: kTealLight,
       appBar: _buildAppBar(),
       body: _loading
           ? _buildSkeleton()
@@ -373,18 +585,38 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
   // ─── AppBar ──────────────────────────────────────────────
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      title: Text("Wallet", style: AppTheme.heading(20, color: Colors.white)),
-      flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
+      backgroundColor: Colors.white,
       elevation: 0,
       centerTitle: true,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
-        onPressed: () => Navigator.of(context).maybePop(),
+      systemOverlayStyle: SystemUiOverlayStyle.dark,
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 9, height: 9,
+            decoration: const BoxDecoration(
+                color: kTeal, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          const Text(
+            "Wallet",
+            style: TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+              letterSpacing: -0.4,
+            ),
+          ),
+        ],
+      ),
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(1),
+        child: Container(color: const Color(0xFFCAE8E8), height: 1),
       ),
       actions: [
         if (_address != null)
           IconButton(
-            icon: const Icon(Icons.more_vert, color: Colors.white),
+            icon: const Icon(Icons.more_vert, color: Colors.black),
             onPressed: _showWalletOptions,
           ),
       ],
@@ -404,6 +636,8 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
           Expanded(child: _shimmerBox(height: 90)),
         ]),
         const SizedBox(height: 16),
+        _shimmerBox(height: 22, radius: 6),
+        const SizedBox(height: 12),
         _shimmerBox(height: 60),
         const SizedBox(height: 8),
         _shimmerBox(height: 60),
@@ -421,7 +655,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
         child: Container(
           height: height,
           decoration: BoxDecoration(
-            color: _C.shimmer,
+            color: kTealLight,
             borderRadius: BorderRadius.circular(radius),
           ),
         ),
@@ -437,26 +671,29 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Icon container
             Container(
               width: 100, height: 100,
               decoration: BoxDecoration(
-                color: _C.primary.withOpacity(0.1),
+                color: kTeal,
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.account_balance_wallet_outlined,
-                  size: 48, color: _C.primary),
+                  size: 48, color: Colors.white),
             ),
             const SizedBox(height: 28),
-            Text(
+            const Text(
               "Connect your wallet",
-              style: AppTheme.heading(22),
+              style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.black,
+                  letterSpacing: -0.5),
             ),
             const SizedBox(height: 10),
-            Text(
+            const Text(
               "Link a Web3 wallet to view your balance, NFTs and transactions.",
               textAlign: TextAlign.center,
-              style: AppTheme.body(14, color: _C.textMid),
+              style: TextStyle(color: Color(0xFF555555), fontSize: 14, height: 1.5),
             ),
             const SizedBox(height: 36),
             SizedBox(
@@ -464,22 +701,25 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
               child: ElevatedButton.icon(
                 onPressed: (_connecting || _loading) ? null : _connect,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _C.primary,
+                  backgroundColor: kTeal,
                   foregroundColor: Colors.white,
-                  disabledBackgroundColor: _C.primary.withOpacity(0.5),
+                  disabledBackgroundColor: kTeal.withOpacity(0.4),
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                 ),
                 icon: _connecting
                     ? const SizedBox(
                   width: 18, height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
                 )
                     : const Icon(Icons.account_balance_wallet, size: 20),
                 label: Text(
                   _connecting ? "Opening wallet…" : "Connect Wallet",
-                  style: AppTheme.button(16),
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ),
             ),
@@ -492,10 +732,10 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
   // ─── Wallet View ─────────────────────────────────────────
   Widget _buildWalletView() {
     return RefreshIndicator(
-      color: _C.primary,
+      color: kTeal,
       onRefresh: _loadAllData,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
         children: [
           _buildBalanceCard(),
           const SizedBox(height: 16),
@@ -510,25 +750,37 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
   // ─── Balance Card ────────────────────────────────────────
   Widget _buildBalanceCard() {
     final pkr = _convertPolToPkr(_balance);
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        gradient: AppTheme.primaryGradient,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [kTealAccent, kTealDark],
+        ),
         boxShadow: [
-          BoxShadow(color: _C.primary.withOpacity(0.35), blurRadius: 24, offset: const Offset(0, 8)),
+          BoxShadow(
+              color: kTeal.withOpacity(0.40),
+              blurRadius: 32,
+              offset: const Offset(0, 12)),
+          BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 8,
+              offset: const Offset(0, 2)),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // User row
+          // ── User row ──
           Row(
             children: [
               Container(
-                width: 42, height: 42,
+                width: 44, height: 44,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.25),
+                  color: Colors.white.withOpacity(0.22),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.person, color: Colors.white, size: 22),
@@ -540,30 +792,37 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                   children: [
                     Text(
                       _userName ?? "User",
-                      style: AppTheme.heading(15, color: Colors.white),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     GestureDetector(
                       onTap: () {
-                        Clipboard.setData(ClipboardData(text: _address ?? ""));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: const Text("Address copied"),
-                            backgroundColor: Colors.black87,
-                            behavior: SnackBarBehavior.floating,
-                            duration: const Duration(seconds: 1),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                        );
+                        Clipboard.setData(
+                            ClipboardData(text: _address ?? ""));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: const Text("Address copied"),
+                          backgroundColor: Colors.black87,
+                          behavior: SnackBarBehavior.floating,
+                          duration: const Duration(seconds: 1),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ));
                       },
                       child: Row(
                         children: [
                           Text(
                             _shorten(_address ?? ""),
-                            style: AppTheme.body(12, color: Colors.white.withOpacity(0.8)),
+                            style: TextStyle(
+                                color: Colors.white.withOpacity(0.82),
+                                fontSize: 12),
                           ),
                           const SizedBox(width: 4),
-                          Icon(Icons.copy, size: 12, color: Colors.white.withOpacity(0.7)),
+                          Icon(Icons.copy,
+                              size: 12,
+                              color: Colors.white.withOpacity(0.7)),
                         ],
                       ),
                     ),
@@ -572,17 +831,23 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
               ),
               // Verified badge
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withOpacity(0.18),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withOpacity(0.4)),
+                  border: Border.all(
+                      color: Colors.white.withOpacity(0.4), width: 1),
                 ),
-                child: Row(
+                child: const Row(
                   children: [
-                    const Icon(Icons.verified, size: 12, color: Colors.white),
-                    const SizedBox(width: 4),
-                    Text("Verified", style: AppTheme.heading(11, color: Colors.white)),
+                    Icon(Icons.verified, size: 12, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text("Verified",
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
@@ -590,25 +855,41 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
           ),
 
           const SizedBox(height: 28),
-          Text(
+
+          const Text(
             "TOTAL BALANCE",
-            style: AppTheme.heading(11, color: Colors.white60).copyWith(letterSpacing: 1.4),
+            style: TextStyle(
+                color: Colors.white60,
+                fontSize: 11,
+                letterSpacing: 1.5,
+                fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 6),
+
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
                 child: Text(
-                  _hideBalance ? "••••••• POL" : "${_balance.toStringAsFixed(4)} POL",
-                  style: AppTheme.heading(30, color: Colors.white).copyWith(letterSpacing: -0.8),
+                  _hideBalance
+                      ? "••••••• POL"
+                      : "${_balance.toStringAsFixed(4)} POL",
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 30,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -1.0),
                 ),
               ),
               GestureDetector(
-                onTap: () => setState(() => _hideBalance = !_hideBalance),
+                onTap: () =>
+                    setState(() => _hideBalance = !_hideBalance),
                 child: Icon(
-                  _hideBalance ? Icons.visibility_off : Icons.visibility,
-                  color: Colors.white70, size: 20,
+                  _hideBalance
+                      ? Icons.visibility_off
+                      : Icons.visibility,
+                  color: Colors.white70,
+                  size: 20,
                 ),
               ),
             ],
@@ -616,30 +897,90 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
           const SizedBox(height: 4),
           Text(
             "≈ ₨${pkr.toStringAsFixed(2)} PKR",
-            style: AppTheme.body(13, color: Colors.white70),
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
           ),
 
           const SizedBox(height: 20),
 
-          // Network pill
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withOpacity(0.3)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.circle, size: 7, color: Colors.white),
-                SizedBox(width: 6),
-                Text(
-                  "Polygon Amoy",
-                  style: AppTheme.heading(12, color: Colors.white),
+          // ── Asset pill with Polygon logo ──
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Network chip
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: Colors.white.withOpacity(0.3), width: 1),
                 ),
-              ],
-            ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.circle, size: 7, color: Colors.white),
+                    SizedBox(width: 6),
+                    Text("Polygon Amoy",
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500)),
+                  ],
+                ),
+              ),
+
+              // POL asset mini-pill (shows name + icon)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: Colors.white.withOpacity(0.3), width: 1),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 18, height: 18,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: kTeal,
+                      ),
+                      child: const Center(
+                        child: Text("⬡",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text("POL",
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+
+              // Refresh button
+              GestureDetector(
+                onTap: _loadAllData,
+                child: Container(
+                  width: 34, height: 34,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.refresh_rounded,
+                      color: Colors.white, size: 18),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -650,59 +991,72 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
   Widget _buildStatsRow() {
     return Row(
       children: [
-        Expanded(child: _buildStatCard(
-          label: "Transactions",
-          value: "$_txCount",
-          icon: Icons.swap_horiz_rounded,
-          iconColor: _C.accent,
-          iconBg: _C.accent.withOpacity(0.1),
-        )),
+        Expanded(
+          child: _buildStatCard(
+            label: "Transactions",
+            value: "$_txCount",
+            icon: Icons.swap_horiz_rounded,
+            iconColor: Colors.white,
+            iconBg: kTeal,
+          ),
+        ),
         const SizedBox(width: 12),
-        Expanded(child: _buildStatCard(
-          label: "NFTs",
-          value: "$_nftCount",
-          icon: Icons.image_rounded,
-          iconColor: _C.primary,
-          iconBg: _C.primary.withOpacity(0.1),
-        )),
+        Expanded(
+          child: _buildStatCard(
+            label: "NFTs",
+            value: "$_nftCount",
+            icon: Icons.image_rounded,
+            iconColor: Colors.white,
+            iconBg: kTeal,
+          ),
+        ),
       ],
     );
   }
 
   Widget _buildStatCard({
-    required String label,
-    required String value,
+    required String   label,
+    required String   value,
     required IconData icon,
-    required Color iconColor,
-    required Color iconBg,
+    required Color    iconColor,
+    required Color    iconBg,
   }) {
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: _card(),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFCAE8E8), width: 1),
+        boxShadow: [
+          BoxShadow(color: kTeal.withOpacity(0.07), blurRadius: 20, offset: const Offset(0, 4)),
+          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 1)),
+        ],
+      ),
       child: Row(
         children: [
           Container(
-            width: 44, height: 44,
-            decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(12)),
+            width: 46, height: 46,
+            decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(13)),
             child: Icon(icon, color: iconColor, size: 22),
           ),
           const SizedBox(width: 12),
-          Expanded(
+          Flexible(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTheme.heading(22, color: _C.textDark).copyWith(letterSpacing: -0.5),
-                ),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTheme.body(12, color: _C.textLight),
-                ),
+                Text(value,
+                    style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black,
+                        letterSpacing: -0.5)),
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF909090),
+                        fontWeight: FontWeight.w500)),
               ],
             ),
           ),
@@ -715,13 +1069,14 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
   Widget _buildTransactions() {
     if (_transactions.isEmpty) {
       return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Text("Recent Activity", style: AppTheme.heading(16, color: _C.textDark)),
-            ],
-          ),
-          const SizedBox(height: 24),
+          const Text("Recent Activity",
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black)),
+          const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(32),
             decoration: _card(),
@@ -729,11 +1084,17 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
               children: [
                 Container(
                   width: 64, height: 64,
-                  decoration: BoxDecoration(color: _C.shimmer, borderRadius: BorderRadius.circular(16)),
-                  child: const Icon(Icons.receipt_long_outlined, color: _C.textLight, size: 32),
+                  decoration: BoxDecoration(
+                      color: kTealLight,
+                      borderRadius: BorderRadius.circular(16)),
+                  child: const Icon(Icons.receipt_long_outlined,
+                      color: Color(0xFF909090), size: 32),
                 ),
                 const SizedBox(height: 12),
-                Text("No transactions yet", style: AppTheme.body(14, color: _C.textMid)),
+                const Text("No transactions yet",
+                    style: TextStyle(
+                        color: Color(0xFF555555),
+                        fontWeight: FontWeight.w500)),
               ],
             ),
           ),
@@ -747,8 +1108,34 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text("Recent Activity", style: AppTheme.heading(16, color: _C.textDark)),
-            Text("${_transactions.length} items", style: AppTheme.body(12, color: _C.textLight)),
+            Row(
+              children: [
+                Container(
+                  width: 8, height: 8,
+                  decoration: const BoxDecoration(
+                      color: kTeal, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 8),
+                const Text("Recent Activity",
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black)),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: kTeal,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text("${_transactions.length} items",
+                  style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white
+                  )),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -758,7 +1145,8 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: _transactions.length,
-            separatorBuilder: (_, __) => Divider(height: 1, color: _C.cardBorder, indent: 72),
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, color: const Color(0xFFCAE8E8), indent: 72),
             itemBuilder: (_, i) => _buildTxTile(_transactions[i]),
           ),
         ),
@@ -770,80 +1158,243 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
     final isSent     = tx.type == "sent";
     final isNft      = tx.type == "nft";
     final isContract = tx.type == "contract";
+    // ── Colour + icon per type ─────────────────────────────
+    final Color iconColor = isNft
+        ? Colors.white
+        : isContract
+        ? Colors.white
+        : isSent
+        ? Colors.white
+        : kTealAccent;
 
-    final Color iconColor = isNft      ? _C.nft
-        : isContract ? _C.contract
-        : isSent     ? _C.sent
-        :              _C.received;
+    final IconData iconData = isNft
+        ? Icons.image_rounded
+        : isContract
+        ? Icons.code
+        : isSent
+        ? Icons.arrow_upward_rounded
+        : Icons.arrow_downward_rounded;
 
-    final IconData iconData = isNft      ? Icons.image_rounded
-        : isContract ? Icons.code
-        : isSent     ? Icons.arrow_upward_rounded
-        :              Icons.arrow_downward_rounded;
+    // ── Asset name: prefer tx.title when it is meaningful ──
+    // tx.title is set to the asset/contract name for NFT and contract txs.
+    final bool hasMeaningfulTitle =
+        tx.title.isNotEmpty &&
+            tx.title != "Transaction" &&
+            tx.title != "Contract Interaction";
 
-    final String label = isNft      ? tx.title
-        : isContract ? "Contract Interaction"
-        : isSent     ? "Sent POL"
-        :              "Received POL";
+    // If tx.title looks like a raw asset ID (matched in our ID map) resolve it
+    // to the asset's human-readable name so IDs are never shown to the user.
+    String resolvedNftTitle = tx.title;
+    if (isNft && hasMeaningfulTitle) {
+      final byId = _assetById[tx.title];
+      if (byId != null) {
+        resolvedNftTitle = (byId["name"] as String?)?.trim().isNotEmpty == true
+            ? byId["name"] as String
+            : tx.title;
+      }
+    }
 
-    final String amountStr = (isNft || isContract)
-        ? (isNft ? "NFT" : "Contract")
-        : "${isSent ? '−' : '+'}${tx.value} POL";
+    final String mainLabel = isNft
+        ? (hasMeaningfulTitle ? resolvedNftTitle : "NFT Transfer")
+        : isContract
+        ? (hasMeaningfulTitle ? tx.title : "Contract Interaction")
+        : isSent
+        ? "Sent POL"
+        : "Received POL";
+
+    // ── Subtitle: asset category or address ───────────────
+    // For NFT/contract, try to look up the asset category from the assets map.
+    String subtitle;
+    if (isNft) {
+      final asset = _assetByName[mainLabel.toLowerCase()] ?? _assetById[tx.title];
+      final category = asset?["category"] as String?;
+      subtitle = category?.isNotEmpty == true ? category! : "NFT Asset";
+    } else if (isContract) {
+      subtitle = _shorten(tx.to);
+    } else {
+      subtitle = _shorten(tx.to);
+    }
+
+    // ── Amount / price display ─────────────────────────────
+    final double? polValue = double.tryParse(tx.value);
+    final bool hasPrice    = polValue != null && polValue > 0;
+
+    Widget amountWidget;
+    if (isNft || isContract) {
+      if (hasPrice) {
+        amountWidget = Text(
+          "${isNft ? '' : ''}${polValue!.toStringAsFixed(4)} POL",
+          style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: iconColor),
+        );
+      } else {
+        amountWidget = Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          decoration: BoxDecoration(
+            color: iconColor.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            isNft ? "NFT" : "Contract",
+            style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: iconColor),
+          ),
+        );
+      }
+    } else {
+      amountWidget = Text(
+        "${isSent ? '−' : '+'}${polValue?.toStringAsFixed(4) ?? tx.value} POL",
+        style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
+            color: iconColor),
+      );
+    }
 
     return InkWell(
       onTap: () async {
         final url = Uri.parse("https://amoy.polygonscan.com/tx/${tx.hash}");
-        if (await canLaunchUrl(url)) launchUrl(url, mode: LaunchMode.externalApplication);
+        if (await canLaunchUrl(url)) {
+          launchUrl(url, mode: LaunchMode.externalApplication);
+        }
       },
-      borderRadius: BorderRadius.circular(0),
+      borderRadius: BorderRadius.zero,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
-            // Icon
-            Container(
-              width: 44, height: 44,
-              decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(iconData, color: iconColor, size: 20),
-            ),
+            // ── Icon / Asset Image ─────────────────────────
+            Builder(builder: (_) {
+              // For NFT tiles: try to show the actual asset image
+              if (isNft) {
+                final asset = _assetByName[mainLabel.toLowerCase()] ?? _assetById[tx.title];
+                final imgUrl = (asset?["imageUrl"] as String?)?.trim() ??
+                    (asset?["image"]    as String?)?.trim() ??
+                    (asset?["thumbnailUrl"] as String?)?.trim();
+                if (imgUrl != null && imgUrl.isNotEmpty) {
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(13),
+                    child: CachedNetworkImage(
+                      imageUrl: imgUrl,
+                      width: 46, height: 46,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(
+                        width: 46, height: 46,
+                        decoration: BoxDecoration(
+                          color: iconColor.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: Icon(Icons.image_rounded, color: iconColor, size: 20),
+                      ),
+                      errorWidget: (_, __, ___) => Container(
+                        width: 46, height: 46,
+                        decoration: BoxDecoration(
+                          color: iconColor.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: Icon(Icons.image_rounded, color: iconColor, size: 20),
+                      ),
+                    ),
+                  );
+                }
+              }
+              // Fallback: coloured icon box
+              return Container(
+                width: 46, height: 46,
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: isNft || isContract
+                    ? Icon(iconData, color: iconColor, size: 22)
+                    : Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    const _PolygonIcon(size: 28),
+                    Positioned(
+                      bottom: 0, right: 0,
+                      child: Container(
+                        width: 16, height: 16,
+                        decoration: BoxDecoration(
+                          color: iconColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        child: Icon(iconData, color: Colors.white, size: 9),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
             const SizedBox(width: 12),
 
-            // Labels
+            // ── Labels (asset name + subtitle) ────────────
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTheme.heading(14, color: _C.textDark),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          mainLabel,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                              color: Colors.black),
+                        ),
+                      ),
+                      if (!isNft && !isContract) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: kTealLight,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text("POL",
+                              style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                  color: kTeal)),
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(_shorten(tx.to), style: AppTheme.body(12, color: _C.textLight)),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF909090)),
+                  ),
                 ],
               ),
             ),
 
-            // Amount + time
+            const SizedBox(width: 8),
+
+            // ── Amount + time ──────────────────────────────
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(
-                  amountStr,
-                  style: AppTheme.heading(13, color: isNft ? _C.nft : (isContract ? _C.contract : (isSent ? _C.sent : _C.received))),
-                ),
+                amountWidget,
                 const SizedBox(height: 3),
-                Text(_formatTime(tx.time), style: AppTheme.body(11, color: AppTheme.textLight)),
+                Text(_formatTime(tx.time),
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF909090))),
                 const SizedBox(height: 2),
                 Row(
                   children: [
-                    Icon(Icons.open_in_new, size: 10, color: AppTheme.textLight),
+                    const Icon(Icons.open_in_new, size: 10, color: Color(0xFF909090)),
                     const SizedBox(width: 2),
-                    Text("Explorer", style: AppTheme.body(10, color: AppTheme.textLight)),
+                    const Text("Explorer",
+                        style: TextStyle(fontSize: 10, color: Color(0xFF909090))),
                   ],
                 ),
               ],
@@ -858,22 +1409,16 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
   void _showWalletOptions() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: _C.surface,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+          borderRadius:
+          BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Drag handle
-              Container(
-                width: 36, height: 4,
-                margin: const EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(color: _C.cardBorder, borderRadius: BorderRadius.circular(2)),
-              ),
 
               // Address row
               Container(
@@ -884,29 +1429,39 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                     Container(
                       width: 40, height: 40,
                       decoration: BoxDecoration(
-                        color: _C.primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.account_balance_wallet, color: _C.primary, size: 20),
+                          color: kTeal,
+                          borderRadius: BorderRadius.circular(10)),
+                      child: const Icon(
+                          Icons.account_balance_wallet,
+                          color: Colors.white,
+                          size: 20),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         _shorten(_address!),
-                        style: AppTheme.heading(14, color: _C.textDark),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black),
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: _C.primary.withOpacity(0.1),
+                        color: kTeal,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Row(
+                      child: const Row(
                         children: [
-                          const Icon(Icons.verified, size: 12, color: _C.primary),
-                          const SizedBox(width: 4),
-                          Text("Verified", style: AppTheme.heading(11, color: _C.primary)),
+                          Icon(Icons.verified,
+                              size: 12, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text("Verified",
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600)),
                         ],
                       ),
                     ),
@@ -915,20 +1470,41 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
               ),
               const SizedBox(height: 16),
 
-              _buildActionButton(text: "Switch Account", icon: Icons.swap_horiz_rounded, color: _C.accent, onTap: () {
-                Navigator.pop(ctx);
-                _confirmAction(title: "Switch Account?", onConfirm: _switchAccount);
-              }),
+              _buildActionButton(
+                text: "Switch Account",
+                icon: Icons.swap_horiz_rounded,
+                color: kTealAccent,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _confirmAction(
+                      title: "Switch Account?",
+                      onConfirm: _switchAccount);
+                },
+              ),
               const SizedBox(height: 10),
-              _buildActionButton(text: "Disconnect Wallet", icon: Icons.link_off_rounded, color: _C.sent, onTap: () {
-                Navigator.pop(ctx);
-                _confirmAction(title: "Disconnect Wallet?", onConfirm: _disconnect);
-              }),
+              _buildActionButton(
+                text: "Disconnect Wallet",
+                icon: Icons.link_off_rounded,
+                color: kTealDark,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _confirmAction(
+                      title: "Disconnect Wallet?",
+                      onConfirm: _disconnect);
+                },
+              ),
               const SizedBox(height: 10),
-              _buildActionButton(text: "Remove Wallet", icon: Icons.delete_outline_rounded, color: Colors.red.shade700, onTap: () {
-                Navigator.pop(ctx);
-                _confirmAction(title: "Remove Wallet permanently?", onConfirm: _removeWallet);
-              }),
+              _buildActionButton(
+                text: "Remove Wallet",
+                icon: Icons.delete_outline_rounded,
+                color: kTealDark,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _confirmAction(
+                      title: "Remove Wallet permanently?",
+                      onConfirm: _removeWallet);
+                },
+              ),
             ],
           ),
         ),
@@ -937,9 +1513,9 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
   }
 
   Widget _buildActionButton({
-    required String   text,
-    required IconData icon,
-    required Color    color,
+    required String    text,
+    required IconData  icon,
+    required Color     color,
     required VoidCallback onTap,
   }) {
     return SizedBox(
@@ -953,11 +1529,13 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
           padding: const EdgeInsets.symmetric(vertical: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
-            side: BorderSide(color: color.withOpacity(0.2)),
+            side: BorderSide(color: color.withOpacity(0.22)),
           ),
         ),
         icon: Icon(icon, size: 18),
-        label: Text(text, style: AppTheme.button(14)),
+        label: Text(text,
+            style: const TextStyle(
+                fontWeight: FontWeight.w600, fontSize: 14)),
       ),
     );
   }

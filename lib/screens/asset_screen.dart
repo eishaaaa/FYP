@@ -8,8 +8,6 @@ import 'rent_distribution_screen.dart';
 import '../services/resale_service.dart';
 import '../theme.dart';
 
-// Constants removed - using AppTheme
-
 // ─────────────────────────────────────────────────────────────────────────────
 // MY ASSETS SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,7 +40,9 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-            body: Center(child: CircularProgressIndicator(color: AppTheme.primaryStart)),
+            body: Center(
+              child: CircularProgressIndicator(color: AppTheme.primaryStart),
+            ),
           );
         }
         final role = snap.data ?? 'user';
@@ -55,7 +55,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
         // ── Regular user view ─────────────────────────────────────────────
         return Scaffold(
           backgroundColor: AppTheme.background,
-          appBar: _buildAppBar(context,'My Assets'),
+          appBar: _buildAppBar('My Assets'),
           body: Column(
             children: [
               _SearchBar(
@@ -105,7 +105,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                         if (transferredAt is Timestamp) {
                           final dt = transferredAt.toDate();
                           transferDate =
-                              '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+                          '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
                         }
 
                         return _AssetCard(
@@ -119,11 +119,11 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                               : '${d['brand'] ?? '—'} ${d['model'] ?? ''}',
                           detail2: isLand
                               ? (d['plotArea'] != null
-                                    ? '${d['plotArea']} ${d['plotUnit'] ?? ''}'
-                                    : null)
+                              ? '${d['plotArea']} ${d['plotUnit'] ?? ''}'
+                              : null)
                               : (d['serial'] != null
-                                    ? 'S/N: ${d['serial']}'
-                                    : null),
+                              ? 'S/N: ${d['serial']}'
+                              : null),
                           transferDate: transferDate,
                           tokenId: hasNFT ? '#${d['blockchainTokenId']}' : null,
                           onTap: () => Navigator.push(
@@ -196,24 +196,130 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
 
   Future<void> _listForSale(String assetId, Map<String, dynamic> asset) async {
     if (_listingInProgress) return;
+
+    // ── Confirmation dialog before listing ──────────────────────────────────
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Row(
+          children: [
+            Icon(Icons.storefront_outlined, color: AppTheme.primaryStart, size: 22),
+            SizedBox(width: 10),
+            Text(
+              'List for Sale',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '"${asset['title'] ?? 'This asset'}" will be published immediately.',
+              style: const TextStyle(fontSize: 14, color: Color(0xFF444444)),
+            ),
+            const SizedBox(height: 14),
+            _InfoRow(
+              icon: Icons.home_outlined,
+              text: 'Visible on the User Home tab',
+            ),
+            const SizedBox(height: 8),
+            _InfoRow(
+              icon: Icons.store_outlined,
+              text: 'Visible on the Supplier Home tab',
+            ),
+            const SizedBox(height: 8),
+            _InfoRow(
+              icon: Icons.people_alt_outlined,
+              text: 'Buyers can view and request purchase',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryStart,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Publish Now'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
     if (mounted) setState(() => _listingInProgress = true);
     try {
-      final listed = await ResaleListingSheet.show(
-        context,
-        assetId: assetId,
-        assetData: asset,
+      // ── Directly update Firestore — no navigation ──────────────────────
+      await FirebaseFirestore.instance.collection('assets').doc(assetId).update({
+        'isListedForResale': true,
+        'isForSale': true,
+        'listedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      // ── Success banner ─────────────────────────────────────────────────
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppTheme.primaryStart,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: Row(
+            children: const [
+              Icon(Icons.check_circle_outline, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Asset is now live! Visible on User & Supplier home tabs.',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          duration: const Duration(seconds: 4),
+        ),
       );
-      if (listed && mounted) {
+    } catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Asset listed for sale on the marketplace.'),
-            backgroundColor: AppTheme.primaryStart,
+          SnackBar(
+            content: Text('Failed to list asset: $e'),
+            backgroundColor: AppTheme.error,
           ),
         );
       }
     } finally {
       if (mounted) setState(() => _listingInProgress = false);
     }
+  }
+
+  /// Small icon + text row used inside the listing confirmation dialog.
+  Widget _InfoRow({required IconData icon, required String text}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: AppTheme.primaryStart),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 13, color: Color(0xFF555555)),
+          ),
+        ),
+      ],
+    );
   }
 
   Future<void> _removeSaleListing(String assetId) async {
@@ -230,7 +336,7 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
               'Remove',
@@ -242,21 +348,49 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
     );
     if (confirmed != true) return;
 
-    await _resaleSvc.removeListing(assetId);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Asset removed from sale.'),
-        backgroundColor: AppTheme.primaryStart,
-      ),
-    );
+    try {
+      await FirebaseFirestore.instance.collection('assets').doc(assetId).update({
+        'isForSale': false,
+        'isListedForResale': false,
+        'listedAt': FieldValue.delete(),
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppTheme.error,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: const Row(
+            children: [
+              Icon(Icons.visibility_off_outlined, color: Colors.white, size: 18),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Asset removed. No longer visible on home tabs.',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to remove listing: \$e'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: _buildAppBar(context,'My Inventory'),
+      appBar: _buildAppBar('My Inventory'),
       body: Column(
         children: [
           _SearchBar(
@@ -311,11 +445,11 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
                           : '${d['brand'] ?? '—'} ${d['model'] ?? ''}',
                       detail2: isLand
                           ? (d['plotArea'] != null
-                                ? '${d['plotArea']} ${d['plotUnit'] ?? ''}'
-                                : null)
+                          ? '${d['plotArea']} ${d['plotUnit'] ?? ''}'
+                          : null)
                           : (d['serial'] != null
-                                ? 'S/N: ${d['serial']}'
-                                : null),
+                          ? 'S/N: ${d['serial']}'
+                          : null),
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -325,13 +459,13 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
                       primaryAction: _ActionButton(
                         label: hasNFT
                             ? (isListedForSale
-                                  ? 'Remove From Sale'
-                                  : 'List for Sale')
+                            ? 'Remove From Sale'
+                            : 'List for Sale')
                             : 'Pending NFT',
                         icon: hasNFT
                             ? (isListedForSale
-                                  ? Icons.remove_circle_outline
-                                  : Icons.sell_outlined)
+                            ? Icons.remove_circle_outline
+                            : Icons.sell_outlined)
                             : Icons.hourglass_top_rounded,
                         outlined: true,
                         onPressed: () {
@@ -352,56 +486,6 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
                           _listForSale(id, d);
                         },
                       ),
-                      secondaryAction: isLand && !isListedForSale
-                          ? _ActionButton(
-                              label: d['isForRent'] == true
-                                  ? 'Renting Active'
-                                  : 'List for Rent',
-                              icon: d['isForRent'] == true
-                                  ? Icons.key_rounded
-                                  : Icons.key_outlined,
-                              outlined: false,
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => RentDistributionScreen(
-                                      assetId: id,
-                                      propertyId: (d['blockchainTokenId'] as num).toInt(),
-                                      isOwner: true,
-                                    ),
-                                  ),
-                                );
-                              },
-                            )
-                          : _ActionButton(
-                              label: isListedForSale ? 'On Marketplace' : 'View Asset',
-                              icon: isListedForSale
-                                  ? Icons.storefront_outlined
-                                  : Icons.visibility_outlined,
-                              outlined: false,
-                              onPressed: () {
-                                if (isListedForSale) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        d['resalePrice'] != null
-                                            ? 'Listed for PKR ${d['resalePrice']}'
-                                            : 'Asset is live on the marketplace.',
-                                      ),
-                                      backgroundColor: AppTheme.primaryStart,
-                                    ),
-                                  );
-                                  return;
-                                }
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => AssetDetailScreen(assetId: id),
-                                  ),
-                                );
-                              },
-                            ),
                     );
                   },
                 );
@@ -429,7 +513,7 @@ class _AssetCard extends StatelessWidget {
   final String? tokenId;
   final VoidCallback onTap;
   final _ActionButton primaryAction;
-  final _ActionButton secondaryAction;
+  final _ActionButton? secondaryAction;
 
   const _AssetCard({
     required this.image,
@@ -443,7 +527,7 @@ class _AssetCard extends StatelessWidget {
     this.tokenId,
     required this.onTap,
     required this.primaryAction,
-    required this.secondaryAction,
+    this.secondaryAction,
   });
 
   @override
@@ -488,15 +572,15 @@ class _AssetCard extends StatelessWidget {
                       image != null
                           ? buildAssetImage(image, fit: BoxFit.cover)
                           : Container(
-                              color: AppTheme.primaryStart.withOpacity(0.05),
-                              child: Center(
-                                child: Icon(
-                                  Icons.image_outlined,
-                                  size: 48,
-                                  color: AppTheme.textMid,
-                                ),
-                              ),
-                            ),
+                        color: AppTheme.primaryLight,
+                        child: const Center(
+                          child: Icon(
+                            Icons.image_outlined,
+                            size: 48,
+                            color: AppTheme.textMid,
+                          ),
+                        ),
+                      ),
 
                       // Badge
                       if (badge != null)
@@ -523,7 +607,11 @@ class _AssetCard extends StatelessWidget {
                                 const SizedBox(width: 4),
                                 Text(
                                   badge!,
-                                  style: AppTheme.heading(11, color: Colors.white),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ],
                             ),
@@ -564,7 +652,11 @@ class _AssetCard extends StatelessWidget {
                     // Title
                     Text(
                       title,
-                      style: AppTheme.heading(16),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -599,35 +691,35 @@ class _AssetCard extends StatelessWidget {
                       ),
 
                     const SizedBox(height: 12),
-                    Divider(height: 1, color: AppTheme.primaryStart.withOpacity(0.05)),
+                    const Divider(height: 1, color: Color(0xFFF0F0F0)),
                     const SizedBox(height: 12),
 
-                    // Price + Actions
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            price,
-                            style: AppTheme.heading(15, color: AppTheme.primaryStart),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          flex: 2,
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              alignment: WrapAlignment.end,
-                              children: [primaryAction, secondaryAction],
-                            ),
-                          ),
-                        ),
-                      ],
+                    // Price
+                    Text(
+                      price,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.primaryStart,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
+                    const SizedBox(height: 10),
+
+                    // Actions — full width, stacked if two buttons
+                    if (secondaryAction == null)
+                      SizedBox(
+                        width: double.infinity,
+                        child: primaryAction,
+                      )
+                    else
+                      Row(
+                        children: [
+                          Expanded(child: primaryAction),
+                          const SizedBox(width: 8),
+                          Expanded(child: secondaryAction!),
+                        ],
+                      ),
                   ],
                 ),
               ),
@@ -659,38 +751,34 @@ class _ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = outlined
         ? OutlinedButton.styleFrom(
-            foregroundColor: AppTheme.primaryStart,
-            side: const BorderSide(color: AppTheme.primaryStart, width: 1.4),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            textStyle: AppTheme.button(12),
-          )
+      foregroundColor: AppTheme.primaryStart,
+      side: const BorderSide(color: AppTheme.primaryStart, width: 1.4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+      textStyle: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
+    )
         : ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.primaryStart,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            textStyle: AppTheme.button(12),
-          );
+      backgroundColor: AppTheme.primaryStart,
+      foregroundColor: Colors.white,
+      elevation: 0,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+      textStyle: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
+    );
 
     final child = Row(
       mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14),
-        const SizedBox(width: 4),
-        Flexible(
-          child: Text(
-            label,
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
-          ),
-        ),
-      ],
+      children: [Icon(icon, size: 14), const SizedBox(width: 4), Text(label)],
     );
 
     return outlined
@@ -707,7 +795,7 @@ class _DetailRow extends StatelessWidget {
   const _DetailRow({
     required this.icon,
     required this.text,
-    this.color = AppTheme.textSecondary,
+    this.color = AppTheme.textMid,
   });
 
   @override
@@ -721,7 +809,11 @@ class _DetailRow extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: AppTheme.body(12, color: color),
+              style: TextStyle(
+                fontSize: 12,
+                color: color,
+                fontWeight: FontWeight.w500,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -752,7 +844,7 @@ class _SearchBar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: [
                   BoxShadow(
-                    color: AppTheme.primaryStart.withOpacity(0.05),
+                    color: Colors.black.withOpacity(0.05),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -761,13 +853,16 @@ class _SearchBar extends StatelessWidget {
               child: TextField(
                 controller: controller,
                 onChanged: onChanged,
-                style: AppTheme.body(14),
+                style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary),
                 decoration: InputDecoration(
                   hintText: 'Search assets…',
-                  hintStyle: AppTheme.body(14, color: AppTheme.textMid.withOpacity(0.5)),
+                  hintStyle: TextStyle(
+                    color: Colors.grey.shade400,
+                    fontSize: 14,
+                  ),
                   prefixIcon: Icon(
                     Icons.search_rounded,
-                    color: AppTheme.textMid.withOpacity(0.5),
+                    color: Colors.grey.shade400,
                     size: 20,
                   ),
                   border: InputBorder.none,
@@ -803,16 +898,46 @@ class _SearchBar extends StatelessWidget {
   }
 }
 
-AppBar _buildAppBar(BuildContext context, String title) {
+AppBar _buildAppBar(String title) {
   return AppBar(
-    title: Text(title, style: AppTheme.heading(20, color: Colors.white)),
-    flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
+    backgroundColor: Colors.transparent,
     elevation: 0,
-    centerTitle: true,
-    leading: IconButton(
-      icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
-      onPressed: () => Navigator.of(context).maybePop(),
+    scrolledUnderElevation: 0,
+    leadingWidth: 72,
+    leading: Builder(
+      builder: (context) => IconButton(
+        icon: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.chevron_left_rounded,
+            color: AppTheme.textPrimary,
+            size: 24,
+          ),
+        ),
+        onPressed: () => Navigator.of(context).pop(),
+      ),
     ),
+    title: Text(
+      title,
+      style: const TextStyle(
+        color: AppTheme.textPrimary,
+        fontSize: 17,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+    centerTitle: true,
   );
 }
 
@@ -837,7 +962,7 @@ class _EmptyView extends StatelessWidget {
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              color: AppTheme.primaryStart.withOpacity(0.1),
+              color: AppTheme.primaryLight,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Icon(icon, size: 40, color: AppTheme.primaryStart),
@@ -845,10 +970,17 @@ class _EmptyView extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             title,
-            style: AppTheme.heading(16),
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textPrimary,
+            ),
           ),
           const SizedBox(height: 6),
-          Text(subtitle, style: AppTheme.body(13, color: AppTheme.textSecondary)),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 13, color: AppTheme.textMid),
+          ),
         ],
       ),
     );
@@ -867,7 +999,7 @@ class _ErrorView extends StatelessWidget {
         child: Text(
           'Error: $error',
           textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.red),
+          style: const TextStyle(color: AppTheme.error),
         ),
       ),
     );
@@ -883,8 +1015,8 @@ String? _asNonEmptyString(Object? value) {
 
 String _assetTitle(Map<String, dynamic> data, {required String fallback}) =>
     _asNonEmptyString(data['title']) ??
-    _asNonEmptyString(data['name']) ??
-    fallback;
+        _asNonEmptyString(data['name']) ??
+        fallback;
 
 String? _firstImage(Map<String, dynamic> d) {
   final images = d['images'];
@@ -911,9 +1043,9 @@ class RelatedItemsList extends StatelessWidget {
     Query<Map<String, dynamic>> q = db
         .collection('assets')
         .withConverter<Map<String, dynamic>>(
-          fromFirestore: (snap, _) => snap.data() ?? <String, dynamic>{},
-          toFirestore: (m, _) => m,
-        );
+      fromFirestore: (snap, _) => snap.data() ?? <String, dynamic>{},
+      toFirestore: (m, _) => m,
+    );
     if (type != null) q = q.where('category', isEqualTo: type);
     if (city != null) q = q.where('city', isEqualTo: city);
     q = q.limit(6);
@@ -924,7 +1056,9 @@ class RelatedItemsList extends StatelessWidget {
         stream: q.snapshots(),
         builder: (context, snap) {
           if (!snap.hasData) {
-            return Center(child: CircularProgressIndicator(color: AppTheme.primaryStart));
+            return const Center(
+              child: CircularProgressIndicator(color: AppTheme.primaryStart),
+            );
           }
           final docs = snap.data!.docs;
           return ListView.builder(
@@ -966,18 +1100,18 @@ class RelatedItemsList extends StatelessWidget {
                           width: double.infinity,
                           child: img != null
                               ? buildAssetImage(
-                                  img,
-                                  width: double.infinity,
-                                  height: 90,
-                                  fit: BoxFit.cover,
-                                )
+                            img,
+                            width: double.infinity,
+                            height: 90,
+                            fit: BoxFit.cover,
+                          )
                               : Container(
-                                  color: const Color(0xFFE8F4F6),
-                                  child: const Icon(
-                                    Icons.image_outlined,
-                                    color: AppTheme.textSecondary,
-                                  ),
-                                ),
+                            color: AppTheme.primaryLight,
+                            child: const Icon(
+                              Icons.image_outlined,
+                              color: AppTheme.textMid,
+                            ),
+                          ),
                         ),
                       ),
                       Padding(
@@ -986,7 +1120,11 @@ class RelatedItemsList extends StatelessWidget {
                           _assetTitle(d, fallback: ''),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: AppTheme.heading(12),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimary,
+                          ),
                         ),
                       ),
                     ],
@@ -1017,8 +1155,8 @@ class FavoritesScreen extends StatelessWidget {
     final q = db.collection('users').doc(user.uid).collection('favorites');
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      appBar: _buildAppBar(context,'Favorites'),
+      backgroundColor: AppTheme.background,
+      appBar: _buildAppBar('Favorites'),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: q.snapshots(),
         builder: (context, snap) {
@@ -1026,7 +1164,9 @@ class FavoritesScreen extends StatelessWidget {
             return _ErrorView(error: snap.error.toString());
           }
           if (!snap.hasData) {
-            return Center(child: CircularProgressIndicator(color: AppTheme.primaryStart));
+            return const Center(
+              child: CircularProgressIndicator(color: AppTheme.primaryStart),
+            );
           }
           final docs = snap.data!.docs;
           if (docs.isEmpty) {
@@ -1245,7 +1385,9 @@ class _SupplierPublishedAssetsBuilder extends StatelessWidget {
 
                     if (!snapshots.any((snap) => snap.hasData)) {
                       return const Center(
-                        child: CircularProgressIndicator(color: AppTheme.primaryStart),
+                        child: CircularProgressIndicator(
+                          color: AppTheme.primaryStart,
+                        ),
                       );
                     }
 
@@ -1298,7 +1440,9 @@ class _MergedOwnerAssetsBuilder extends StatelessWidget {
           return _ErrorView(error: ownerIdSnap.error.toString());
         }
         if (!ownerIdSnap.hasData) {
-          return Center(child: CircularProgressIndicator(color: AppTheme.primaryStart));
+          return const Center(
+            child: CircularProgressIndicator(color: AppTheme.primaryStart),
+          );
         }
 
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -1331,17 +1475,17 @@ class _MergedOwnerAssetsBuilder extends StatelessWidget {
 }
 
 List<QueryDocumentSnapshot<Map<String, dynamic>>> _mergeAssetDocs(
-  Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> primary,
-  Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> secondary, {
-  required String sortField,
-}) {
+    Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> primary,
+    Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> secondary, {
+      required String sortField,
+    }) {
   return _mergeAssetDocGroups([primary, secondary], sortField: sortField);
 }
 
 List<QueryDocumentSnapshot<Map<String, dynamic>>> _mergeAssetDocGroups(
-  Iterable<Iterable<QueryDocumentSnapshot<Map<String, dynamic>>>> groups, {
-  required String sortField,
-}) {
+    Iterable<Iterable<QueryDocumentSnapshot<Map<String, dynamic>>>> groups, {
+      required String sortField,
+    }) {
   final merged = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
   final seenIds = <String>{};
 
@@ -1397,8 +1541,11 @@ class _FavoriteSkeletonCard extends StatelessWidget {
               height: 180,
               width: double.infinity,
               color: Colors.grey.shade100,
-              child: Center(
-                child: CircularProgressIndicator(color: AppTheme.primaryStart, strokeWidth: 2),
+              child: const Center(
+                child: CircularProgressIndicator(
+                  color: AppTheme.primaryStart,
+                  strokeWidth: 2,
+                ),
               ),
             ),
           ),
@@ -1496,12 +1643,20 @@ class _InlineStatusCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: AppTheme.heading(14),
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: AppTheme.body(12, color: AppTheme.textSecondary),
+                  style: const TextStyle(
+                    color: AppTheme.textMid,
+                    fontSize: 12,
+                    height: 1.45,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextButton(
