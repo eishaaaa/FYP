@@ -1,6 +1,7 @@
 // lib/screens/supplier_screens.dart
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -16,12 +17,12 @@ import 'asset_screen.dart';
 import '../services/push_notification_service.dart';
 import 'shared_screens.dart';
 import 'qr_generator_screen.dart';
-import '../theme.dart';
 import 'qr_scanner_enhanced.dart';
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
 import 'wallet_screen.dart';
 import '../widgets/hand_help_tooltip.dart';
+import '../theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final db = FirebaseFirestore.instance;
@@ -38,9 +39,9 @@ extension _Cap on String {
 // -----------------------------------------------------------------------------
 
 Future<String> compressImageToBase64(
-  Uint8List bytes, {
-  int quality = 70,
-}) async {
+    Uint8List bytes, {
+      int quality = 70,
+    }) async {
   final image = img.decodeImage(bytes);
   if (image == null) return base64Encode(bytes);
 
@@ -71,10 +72,10 @@ class DocumentStorage {
   static const int maxChunkSize = 900 * 1024;
 
   static Future<Map<String, dynamic>> storeDocument(
-    Uint8List bytes,
-    String fileName,
-    String fileType,
-  ) async {
+      Uint8List bytes,
+      String fileName,
+      String fileType,
+      ) async {
     final originalSize = bytes.length;
 
     if (originalSize <= smallFileLimit) {
@@ -87,11 +88,11 @@ class DocumentStorage {
   }
 
   static Map<String, dynamic> _storeSmallFile(
-    Uint8List bytes,
-    String fileName,
-    String fileType,
-    int originalSize,
-  ) {
+      Uint8List bytes,
+      String fileName,
+      String fileType,
+      int originalSize,
+      ) {
     final base64Str = base64Encode(bytes);
     return {
       'name': fileName,
@@ -106,11 +107,11 @@ class DocumentStorage {
   }
 
   static Future<Map<String, dynamic>> _storeMediumFile(
-    Uint8List bytes,
-    String fileName,
-    String fileType,
-    int originalSize,
-  ) async {
+      Uint8List bytes,
+      String fileName,
+      String fileType,
+      int originalSize,
+      ) async {
     final isImage = ['jpg', 'jpeg', 'png'].contains(fileType.toLowerCase());
 
     if (isImage) {
@@ -149,11 +150,11 @@ class DocumentStorage {
   }
 
   static Future<Map<String, dynamic>> _storeLargeFile(
-    Uint8List bytes,
-    String fileName,
-    String fileType,
-    int originalSize,
-  ) async {
+      Uint8List bytes,
+      String fileName,
+      String fileType,
+      int originalSize,
+      ) async {
     final isImage = ['jpg', 'jpeg', 'png'].contains(fileType.toLowerCase());
 
     if (isImage) {
@@ -180,11 +181,11 @@ class DocumentStorage {
   }
 
   static Future<Map<String, dynamic>> _splitIntoChunks(
-    Uint8List bytes,
-    String fileName,
-    String fileType,
-    int originalSize,
-  ) async {
+      Uint8List bytes,
+      String fileName,
+      String fileType,
+      int originalSize,
+      ) async {
     final base64Str = base64Encode(bytes);
     final chunks = <String>[];
     final chunkSize = (maxChunkSize * 0.8).toInt();
@@ -311,11 +312,19 @@ class SupplierHome extends StatelessWidget {
               children: [
                 Text(
                   '${type.capitalize()} Supplier',
-                  style: AppTheme.heading(15, color: AppTheme.textPrimary),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
                 ),
-                Text(
+                const Text(
                   'My Assets',
-                  style: AppTheme.body(12, color: AppTheme.textSecondary),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.black45,
+                    fontWeight: FontWeight.w400,
+                  ),
                 ),
               ],
             ),
@@ -334,9 +343,9 @@ class SupplierHome extends StatelessWidget {
             stream: FirebaseFirestore.instance
                 .collection('notifications')
                 .where(
-                  'receiverId',
-                  isEqualTo: FirebaseAuth.instance.currentUser?.uid,
-                )
+              'receiverId',
+              isEqualTo: FirebaseAuth.instance.currentUser?.uid,
+            )
                 .where('isRead', isEqualTo: false)
                 .snapshots(),
             builder: (context, snapshot) {
@@ -388,9 +397,9 @@ class SupplierHome extends StatelessWidget {
               foregroundColor: Colors.white,
               elevation: 2,
               icon: const Icon(Icons.add_rounded),
-              label: Text(
+              label: const Text(
                 'Add Asset',
-                style: AppTheme.button(14),
+                style: TextStyle(fontWeight: FontWeight.w600),
               ),
               onPressed: () => Navigator.push(
                 context,
@@ -409,17 +418,15 @@ class AssetManagementScreen extends StatelessWidget {
   const AssetManagementScreen({super.key, required this.type});
 
   void _showDistributeRentDialog(
-    BuildContext context,
-    String docId,
-    int propertyId,
-  ) {
+      BuildContext context,
+      String docId,
+      int propertyId,
+      ) {
     final TextEditingController _rentCtrl = TextEditingController();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Distribute Rent', style: AppTheme.heading(20)),
+        title: const Text('Distribute Rent'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -429,11 +436,9 @@ class AssetManagementScreen extends StatelessWidget {
             TextField(
               controller: _rentCtrl,
               keyboardType: TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Amount (MATIC)',
-                labelStyle: AppTheme.body(14),
                 suffixText: 'MATIC',
-                suffixStyle: AppTheme.body(12),
               ),
             ),
           ],
@@ -526,12 +531,28 @@ class AssetManagementScreen extends StatelessWidget {
       stream: db
           .collection('assets')
           .where('ownerId', isEqualTo: auth.currentUser!.uid)
-          .where('category', isEqualTo: type)
           .snapshots(),
       builder: (context, snap) {
+        if (snap.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'Error loading assets:\n${snap.error}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red, fontSize: 13),
+              ),
+            ),
+          );
+        }
         if (!snap.hasData)
           return const Center(child: CircularProgressIndicator());
-        final docs = snap.data!.docs;
+        // Client-side filter by category — avoids needing a composite index
+        final docs = snap.data!.docs.where((doc) {
+          final d = doc.data() as Map<String, dynamic>;
+          return (d['category'] ?? '').toString().toLowerCase() ==
+              type.toLowerCase();
+        }).toList();
         if (docs.isEmpty) {
           return Center(
             child: Column(
@@ -552,14 +573,18 @@ class AssetManagementScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text(
+                const Text(
                   'No assets yet',
-                  style: AppTheme.heading(16, color: AppTheme.textSecondary),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black54,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   'Tap + Add Asset to mint your first NFT',
-                  style: AppTheme.body(13, color: AppTheme.textMid),
+                  style: TextStyle(fontSize: 13, color: Colors.grey[400]),
                 ),
               ],
             ),
@@ -576,8 +601,8 @@ class AssetManagementScreen extends StatelessWidget {
             final rawTokenId = data['blockchainTokenId'];
             final tokenId = rawTokenId != null
                 ? (rawTokenId is int
-                      ? rawTokenId
-                      : int.tryParse(rawTokenId.toString()))
+                ? rawTokenId
+                : int.tryParse(rawTokenId.toString()))
                 : null;
             final isMinted = tokenId != null;
             final title = data['title'] ?? 'Untitled';
@@ -610,12 +635,12 @@ class AssetManagementScreen extends StatelessWidget {
                     ),
                     child: hasImage
                         ? Image.memory(
-                            base64Decode(images.first as String),
-                            width: double.infinity,
-                            height: 160,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _imageFallback(type),
-                          )
+                      base64Decode(images.first as String),
+                      width: double.infinity,
+                      height: 160,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _imageFallback(type),
+                    )
                         : _imageFallback(type),
                   ),
 
@@ -627,7 +652,11 @@ class AssetManagementScreen extends StatelessWidget {
                         Expanded(
                           child: Text(
                             title,
-                            style: AppTheme.heading(15, color: AppTheme.textPrimary),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              color: Colors.black87,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -663,9 +692,13 @@ class AssetManagementScreen extends StatelessWidget {
                               const SizedBox(width: 4),
                               Text(
                                 isMinted ? 'NFT Minted' : 'Draft',
-                                style: AppTheme.heading(10, color: isMinted
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: isMinted
                                       ? AppTheme.primaryStart
-                                      : AppTheme.textSecondary),
+                                      : Colors.grey[500],
+                                ),
                               ),
                             ],
                           ),
@@ -687,7 +720,11 @@ class AssetManagementScreen extends StatelessWidget {
                         const SizedBox(width: 5),
                         Text(
                           'PKR $price',
-                          style: AppTheme.heading(13, color: AppTheme.textPrimary),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
                         ),
                         if (isMinted) ...[
                           const Spacer(),
@@ -711,109 +748,105 @@ class AssetManagementScreen extends StatelessWidget {
                     padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                     child: type == 'land' && isMinted
                         ? Column(
-                            children: [
-                              // Row 1: Distribute Rent (full width)
-                              _actionButton(
-                                icon: Icons.monetization_on_rounded,
-                                label: 'Distribute Rent',
-                                color: Colors.amber[700]!,
-                                bgColor: Colors.amber[50]!,
-                                onTap: () => _showDistributeRentDialog(
-                                  context,
-                                  doc.id,
-                                  tokenId,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              // Row 2: QR Code + Edit
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _actionButton(
-                                      icon: Icons.qr_code_rounded,
-                                      label: 'QR Code',
-                                      color: AppTheme.primaryStart,
-                                      bgColor: const Color(
-                                        0xFF2A7F8F,
-                                      ).withOpacity(0.08),
-                                      onTap: () => Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => QRGeneratorScreen(
-                                            assetId: doc.id,
-                                            category: type,
-                                            blockchainTokenId: tokenId,
-                                            title: data['title'] ?? 'Asset',
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: _actionButton(
-                                      icon: Icons.edit_rounded,
-                                      label: 'Edit',
-                                      color: Colors.indigo[600]!,
-                                      bgColor: Colors.indigo[50]!,
-                                      onTap: () => Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => EditAssetScreen(
-                                            assetId: doc.id,
-                                            type: type,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          )
-                        : Row(
-                            children: [
-                              Expanded(
-                                child: _actionButton(
-                                  icon: Icons.qr_code_rounded,
-                                  label: 'QR Code',
-                                  color: AppTheme.primaryStart,
-                                  bgColor: const Color(
-                                    0xFF2A7F8F,
-                                  ).withOpacity(0.08),
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => QRGeneratorScreen(
-                                        assetId: doc.id,
-                                        category: type,
-                                        blockchainTokenId: tokenId,
-                                        title: data['title'] ?? 'Asset',
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: _actionButton(
-                                  icon: Icons.edit_rounded,
-                                  label: 'Edit',
-                                  color: Colors.indigo[600]!,
-                                  bgColor: Colors.indigo[50]!,
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => EditAssetScreen(
-                                        assetId: doc.id,
-                                        type: type,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                      children: [
+                        // Row 1: Distribute Rent (full width)
+                        _actionButton(
+                          icon: Icons.monetization_on_rounded,
+                          label: 'Distribute Rent',
+                          color: Colors.amber[700]!,
+                          bgColor: Colors.amber[50]!,
+                          onTap: () => _showDistributeRentDialog(
+                            context,
+                            doc.id,
+                            tokenId,
                           ),
+                        ),
+                        const SizedBox(height: 8),
+                        // Row 2: QR Code + Edit
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _actionButton(
+                                icon: Icons.qr_code_rounded,
+                                label: 'QR Code',
+                                color: AppTheme.primaryStart,
+                                bgColor: AppTheme.primaryStart.withOpacity(0.08),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => QRGeneratorScreen(
+                                      assetId: doc.id,
+                                      category: type,
+                                      blockchainTokenId: tokenId,
+                                      title: data['title'] ?? 'Asset',
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _actionButton(
+                                icon: Icons.edit_rounded,
+                                label: 'Edit',
+                                color: Colors.indigo[600]!,
+                                bgColor: Colors.indigo[50]!,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => EditAssetScreen(
+                                      assetId: doc.id,
+                                      type: type,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    )
+                        : Row(
+                      children: [
+                        Expanded(
+                          child: _actionButton(
+                            icon: Icons.qr_code_rounded,
+                            label: 'QR Code',
+                            color: AppTheme.primaryStart,
+                            bgColor: AppTheme.primaryStart.withOpacity(0.08),
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => QRGeneratorScreen(
+                                  assetId: doc.id,
+                                  category: type,
+                                  blockchainTokenId: tokenId,
+                                  title: data['title'] ?? 'Asset',
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _actionButton(
+                            icon: Icons.edit_rounded,
+                            label: 'Edit',
+                            color: Colors.indigo[600]!,
+                            bgColor: Colors.indigo[50]!,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => EditAssetScreen(
+                                  assetId: doc.id,
+                                  type: type,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -849,7 +882,11 @@ class AssetManagementScreen extends StatelessWidget {
                 label,
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,
-                style: AppTheme.heading(12, color: color),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
               ),
             ),
           ],
@@ -902,6 +939,11 @@ class _AssetFormState extends State<AssetForm> {
   String _plotUnit = 'marla';
   bool _uploadingDocuments = false;
 
+  // PKR → POL live conversion
+  double? _polRateInPkr;    // price of 1 POL in PKR
+  String _polDisplay = '';   // e.g. "≈ 0.23 POL"
+  bool _isFetchingRate = true; // false once fetch succeeds or fails
+
   // ✅ SAFE INITIALIZATION: Using .toString() to handle numeric or null values from Firestore
   late final TextEditingController _titleCtrl = TextEditingController(
     text: widget.initialData?['title']?.toString() ?? '',
@@ -944,10 +986,90 @@ class _AssetFormState extends State<AssetForm> {
       final docs = widget.initialData!['documents'] as List<dynamic>;
       _documents = docs.cast<Map<String, dynamic>>();
     }
+
+    _fetchPolRate();
+    _priceCtrl.addListener(_updatePolDisplay);
+  }
+
+  Future<void> _fetchPolRate() async {
+    try {
+      // Step 1: get POL price in USDT from Binance (no key needed)
+      final polRes = await http
+          .get(Uri.parse(
+        'https://api.binance.com/api/v3/ticker/price?symbol=POLUSDT',
+      ))
+          .timeout(const Duration(seconds: 8));
+
+      // Step 2: get USD → PKR rate from ExchangeRate-API (free, no key)
+      final fxRes = await http
+          .get(Uri.parse(
+        'https://open.er-api.com/v6/latest/USD',
+      ))
+          .timeout(const Duration(seconds: 8));
+
+      if (polRes.statusCode == 200 && fxRes.statusCode == 200) {
+        final polUsd =
+        double.parse(jsonDecode(polRes.body)['price'] as String);
+        final pkrPerUsd =
+        (jsonDecode(fxRes.body)['rates']['PKR'] as num).toDouble();
+        final rate = polUsd * pkrPerUsd; // 1 POL in PKR
+        if (mounted) {
+          setState(() {
+            _polRateInPkr = rate;
+            _isFetchingRate = false;
+          });
+          _updatePolDisplay();
+        }
+        return;
+      }
+    } catch (_) {
+      // fall through to CoinGecko fallback
+    }
+
+    // Fallback: CoinGecko free endpoint
+    try {
+      final res = await http
+          .get(Uri.parse(
+        'https://api.coingecko.com/api/v3/simple/price?ids=matic-network&vs_currencies=pkr',
+      ))
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final rate = (data['matic-network']['pkr'] as num).toDouble();
+        if (mounted) {
+          setState(() {
+            _polRateInPkr = rate;
+            _isFetchingRate = false;
+          });
+          _updatePolDisplay();
+          return;
+        }
+      }
+    } catch (_) {
+      // both sources failed
+    }
+
+    // Both failed — stop spinner, hide badge
+    if (mounted) setState(() => _isFetchingRate = false);
+  }
+
+  void _updatePolDisplay() {
+    if (_polRateInPkr == null) return;
+    final pkr = double.tryParse(_priceCtrl.text.replaceAll(',', ''));
+    if (pkr != null && pkr > 0) {
+      final pol = pkr / _polRateInPkr!;
+      final formatted = pol < 0.001
+          ? pol.toStringAsExponential(2)
+          : pol.toStringAsFixed(4);
+      if (mounted) setState(() => _polDisplay = '≈ $formatted POL');
+    } else {
+      if (mounted) setState(() => _polDisplay = '');
+    }
   }
 
   @override
   void dispose() {
+    _priceCtrl.removeListener(_updatePolDisplay);
     _titleCtrl.dispose();
     _descCtrl.dispose();
     _priceCtrl.dispose();
@@ -1083,229 +1205,529 @@ class _AssetFormState extends State<AssetForm> {
     return out;
   }
 
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  Widget _sectionCard({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: Colors.grey[200]!),
+      ),
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 16, color: AppTheme.primaryStart),
+                const SizedBox(width: 6),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: AppTheme.primaryStartDark,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _field(
+      TextEditingController ctrl,
+      String label,
+      IconData icon, {
+        TextInputType keyboardType = TextInputType.text,
+        int maxLines = 1,
+        String? Function(String?)? validator,
+      }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextFormField(
+        controller: ctrl,
+        keyboardType: keyboardType,
+        maxLines: maxLines,
+        validator: validator,
+        style: const TextStyle(fontSize: 14, color: Colors.black87),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(fontSize: 13, color: Colors.grey[500]),
+          prefixIcon: Icon(icon, size: 18, color: AppTheme.primaryStart),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 14,
+          ),
+          filled: true,
+          fillColor: AppTheme.primaryLight,
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.grey[200]!),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: AppTheme.primaryStart, width: 1.5),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.red),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.red, width: 1.5),
+          ),
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _dropdownDecoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(fontSize: 13, color: Colors.grey[500]),
+      prefixIcon: Icon(icon, size: 18, color: AppTheme.primaryStart),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      filled: true,
+      fillColor: AppTheme.primaryLight,
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: Colors.grey[200]!),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: AppTheme.primaryStart, width: 1.5),
+      ),
+    );
+  }
+
+  // ── Build ───────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
+    final isLand = widget.type == 'land';
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       child: Form(
         key: _formKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextFormField(
-              controller: _titleCtrl,
-              decoration: InputDecoration(
-                labelText: 'Title',
-                labelStyle: AppTheme.body(14),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            // ── Basic Info ──────────────────────────────────────────
+            _sectionCard(
+              title: 'Basic Information',
+              icon: Icons.info_outline_rounded,
+              child: Column(
+                children: [
+                  _field(
+                    _titleCtrl,
+                    'Title',
+                    Icons.title_rounded,
+                    validator: (v) => v!.trim().isEmpty ? 'Required' : null,
+                  ),
+                  _field(
+                    _descCtrl,
+                    'Description',
+                    Icons.notes_rounded,
+                    maxLines: 3,
+                  ),
+                  // Price field with live PKR→POL conversion
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: TextFormField(
+                      controller: _priceCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      style: const TextStyle(fontSize: 14, color: Colors.black87),
+                      validator: (v) =>
+                      double.tryParse(v?.replaceAll(',', '') ?? '') == null
+                          ? 'Enter a valid price'
+                          : null,
+                      decoration: InputDecoration(
+                        labelText: 'Price (PKR)',
+                        labelStyle: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                        prefixIcon: const Icon(Icons.sell_outlined, size: 18, color: AppTheme.primaryStart),
+                        // Live POL conversion badge on the right
+                        suffix: _polDisplay.isNotEmpty
+                            ? Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryStart.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: AppTheme.primaryStart.withOpacity(0.25),
+                            ),
+                          ),
+                          child: Text(
+                            _polDisplay,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.primaryStart,
+                            ),
+                          ),
+                        )
+                            : _isFetchingRate
+                            ? const SizedBox(
+                          width: 10,
+                          height: 10,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: AppTheme.primaryStart,
+                          ),
+                        )
+                            : null,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                        filled: true,
+                        fillColor: AppTheme.primaryLight,
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: Colors.grey[200]!),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: AppTheme.primaryStart, width: 1.5),
+                        ),
+                        errorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: Colors.red),
+                        ),
+                        focusedErrorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: Colors.red, width: 1.5),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              validator: (v) => v!.isEmpty ? 'Required' : null,
-              style: AppTheme.body(14),
             ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _descCtrl,
-              decoration: InputDecoration(
-                labelText: 'Description',
-                labelStyle: AppTheme.body(14),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              maxLines: 3,
-              style: AppTheme.body(14),
-            ),
-            const SizedBox(height: 16),
-            // FIX: Using decimal input type
-            TextFormField(
-              controller: _priceCtrl,
-              decoration: InputDecoration(
-                labelText: 'Price',
-                labelStyle: AppTheme.body(14),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              style: AppTheme.body(14),
-            ),
-            const SizedBox(height: 16),
             const SizedBox(height: 12),
 
-            if (widget.type == 'land') ...[
-              DropdownButtonFormField<String>(
-                value: _plotUnit,
-                items: const [
-                  DropdownMenuItem(value: 'marla', child: Text('Marla')),
-                  DropdownMenuItem(value: 'kanal', child: Text('Kanal')),
-                ],
-                onChanged: (v) => setState(() => _plotUnit = v!),
-                decoration: InputDecoration(
-                  labelText: 'Plot Unit',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            // ── Land / Electronics fields ───────────────────────────
+            if (isLand) ...[
+              _sectionCard(
+                title: 'Land Details',
+                icon: Icons.landscape_rounded,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: DropdownButtonFormField<String>(
+                        value: _plotUnit,
+                        items: const [
+                          DropdownMenuItem(value: 'marla', child: Text('Marla')),
+                          DropdownMenuItem(value: 'kanal', child: Text('Kanal')),
+                        ],
+                        onChanged: (v) => setState(() => _plotUnit = v!),
+                        decoration: _dropdownDecoration('Plot Unit', Icons.straighten_rounded),
+                      ),
+                    ),
+                    _field(
+                      _plotCtrl,
+                      'Plot Area (Integer)',
+                      Icons.crop_square_rounded,
+                      keyboardType: TextInputType.number,
+                    ),
+                    _field(
+                      _cityCtrl,
+                      'City / Address',
+                      Icons.location_on_outlined,
+                    ),
+                    _field(
+                      _fractionsCtrl,
+                      'Total Fractions (Default 100)',
+                      Icons.pie_chart_outline_rounded,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _plotCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Plot Area (Integer)',
-                  labelStyle: AppTheme.body(14),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                keyboardType: TextInputType.number,
-                style: AppTheme.body(14),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _cityCtrl,
-                decoration: InputDecoration(
-                  labelText: 'City / Address',
-                  labelStyle: AppTheme.body(14),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                style: AppTheme.body(14),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _fractionsCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Total Fractions (Default 100)',
-                  labelStyle: AppTheme.body(14),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                keyboardType: TextInputType.number,
-                style: AppTheme.body(14),
               ),
             ] else ...[
-              TextFormField(
-                controller: _brandCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Brand',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _modelCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Model',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _serialCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Serial / IMEI',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _warrantyCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Warranty (Date/Months)',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _condition,
-                items: const [
-                  DropdownMenuItem(value: 'new', child: Text('New')),
-                  DropdownMenuItem(value: 'used', child: Text('Used')),
-                ],
-                onChanged: (v) => setState(() => _condition = v!),
-                decoration: InputDecoration(
-                  labelText: 'Condition',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              _sectionCard(
+                title: 'Device Details',
+                icon: Icons.devices_rounded,
+                child: Column(
+                  children: [
+                    _field(_brandCtrl, 'Brand', Icons.business_rounded),
+                    _field(_modelCtrl, 'Model', Icons.smartphone_rounded),
+                    _field(_serialCtrl, 'Serial / IMEI', Icons.fingerprint_rounded),
+                    _field(
+                      _warrantyCtrl,
+                      'Warranty (Date/Months)',
+                      Icons.verified_user_outlined,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: DropdownButtonFormField<String>(
+                        value: _condition,
+                        items: const [
+                          DropdownMenuItem(value: 'new', child: Text('New')),
+                          DropdownMenuItem(value: 'used', child: Text('Used')),
+                        ],
+                        onChanged: (v) => setState(() => _condition = v!),
+                        decoration: _dropdownDecoration('Condition', Icons.star_outline_rounded),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
+            const SizedBox(height: 12),
 
-            const Divider(height: 32),
-            const Text('Images', style: TextStyle(fontWeight: FontWeight.bold)),
-            Wrap(
-              children: _images
-                  .map(
-                    (bytes) => Padding(
-                      padding: const EdgeInsets.only(right: 8, top: 8),
-                      child: Image.memory(
-                        bytes,
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
-            Row(
-              children: [
-                TextButton.icon(
-                  onPressed: _pickImages,
-                  icon: const Icon(Icons.photo_library),
-                  label: const Text('Add Gallery'),
-                ),
-                TextButton.icon(
-                  onPressed: _takePhoto,
-                  icon: const Icon(Icons.camera_alt),
-                  label: const Text('Camera'),
-                ),
-              ],
-            ),
-
-            const Divider(height: 32),
-            const Text(
-              'Documents (Attached to IPFS & Secure Storage)',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            if (_documents.isNotEmpty)
-              Column(
-                children: _documents
-                    .map(
-                      (d) => ListTile(
-                        leading: const Icon(Icons.description),
-                        title: Text(d['name']),
-                        subtitle: Text(_formatFileSize(d['size'] ?? 0)),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => setState(() => _documents.remove(d)),
+            // ── Images ──────────────────────────────────────────────
+            _sectionCard(
+              title: 'Images',
+              icon: Icons.photo_library_outlined,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_images.isNotEmpty) ...[
+                    SizedBox(
+                      height: 100,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _images.length,
+                        itemBuilder: (_, i) => Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Stack(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Image.memory(
+                                  _images[i],
+                                  width: 100,
+                                  height: 100,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              Positioned(
+                                top: 4,
+                                right: 4,
+                                child: GestureDetector(
+                                  onTap: () => setState(() => _images.removeAt(i)),
+                                  child: Container(
+                                    decoration: const BoxDecoration(
+                                      color: Colors.black54,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    padding: const EdgeInsets.all(3),
+                                    child: const Icon(
+                                      Icons.close,
+                                      color: Colors.white,
+                                      size: 14,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    )
-                    .toList(),
-              ),
-            ElevatedButton.icon(
-              onPressed: _uploadingDocuments ? null : _pickDocuments,
-              icon: _uploadingDocuments
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryStart))
-                  : const Icon(Icons.file_upload, color: AppTheme.primaryStart),
-              label: Text('Attach Documents', style: AppTheme.body(14, weight: FontWeight.w500, color: AppTheme.primaryStart)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryStart.withOpacity(0.1),
-                foregroundColor: AppTheme.primaryStart,
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _pickImages,
+                          icon: const Icon(Icons.photo_library_outlined, size: 18),
+                          label: const Text('Gallery'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.primaryStart,
+                            side: const BorderSide(color: AppTheme.primaryStart),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _takePhoto,
+                          icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                          label: const Text('Camera'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.primaryStart,
+                            side: const BorderSide(color: AppTheme.primaryStart),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
+            const SizedBox(height: 12),
 
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () async {
-                if (_formKey.currentState!.validate()) {
-                  final payload = await _collect();
-                  if (payload != null) {
-                    await widget.onSubmit(payload);
-                  }
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size.fromHeight(54),
-                backgroundColor: AppTheme.primaryStart,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                elevation: 2,
+            // ── Documents ───────────────────────────────────────────
+            _sectionCard(
+              title: 'Documents (IPFS & Secure Storage)',
+              icon: Icons.folder_outlined,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_documents.isEmpty)
+                    Text(
+                      'No documents attached.',
+                      style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                    ),
+                  ..._documents.map(
+                        (d) => Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryLight,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.insert_drive_file,
+                            size: 18,
+                            color: AppTheme.primaryStart,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  d['name'] ?? 'Document',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  _formatFileSize(d['size'] ?? 0),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey[500],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () => setState(() => _documents.remove(d)),
+                            child: const Icon(
+                              Icons.close,
+                              size: 16,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _uploadingDocuments ? null : _pickDocuments,
+                      icon: _uploadingDocuments
+                          ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppTheme.primaryStart,
+                        ),
+                      )
+                          : const Icon(Icons.attach_file, size: 18),
+                      label: Text(
+                        _uploadingDocuments ? 'Uploading...' : 'Attach Documents',
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.primaryStart,
+                        side: const BorderSide(color: AppTheme.primaryStart),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              child: Text(
-                widget.isEdit ? 'Save Changes' : 'Mint NFT & Upload to IPFS',
-                style: AppTheme.button(16, color: Colors.white),
+            ),
+            const SizedBox(height: 24),
+
+            // ── Submit Button ───────────────────────────────────────
+            Container(
+              height: 54,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppTheme.primaryStartDark, AppTheme.primaryStart],
+                ),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primaryStart.withOpacity(0.35),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () async {
+                    if (_formKey.currentState!.validate()) {
+                      final payload = await _collect();
+                      if (payload != null) await widget.onSubmit(payload);
+                    }
+                  },
+                  child: Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          widget.isEdit
+                              ? Icons.save_outlined
+                              : Icons.rocket_launch_outlined,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          widget.isEdit
+                              ? 'Save Changes'
+                              : 'Mint NFT & Upload to IPFS',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
@@ -1405,7 +1827,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
             // Update the firestore data structure with IPFS links
             final fsDocs = data['documents'] as List<Map<String, dynamic>>;
             final match = fsDocs.firstWhere(
-              (d) => d['name'] == doc['name'],
+                  (d) => d['name'] == doc['name'],
               orElse: () => {},
             );
             if (match.isNotEmpty) {
@@ -1471,7 +1893,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
       // STEP 6: MINT ON BLOCKCHAIN
       // ---------------------------------------------------------
       setState(
-        () => _statusMessage = 'Please Confirm Transaction in Wallet...',
+            () => _statusMessage = 'Please Confirm Transaction in Wallet...',
       );
       String? txHash;
 
@@ -1535,6 +1957,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         'blockchainTokenId': newTokenId, // ← now correctly saved
         'ipfsMetadataHash': metadataHash,
         'isMinted': true,
+        'isForSale': true,
         'verified': false, // ← pending admin approval
         'isListedForResale': false,
         'createdAt': FieldValue.serverTimestamp(),
@@ -1588,7 +2011,11 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
           leading: const SizedBox(),
           title: Text(
             'Add ${widget.type.capitalize()}',
-            style: AppTheme.heading(17, color: AppTheme.textPrimary),
+            style: const TextStyle(
+              color: Colors.black87,
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           centerTitle: true,
         ),
@@ -1612,7 +2039,12 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
                 const SizedBox(height: 28),
                 Text(
                   _statusMessage,
-                  style: AppTheme.body(15, weight: FontWeight.w500, color: AppTheme.textPrimary),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black87,
+                    height: 1.5,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 10),
@@ -1630,17 +2062,21 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        backgroundColor: AppTheme.primaryStart,
-        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
+        backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, size: 28, color: Colors.white),
+          icon: const Icon(Icons.chevron_left, size: 28),
+          color: Colors.black87,
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           'Add ${widget.type.capitalize()}',
-          style: AppTheme.heading(18, color: Colors.white),
+          style: const TextStyle(
+            color: Colors.black87,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         centerTitle: true,
       ),
@@ -1810,7 +2246,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: const Color(0xFFE8F4F6),
+              color: AppTheme.primaryLight,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, size: 18, color: AppTheme.primaryStart),
@@ -2002,9 +2438,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                                 color: AppTheme.primaryStart.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
-                                  color: const Color(
-                                    0xFF2A7F8F,
-                                  ).withOpacity(0.3),
+                                  color: AppTheme.primaryStart.withOpacity(0.3),
                                 ),
                               ),
                               child: Row(
@@ -2080,55 +2514,55 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                     child: Column(
                       children: widget.type == 'electronics'
                           ? [
-                              _lockedField(
-                                'Brand',
-                                d['brand']?.toString(),
-                                Icons.business_outlined,
-                              ),
-                              _lockedField(
-                                'Model',
-                                d['model']?.toString(),
-                                Icons.phone_android_outlined,
-                              ),
-                              _lockedField(
-                                'Serial / IMEI',
-                                d['serial']?.toString(),
-                                Icons.tag_outlined,
-                              ),
-                              _lockedField(
-                                'Warranty',
-                                d['warranty']?.toString(),
-                                Icons.shield_outlined,
-                              ),
-                              _lockedField(
-                                'Condition',
-                                d['condition']?.toString(),
-                                Icons.star_outline,
-                              ),
-                            ]
+                        _lockedField(
+                          'Brand',
+                          d['brand']?.toString(),
+                          Icons.business_outlined,
+                        ),
+                        _lockedField(
+                          'Model',
+                          d['model']?.toString(),
+                          Icons.phone_android_outlined,
+                        ),
+                        _lockedField(
+                          'Serial / IMEI',
+                          d['serial']?.toString(),
+                          Icons.tag_outlined,
+                        ),
+                        _lockedField(
+                          'Warranty',
+                          d['warranty']?.toString(),
+                          Icons.shield_outlined,
+                        ),
+                        _lockedField(
+                          'Condition',
+                          d['condition']?.toString(),
+                          Icons.star_outline,
+                        ),
+                      ]
                           : [
-                              _lockedField(
-                                'Location / Title',
-                                d['title']?.toString(),
-                                Icons.location_on_outlined,
-                              ),
-                              _lockedField(
-                                'City',
-                                d['city']?.toString(),
-                                Icons.location_city_outlined,
-                              ),
-                              _lockedField(
-                                'Plot Area',
-                                '${d['plotArea']} ${d['plotUnit'] ?? ''}'
-                                    .trim(),
-                                Icons.square_foot_outlined,
-                              ),
-                              _lockedField(
-                                'Total Fractions',
-                                d['totalFractions']?.toString(),
-                                Icons.pie_chart_outline,
-                              ),
-                            ],
+                        _lockedField(
+                          'Location / Title',
+                          d['title']?.toString(),
+                          Icons.location_on_outlined,
+                        ),
+                        _lockedField(
+                          'City',
+                          d['city']?.toString(),
+                          Icons.location_city_outlined,
+                        ),
+                        _lockedField(
+                          'Plot Area',
+                          '${d['plotArea']} ${d['plotUnit'] ?? ''}'
+                              .trim(),
+                          Icons.square_foot_outlined,
+                        ),
+                        _lockedField(
+                          'Total Fractions',
+                          d['totalFractions']?.toString(),
+                          Icons.pie_chart_outline,
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -2145,7 +2579,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                         decoration: InputDecoration(
                           labelText: 'Price (PKR)',
                           filled: true,
-                          fillColor: const Color(0xFFF5F7F8),
+                          fillColor: AppTheme.background,
                           prefixIcon: const Icon(
                             Icons.monetization_on_outlined,
                             color: AppTheme.primaryStart,
@@ -2169,7 +2603,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                           labelText: 'Description',
                           alignLabelWithHint: true,
                           filled: true,
-                          fillColor: const Color(0xFFF5F7F8),
+                          fillColor: AppTheme.background,
                           prefixIcon: const Icon(
                             Icons.description_outlined,
                             color: AppTheme.primaryStart,
@@ -2248,7 +2682,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                                     right: 4,
                                     child: GestureDetector(
                                       onTap: () => setState(
-                                        () => _newImages.removeAt(i),
+                                            () => _newImages.removeAt(i),
                                       ),
                                       child: Container(
                                         decoration: const BoxDecoration(
@@ -2306,14 +2740,14 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                           ),
                         ),
                       ..._documents.map(
-                        (doc) => Container(
+                            (doc) => Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
                             vertical: 8,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFE8F4F6),
+                            color: AppTheme.primaryLight,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
@@ -2377,12 +2811,12 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                     boxShadow: _saving
                         ? []
                         : [
-                            BoxShadow(
-                              color: AppTheme.primaryStart.withOpacity(0.35),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
+                      BoxShadow(
+                        color: AppTheme.primaryStart.withOpacity(0.35),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
                   child: Material(
                     color: Colors.transparent,
@@ -2392,32 +2826,32 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                       child: Center(
                         child: _saving
                             ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.5,
-                                  color: Colors.white,
-                                ),
-                              )
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
                             : const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.save_outlined,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    'Save Changes',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.save_outlined,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                            SizedBox(width: 10),
+                            Text(
+                              'Save Changes',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
                               ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
