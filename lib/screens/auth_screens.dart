@@ -378,9 +378,7 @@ Future<User?> signInWithGoogle(BuildContext ctx) async {
       idToken    : gAuth.idToken,
     );
     final userCred = await auth.signInWithCredential(cred);
-    final user     = userCred.user;
-    if (user != null) await createUserDocIfNotExists(user);
-    return user;
+    return userCred.user;
   } catch (e) {
     if (ctx.mounted) {
       _showSnack(ctx, 'Google sign-in failed: $e', color: Colors.red);
@@ -461,13 +459,20 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _googleLogin() async {
-    setState(() => _loading = true);
     final user = await signInWithGoogle(context);
     if (user != null) {
       final snap = await db.collection('users').doc(user.uid).get();
-      final role = ((snap.data()?['role'] as String?) ?? 'user')
-          .toLowerCase()
-          .trim();
+      if (!snap.exists) {
+        // 🛑 IMPORTANT: If doc is missing, don't auto-create as 'user'. 
+        // Redirect to Register so they can choose 'Supplier' if they want.
+        if (mounted) {
+          _showSnack(context, 'Account record missing. Please register your role.', color: Colors.orange);
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen()));
+        }
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+      final role = ((snap.data()?['role'] as String?) ?? 'user').toLowerCase().trim();
       if (mounted) _navigateByRole(role);
     }
     if (mounted) setState(() => _loading = false);

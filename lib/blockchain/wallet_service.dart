@@ -25,6 +25,42 @@ class SimpleWalletService {
   ReownAppKitModal get appKitModal => _modal;
   bool get isInitialized => _initialized;
 
+  // 💰 Balance & Escrow Management (Demo Implementation)
+  double _availableBalance = 10.0; // Initial test balance
+  double _lockedBalance = 0.0;
+
+  double get availableBalance => _availableBalance;
+  double get lockedBalance => _lockedBalance;
+
+  /// Moves funds from available to locked (Escrow)
+  Future<void> lockFunds(double amount) async {
+    if (_availableBalance < amount) {
+      throw Exception('Insufficient funds in wallet for escrow.');
+    }
+    _availableBalance -= amount;
+    _lockedBalance += amount;
+    debugPrint('🔒 Funds Locked: $amount. New Locked: $_lockedBalance');
+  }
+
+  /// Moves funds from locked back to available (Refund)
+  Future<void> unlockFunds(double amount) async {
+    if (_lockedBalance < amount) {
+      throw Exception('Insufficient locked funds.');
+    }
+    _lockedBalance -= amount;
+    _availableBalance += amount;
+    debugPrint('🔓 Funds Unlocked: $amount. New Available: $_availableBalance');
+  }
+
+  /// Permanently removes funds from locked (Payment completion)
+  Future<void> consumeLockedFunds(double amount) async {
+    if (_lockedBalance < amount) {
+      throw Exception('Insufficient locked funds.');
+    }
+    _lockedBalance -= amount;
+    debugPrint('💸 Funds Consumed: $amount. Remaining Locked: $_lockedBalance');
+  }
+
   Future<void> init(BuildContext context) async {
     if (_initialized) return;
 
@@ -55,7 +91,7 @@ class SimpleWalletService {
           universal: 'https://digitalgoods.app/link',
         ),
       ),
-      optionalNamespaces: {
+      requiredNamespaces: {
         'eip155': RequiredNamespace(
           chains: ['eip155:80002'],
           methods: [

@@ -59,3 +59,13 @@ class BuyNowButton extends RentActionButton {
   const BuyNowButton({super.key, super.onPressed, super.isLoading})
       : super(label: "Buy Now", icon: Icons.shopping_cart_outlined, color: AppTheme.primaryStart);
 }
+
+class RecallAssetButton extends RentActionButton {
+  const RecallAssetButton({super.key, super.onPressed, super.isLoading})
+      : super(label: "Recall Asset", icon: Icons.keyboard_return_rounded, color: Colors.orange);
+}
+
+class RequestRentButton extends RentActionButton {
+  const RequestRentButton({super.key, super.onPressed, super.isLoading})
+      : super(label: "Request to Rent", icon: Icons.vpn_key_rounded, color: AppTheme.accent);
+}

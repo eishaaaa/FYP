@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../blockchain/blockchain_service.dart';
+import 'package:digitalgoods/services/chat_services.dart';
 import '../theme.dart';
 import '../widgets/rent_actions.dart';
 
@@ -30,10 +31,12 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
   final _amountCtrl        = TextEditingController();
   final _rentPriceCtrl     = TextEditingController();
   final _depositCtrl       = TextEditingController();
+  final _leaseMonthsCtrl   = TextEditingController(text: '6');
   final _db                = FirebaseFirestore.instance;
   final _auth              = FirebaseAuth.instance;
 
   Map<String, dynamic>? _propertyData;
+  Map<String, dynamic>? _currentTransaction;
   BigInt _unclaimedRent = BigInt.zero;
   int    _userFractions = 0;
   int    _escrowFractions = 0;
@@ -66,6 +69,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     _amountCtrl.dispose();
     _rentPriceCtrl.dispose();
     _depositCtrl.dispose();
+    _leaseMonthsCtrl.dispose();
     super.dispose();
   }
 
@@ -126,6 +130,34 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
         final assetDoc = await assetDocTask;
         _finishLoading(property, assetDoc, addr);
       }
+      // 🔎 Fetch current transaction status from DB
+      final txQuery = await _db.collection('transactions')
+          .where('assetId', isEqualTo: widget.assetId)
+          .where('status', whereIn: ['pendingApproval', 'approved', 'active', 'recallPending'])
+          .limit(1).get();
+      
+      _currentTransaction = txQuery.docs.isNotEmpty ? txQuery.docs.first.data() : null;
+      if (_currentTransaction != null) {
+        _currentTransaction!['id'] = txQuery.docs.first.id;
+        
+        // ⏰ Auto-Finalize if Expired
+        if (_currentTransaction!['status'] == 'active') {
+          final expiryTs = _currentTransaction!['expiryDate'] as Timestamp?;
+          if (expiryTs != null && expiryTs.toDate().isBefore(DateTime.now())) {
+            debugPrint("Rental expired! Finalizing...");
+            await _blockchainService.finalizeTransaction(_currentTransaction!['id']);
+            await _loadData(); // Reload after finalization
+            return;
+          }
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _errorMessage = null;
+          _loading = false;
+        });
+      }
     } catch (e) {
       debugPrint("LoadError: $e");
       if (mounted) {
@@ -152,6 +184,15 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     }
 
     if (mounted) {
+      // VITAL: Self-healing for Marketplace visibility
+      if (assetData != null && (assetData['category'] != 'land' || assetData['isMinted'] != true)) {
+        _db.collection('assets').doc(widget.assetId).update({
+          'category': 'land',
+          'isMinted': true,
+        });
+        _showSnack('🛠️ Optimized for Marketplace', color: Colors.blue);
+      }
+
       setState(() {
         if (property != null) {
           _propertyData = Map<String, dynamic>.from(property);
@@ -228,6 +269,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
 
     final rentAmount = double.tryParse(_rentPriceCtrl.text);
     final depositAmount = double.tryParse(_depositCtrl.text) ?? 0.0;
+    final leaseMonths = int.tryParse(_leaseMonthsCtrl.text) ?? 6;
 
     if (rentAmount == null || rentAmount <= 0) {
       _showSnack('Please enter a valid monthly rent');
@@ -235,7 +277,9 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     }
     
     setState(() => _processing = true);
-    final weiRent = _blockchainService.etherToWei(rentAmount);
+    // Convert PKR to MATIC for blockchain
+    final maticAmount = rentAmount / 200.0;
+    final weiRent = _blockchainService.etherToWei(maticAmount);
     _showProcessingDialog('Signature Required\nPlease check your wallet app.');
     
     try {
@@ -245,29 +289,29 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
       );
       
       if (txHash != null) {
-        await _db.collection('assets').doc(widget.assetId).update({
-          'isForRent': true,
-          'monthlyRent': rentAmount,
-          'securityDeposit': depositAmount,
-        });
-        
-        if (mounted) {
-           Navigator.pop(context);
-           _showSnack('⚡ Listing property (Optimistic)...', color: Colors.blue);
-           setState(() {
-             _propertyData!['isForRent'] = true;
-             _propertyData!['monthlyRent'] = weiRent;
-           });
-        }
+        if (mounted) Navigator.pop(context);
+        _showSnack('⏳ Waiting for blockchain confirmation...', color: Colors.orange);
 
-        _blockchainService.waitForConfirmation(txHash).then((ok) {
-          if (ok) {
+        final ok = await _blockchainService.waitForConfirmation(txHash);
+        if (ok) {
+          await _db.collection('assets').doc(widget.assetId).update({
+            'isForRent': true,
+            'monthlyRent': rentAmount,
+            'securityDeposit': depositAmount,
+            'leaseMonths': leaseMonths,
+            'currentTenant': null,
+            'currentTenantAddress': null,
+            'pendingTenant': null,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+          
+          if (mounted) {
             _showSnack('✅ Rental listing confirmed!', color: Colors.green);
-          } else {
-            _showSnack('❌ Transaction failed.', color: Colors.red);
-            _loadData(); 
+            _loadData();
           }
-        });
+        } else {
+          if (mounted) _showSnack('❌ Transaction failed.', color: Colors.red);
+        }
       } else {
         if (mounted) Navigator.pop(context);
         _showSnack('❌ Failed to initiate transaction.', color: Colors.red);
@@ -322,7 +366,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
             'tenantUid': user.uid,
             'ownerUid': _propertyData!['originalOwnerUid'] ?? '',
             'rentAmount': rentAmount,
-            'status': 'pending',
+            'status': 'pendingApproval',
             'createdAt': FieldValue.serverTimestamp(),
           });
 
@@ -331,7 +375,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
             'assetId': widget.assetId,
             'buyerUid': user.uid,
             'sellerUid': _propertyData!['originalOwnerUid'] ?? '',
-            'status': 'pending',
+            'status': 'pendingApproval',
             'category': 'land',
             'requestType': 'rent_request',
             'amount': rentAmount,
@@ -365,7 +409,19 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
         final ok = await _blockchainService.waitForConfirmation(txHash);
         if (mounted) Navigator.pop(context);
         if (ok) {
-          _showSnack('✅ Rent paid successfully!', color: Colors.green);
+          // 🔎 Find the active transaction to activate the rental state machine
+          final q = await _db.collection('transactions')
+              .where('assetId', isEqualTo: widget.assetId)
+              .where('status', whereIn: ['approved', 'active'])
+              .limit(1).get();
+          
+          if (q.docs.isNotEmpty) {
+            final txId = q.docs.first.id;
+            await _blockchainService.activateRental(txId);
+            _showSnack('✅ Rent paid & Rental Activated!', color: Colors.green);
+          } else {
+            _showSnack('✅ Rent paid successfully!', color: Colors.green);
+          }
           _loadData();
         }
       } else {
@@ -377,6 +433,33 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     }
   }
 
+  Future<void> _recallAsset() async {
+    _showProcessingDialog('Initiating recall…');
+    try {
+      // Find the active transaction
+      final q = await _db.collection('transactions')
+          .where('assetId', isEqualTo: widget.assetId)
+          .where('status', isEqualTo: 'active')
+          .limit(1).get();
+      
+      if (q.docs.isEmpty) {
+        if (mounted) Navigator.pop(context);
+        _showSnack('No active rental transaction found.');
+        return;
+      }
+
+      final txId = q.docs.first.id;
+      await _blockchainService.recallAsset(txId);
+      
+      if (mounted) Navigator.pop(context);
+      _showSnack('🚨 Asset recalled successfully!', color: Colors.orange);
+      _loadData();
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      _showSnack('Recall error: $e', color: Colors.red);
+    }
+  }
+
   Future<void> _acceptRentRequest() async {
     _showProcessingDialog('Accepting tenant…');
     try {
@@ -384,18 +467,34 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
       if (txHash != null) {
         final ok = await _blockchainService.waitForConfirmation(txHash);
         if (ok) {
-          final q = await _db.collection('rent_requests')
+          // Find the transaction record in DB
+          final q = await _db.collection('transactions')
               .where('assetId', isEqualTo: widget.assetId)
-              .where('status', isEqualTo: 'pending')
+              .where('status', isEqualTo: 'pendingApproval')
+              .where('requestType', isEqualTo: 'rental')
               .limit(1).get();
           
           if (q.docs.isNotEmpty) {
             final batch = _db.batch();
+            final txId = q.docs.first.id;
+            final tData = q.docs.first.data();
+            final tenantUid = tData['buyerUid'];
+
             batch.update(q.docs.first.reference, {'status': 'approved'});
-            batch.update(_db.collection('transactions').doc(q.docs.first.id), {'status': 'approved'});
+            
+            // 🔓 Unlock Chat Channel
+            batch.update(_db.collection('chats').doc(txId), {'isLocked': false});
+            
+            // 💬 Send notification message
+            await ChatService.sendMessage(
+              chatId: txId, 
+              text: 'Rental request approved! You can now proceed with payment and activation.',
+              receiverId: tenantUid,
+            );
+            
             batch.update(_db.collection('assets').doc(widget.assetId), {
               'isForRent': false,
-              'currentTenant': q.docs.first.data()['tenantUid'],
+              'currentTenant': tenantUid,
               'currentTenantAddress': _propertyData!['pendingTenant'],
             });
             await batch.commit();
@@ -668,6 +767,8 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     final bool hasPending = pendingTenant != '0x0000000000000000000000000000000000000000';
     final userAddr = _blockchainService.connectedAddress?.toLowerCase() ?? '';
     final bool isTenant = currentTenant.toLowerCase() == userAddr;
+    
+    final dbStatus = _currentTransaction?['status'];
 
     return _Card(
       child: Column(
@@ -690,25 +791,34 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
             const SizedBox(height: 16),
           ],
           if (widget.isOwner) ...[
-            if (!isForRent && !hasTenant) ...[
+            if (!isForRent && !hasTenant && dbStatus == null) ...[
               _buildOwnerListForRentFlow(),
-            ] else if (isForRent && !hasPending) ...[
+            ] else if (isForRent && !hasPending && dbStatus == null) ...[
               _buildStatusRow('Status', 'Available for Rent', Colors.green),
               _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', AppTheme.primaryStart),
               if ((_propertyData!['securityDeposit'] ?? 0) > 0) _buildStatusRow('Security Deposit', '${_propertyData!['securityDeposit']} MATIC', Colors.orange),
               const SizedBox(height: 12),
               const Center(child: Text('Waiting for tenants…', style: TextStyle(fontSize: 12, color: Colors.grey))),
-            ] else if (hasPending) ...[
-              _buildStatusRow('Status', 'Pending Request', Colors.orange),
+            ] else if (dbStatus == 'pendingApproval') ...[
+              _buildStatusRow('Status', 'Pending Approval', Colors.orange),
               _buildStatusRow('Tenant Address', pendingTenant, AppTheme.textPrimary),
               const SizedBox(height: 12),
               AcceptRentRequestButton(onPressed: _acceptRentRequest),
-            ] else if (hasTenant) ...[
+            ] else if (dbStatus == 'approved') ...[
+              _buildStatusRow('Status', 'Approved - Waiting for Payment', AppTheme.primaryStart),
+              _buildStatusRow('Tenant', _currentTransaction?['buyerUid'] ?? '—', AppTheme.textMid),
+            ] else if (hasTenant || dbStatus == 'active') ...[
               _buildRentedView(currentTenant, monthlyRent),
             ],
           ] else ...[
-            if (isTenant) ...[
+            if (dbStatus == 'active' || isTenant) ...[
               _buildTenantView(monthlyRent),
+            ] else if (dbStatus == 'pendingApproval') ...[
+              _buildStatusRow('Status', 'Request Sent (Pending Approval)', Colors.orange),
+            ] else if (dbStatus == 'approved') ...[
+              _buildStatusRow('Status', 'Request Approved!', Colors.green),
+              const SizedBox(height: 12),
+              PayRentButton(onPressed: _payMonthlyRent),
             ] else if (isForRent) ...[
               _buildAvailableForRentView(monthlyRent),
             ] else if (hasTenant) ...[
@@ -727,11 +837,17 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Property is not yet listed for rent.', style: GoogleFonts.poppins(fontSize: 13, color: AppTheme.textSecondary)),
-        const SizedBox(height: 12),
-        _buildRentInputField('Monthly Rent Amount', _rentPriceCtrl),
+        const SizedBox(height: 16),
+        _buildTextField(_rentPriceCtrl, 'Monthly Rent (PKR)', Icons.money_rounded, isNumeric: true, suffix: 'PKR'),
         const SizedBox(height: 8),
-        _buildRentInputField('Security Deposit (Optional)', _depositCtrl),
-        const SizedBox(height: 12),
+        _buildConversionHint(_rentPriceCtrl.text),
+        const SizedBox(height: 16),
+        _buildTextField(_depositCtrl, 'Security Deposit (PKR)', Icons.security_rounded, isNumeric: true, suffix: 'PKR'),
+        const SizedBox(height: 8),
+        _buildConversionHint(_depositCtrl.text),
+        const SizedBox(height: 16),
+        _buildTextField(_leaseMonthsCtrl, 'Lease Duration (Months)', Icons.timer_rounded, isNumeric: true, suffix: 'Months'),
+        const SizedBox(height: 24),
         ListForRentButton(onPressed: _processing ? null : _listForRent, isLoading: _processing),
       ],
     );
@@ -744,11 +860,42 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
         _buildStatusRow('Current Tenant', currentTenant, AppTheme.textPrimary),
         _buildStatusRow('Monthly Income', '${_blockchainService.weiToEther(monthlyRent)} MATIC', AppTheme.primaryStart),
         if ((_propertyData!['securityDeposit'] ?? 0) > 0) _buildStatusRow('Security Deposit Held', '${_propertyData!['securityDeposit']} MATIC', Colors.orange),
+        
+        // 💰 Pro-rata Refund Preview
+        if (_currentTransaction != null && _currentTransaction!['status'] == 'active') ...[
+          Builder(builder: (ctx) {
+             final now = DateTime.now();
+             final expiry = (_currentTransaction!['expiryDate'] as Timestamp?)?.toDate();
+             final start = (_currentTransaction!['startDate'] as Timestamp?)?.toDate();
+             if (expiry != null && start != null && expiry.isAfter(now)) {
+                final total = expiry.difference(start).inSeconds;
+                final remaining = expiry.difference(now).inSeconds;
+                final fee = (_currentTransaction!['rentalFee'] ?? 0.0).toDouble();
+                final refund = (fee * remaining / total).clamp(0, fee);
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: Colors.blue.withOpacity(0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue.withOpacity(0.2))),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calculate_outlined, size: 16, color: Colors.blue),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text('Est. Refund on Recall: ${refund.toStringAsFixed(4)} MATIC', style: GoogleFonts.poppins(fontSize: 11, color: Colors.blue.shade700, fontWeight: FontWeight.w600))),
+                      ],
+                    ),
+                  ),
+                );
+             }
+             return const SizedBox.shrink();
+          }),
+        ],
+
         const SizedBox(height: 16),
         if (!(_propertyData!['disputeActive'] ?? false))
           Row(
             children: [
-              Expanded(child: OutlinedButton.icon(onPressed: _releaseDeposit, icon: const Icon(Icons.keyboard_return_rounded, size: 18), label: const Text('Return Deposit'), style: OutlinedButton.styleFrom(foregroundColor: Colors.green, side: const BorderSide(color: Colors.green)))),
+              Expanded(child: RecallAssetButton(onPressed: _recallAsset)),
               const SizedBox(width: 10),
               Expanded(child: OutlinedButton.icon(onPressed: () => _raiseDispute('Owner: Non-payment of rent'), icon: const Icon(Icons.warning_amber_rounded, size: 18), label: const Text('Raise Dispute'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)))),
             ],
@@ -782,7 +929,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
         _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', AppTheme.primaryStart),
         if ((_propertyData!['securityDeposit'] ?? 0) > 0) _buildStatusRow('Required Deposit', '${_propertyData!['securityDeposit']} MATIC', Colors.orange),
         const SizedBox(height: 16),
-        _GradientButton(label: 'Request to Rent', icon: Icons.send_rounded, onPressed: _requestRent),
+        RequestRentButton(onPressed: _requestRent),
       ],
     );
   }
@@ -914,6 +1061,52 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     );
   }
 
+  Widget _buildConversionHint(String pkrStr) {
+    final pkr = double.tryParse(pkrStr) ?? 0;
+    if (pkr <= 0) return const SizedBox.shrink();
+    // 1 MATIC ≈ 200 PKR
+    final matic = pkr / 200.0;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(color: AppTheme.primaryStart.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.currency_bitcoin_rounded, size: 14, color: AppTheme.primaryStart),
+          const SizedBox(width: 6),
+          Text('≈ ${matic.toStringAsFixed(4)} MATIC (at 200 PKR/MATIC)', 
+               style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primaryStart)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextField(TextEditingController ctrl, String label, IconData icon, {bool isNumeric = false, String? suffix}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textPrimary.withOpacity(0.7))),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.primaryStart.withOpacity(0.1))),
+          child: TextField(
+            controller: ctrl,
+            keyboardType: isNumeric ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+            onChanged: (v) => setState(() {}),
+            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600),
+            decoration: InputDecoration(
+              prefixIcon: Icon(icon, color: AppTheme.primaryStart, size: 20),
+              suffixText: suffix,
+              suffixStyle: GoogleFonts.poppins(color: Colors.grey, fontWeight: FontWeight.w600),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildDisputeBadge() {
     return Container(
       width: double.infinity,
@@ -943,6 +1136,11 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     );
     if (confirmed == true) {
       await _db.collection('assets').doc(widget.assetId).update({'disputeActive': true, 'disputeReason': reason, 'disputeTimestamp': FieldValue.serverTimestamp()});
+      
+      if (_currentTransaction != null && _currentTransaction!['id'] != null) {
+        await _blockchainService.disputeRental(_currentTransaction!['id'], reason);
+      }
+      
       _showSnack('⚖️ Dispute raised.', color: Colors.red);
       _loadData();
     }

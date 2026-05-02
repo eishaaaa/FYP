@@ -488,9 +488,24 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
 
                 const SizedBox(height: 12),
                 Text(
-                  'PKR ${data['price']}',
+                  data['isForRent'] == true
+                      ? 'PKR ${data['monthlyRent'] ?? data['price']} / Month'
+                      : 'PKR ${data['price']}',
                   style: AppTheme.heading(28, color: AppTheme.primaryStart),
                 ),
+                // 🪙 Live Conversion Hint
+                Text(
+                  '≈ ${((data['isForRent'] == true ? (data['monthlyRent'] ?? data['price']) : data['price']) ?? 0) / 200.0} MATIC',
+                  style: AppTheme.body(14, color: AppTheme.textMid),
+                ),
+                if (data['isForRent'] == true && data['securityDeposit'] != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Security Deposit: PKR ${data['securityDeposit']}',
+                      style: AppTheme.body(14, color: AppTheme.textMid),
+                    ),
+                  ),
 
                 const SizedBox(height: 16),
 
@@ -597,9 +612,16 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                           },
                         ),
                         if (isLand) ...[
+                          if (data['isForRent'] == true) ...[
+                            _buildDetailRow('Listing Type', 'For Rent', color: AppTheme.accent),
+                            _buildDetailRow('Monthly Rent', 'PKR ${data['monthlyRent'] ?? '—'}'),
+                            _buildDetailRow('Security Deposit', 'PKR ${data['securityDeposit'] ?? '—'}'),
+                          ] else ...[
+                            _buildDetailRow('Listing Type', 'For Sale / Investment'),
+                          ],
                           _buildDetailRow(
-                            'Plot Area',
-                            '${data['plotArea']} ${data['plotUnit']}',
+                            'Location',
+                            data['location'] ?? data['city'] ?? '—',
                           ),
                           _buildDetailRow('City', data['city'] ?? '—'),
                           _buildDetailRow('Location', data['location'] ?? '—'),
@@ -1120,6 +1142,23 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
     }
 
     // ── Non-owner / buyer view: existing purchase actions ──────────────────
+    if (data['isForRent'] == true) {
+      return Column(
+        children: [
+          RequestRentButton(
+            onPressed: () => _requestToRent(
+              context,
+              widget.assetId,
+              data['ownerId'] ?? data['ownerUid'],
+              data,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildBuyerSecondaryActions(context, data),
+        ],
+      );
+    }
+
     return Column(
       children: [
         Row(
@@ -1168,24 +1207,28 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _toggleFavorite(context, widget.assetId),
-                icon: const Icon(Icons.favorite_border),
-                label: const Text('Favorite'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.share),
-                label: const Text('Share'),
-              ),
-            ),
-          ],
+        _buildBuyerSecondaryActions(context, data),
+      ],
+    );
+  }
+
+  Widget _buildBuyerSecondaryActions(BuildContext context, Map<String, dynamic> data) {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () => _toggleFavorite(context, widget.assetId),
+            icon: const Icon(Icons.favorite_border),
+            label: const Text('Favorite'),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () {},
+            icon: const Icon(Icons.share),
+            label: const Text('Share'),
+          ),
         ),
       ],
     );
@@ -1457,15 +1500,179 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
     }
   }
 
-  Future<void> _verifyAsset(BuildContext ctx, String assetId) async {
-    await db.collection('assets').doc(assetId).update({'verified': true});
+  Future<void> _requestToRent(
+    BuildContext ctx,
+    String assetId,
+    String ownerUid,
+    Map<String, dynamic> assetData,
+  ) async {
+    final user = auth.currentUser;
+    if (user == null) return;
+
+    final category = assetData['category'] ?? 'land';
+    final blockchainTokenId = assetData['blockchainTokenId'];
+    final monthlyRent = assetData['monthlyRent'] ?? assetData['rentAmount'] ?? 0.0;
+    final securityDeposit = assetData['securityDeposit'] ?? 0.0;
+    final leaseMonths = assetData['leaseMonths'] ?? 6;
+
+    // Check for existing pending/active requests
+    final existing = await db
+        .collection('transactions')
+        .where('assetId', isEqualTo: assetId)
+        .where('buyerUid', isEqualTo: user.uid)
+        .where('status', whereIn: ['pendingApproval', 'approved', 'active'])
+        .get();
+
+    if (existing.docs.isNotEmpty) {
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          const SnackBar(
+            content: Text('You already have a rental request or active lease.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    // 🔗 Optional: Blockchain Request (Only for Land)
+    String? txHash;
+    if (category == 'land' && blockchainTokenId != null) {
+       _showProcessingDialog(ctx, 'Signing Blockchain Request...');
+       try {
+         txHash = await _blockchainService.requestLandRent((blockchainTokenId as num).toInt());
+         if (txHash == null) {
+            if (ctx.mounted) Navigator.pop(ctx);
+            return;
+         }
+         await _blockchainService.waitForConfirmation(txHash);
+         if (ctx.mounted) Navigator.pop(ctx);
+       } catch (e) {
+         if (ctx.mounted) Navigator.pop(ctx);
+         ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Blockchain Error: $e')));
+         return;
+       }
+    }
+
+    final txId = _uuid.v4();
+    final batch = db.batch();
+
+    batch.set(db.collection('transactions').doc(txId), {
+      'transactionId': txId,
+      'assetId': assetId,
+      'buyerUid': user.uid,
+      'sellerUid': ownerUid,
+      'status': 'pendingApproval',
+      'category': category,
+      'requestType': 'rental',
+      'blockchainTokenId': blockchainTokenId,
+      'rentalFee': monthlyRent.toDouble(),
+      'depositAmount': securityDeposit.toDouble(),
+      'leaseMonths': leaseMonths,
+      'txHash': txHash,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    // Create Chat
+    batch.set(db.collection('chats').doc(txId), {
+      'transactionId': txId,
+      'assetId': assetId,
+      'assetType': category,
+      'buyerUid': user.uid,
+      'sellerUid': ownerUid,
+      'participants': [user.uid, ownerUid],
+      'lastMessage': 'I am interested in renting this property.',
+      'lastMessageTime': FieldValue.serverTimestamp(),
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    await batch.commit();
+
     if (ctx.mounted) {
       ScaffoldMessenger.of(ctx).showSnackBar(
-        const SnackBar(content: Text('Asset verified successfully')),
+        const SnackBar(
+          content: Text('✅ Rental request sent! Wait for owner approval.'),
+          backgroundColor: AppTheme.accent,
+        ),
       );
-      setState(() {
-        _loadFuture = _load();
+    }
+  }
+
+  void _showProcessingDialog(BuildContext context, String msg) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 20),
+            Text(msg),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _verifyAsset(BuildContext ctx, String assetId) async {
+    try {
+      final doc = await db.collection('assets').doc(assetId).get();
+      if (!doc.exists) return;
+      
+      final data = doc.data()!;
+      final tokenId = data['blockchainTokenId'];
+      final category = data['category']?.toString().toLowerCase();
+      
+      if (tokenId == null) throw Exception('Missing blockchainTokenId');
+      
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          const SnackBar(content: Text('⏳ Initiating blockchain verification...'), backgroundColor: AppTheme.primaryStart),
+        );
+      }
+      
+      final bs = BlockchainServiceEnhanced();
+      await bs.init();
+      
+      String? txHash;
+      final id = (tokenId is int) ? tokenId : int.parse(tokenId.toString());
+      
+      if (category == 'land') {
+        txHash = await bs.verifyProperty(id);
+      } else {
+        txHash = await bs.verifyDevice(id);
+      }
+      
+      if (txHash == null) throw Exception('Transaction rejected or failed.');
+      
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          const SnackBar(content: Text('⏳ Waiting for blockchain confirmation...'), backgroundColor: Colors.orange),
+        );
+      }
+      
+      final success = await bs.waitForConfirmation(txHash);
+      if (!success) throw Exception('Transaction failed on-chain.');
+
+      await db.collection('assets').doc(assetId).update({
+        'verified': true, 
+        'verifiedAt': FieldValue.serverTimestamp(),
       });
+      
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          const SnackBar(content: Text('✅ Asset verified successfully on-chain!'), backgroundColor: Colors.green),
+        );
+        setState(() {
+          _loadFuture = _load();
+        });
+      }
+    } catch (e) {
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(content: Text('❌ Verification failed: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 

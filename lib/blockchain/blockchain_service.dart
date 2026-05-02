@@ -8,6 +8,7 @@
 // 3. ABI Loading: Handles both Hardhat Artifacts and Flat JSON
 // ═══════════════════════════════════════════════════════════
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -20,6 +21,7 @@ import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 
 import 'wallet_service.dart';
 import 'contract_config.dart';
+import '../screens/transaction_model.dart';
 
 class BlockchainServiceEnhanced {
   // Singleton Pattern
@@ -389,6 +391,7 @@ class BlockchainServiceEnhanced {
         'ipfsMetadata': landData.length > 8 ? landData[8] : '',
         'isVerified': landData.length > 9 ? landData[9] : false,
         // FALLBACKS for rental fields (if not in current ABI)
+        'hasRentalData': landData.length > 10,
         'isForRent': landData.length > 10 ? landData[10] : false,
         'monthlyRent': landData.length > 11 ? (landData[11] as BigInt) : BigInt.zero,
         'currentTenant': landData.length > 12 ? (landData[12] as EthereumAddress).toString() : '0x0000000000000000000000000000000000000000',
@@ -554,6 +557,17 @@ class BlockchainServiceEnhanced {
       if (!docSnap.exists) return true;
 
       final data = docSnap.data()!;
+      
+      // 🚨 NEW: Grace period (2 minutes) to allow blockchain confirmation
+      final lastUpdate = data['updatedAt'] ?? data['createdAt'];
+      if (lastUpdate is Timestamp) {
+        final age = DateTime.now().difference(lastUpdate.toDate());
+        if (age.inMinutes < 2) {
+          debugPrint('🛡️ Healing skipped (Grace period active for $firestoreDocId)');
+          return true;
+        }
+      }
+
       bool isTampered = false;
       Map<String, dynamic> updates = {};
 
@@ -639,24 +653,26 @@ class BlockchainServiceEnhanced {
           updates['totalFractions'] = property['totalFractions'];
         }
 
-        // --- Rental Healing ---
-        if (data['isForRent'] != property['isForRent']) {
-          isTampered = true;
-          updates['isForRent'] = property['isForRent'];
-        }
-        
-        final chainRentEther = double.parse(weiToEther(property['monthlyRent']));
-        final dbRent = (data['monthlyRent'] ?? 0).toDouble();
-        if ((chainRentEther - dbRent).abs() > 0.0001) {
-          isTampered = true;
-          updates['monthlyRent'] = chainRentEther;
-        }
+        // --- Rental Healing (Only if Blockchain supports it) ---
+        if (property['hasRentalData'] == true) {
+          if (data['isForRent'] != property['isForRent']) {
+            isTampered = true;
+            updates['isForRent'] = property['isForRent'];
+          }
+          
+          final chainRentEther = double.parse(weiToEther(property['monthlyRent']));
+          final dbRent = (data['monthlyRent'] ?? 0).toDouble();
+          if ((chainRentEther - dbRent).abs() > 0.0001) {
+            isTampered = true;
+            updates['monthlyRent'] = chainRentEther;
+          }
 
-        final chainTenant = property['currentTenant'].toString().toLowerCase();
-        final dbTenant = (data['currentTenantAddress'] ?? data['currentTenant'] ?? '').toString().toLowerCase();
-        if (dbTenant != chainTenant) {
-          isTampered = true;
-          updates['currentTenantAddress'] = property['currentTenant'];
+          final chainTenant = property['currentTenant'].toString().toLowerCase();
+          final dbTenant = (data['currentTenantAddress'] ?? data['currentTenant'] ?? '').toString().toLowerCase();
+          if (dbTenant != chainTenant) {
+            isTampered = true;
+            updates['currentTenantAddress'] = property['currentTenant'];
+          }
         }
       }
 
@@ -702,5 +718,144 @@ class BlockchainServiceEnhanced {
       EthereumAddress.fromHex(toAddress),
       BigInt.from(tokenId),
     ], function: function);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // RENTAL STATE MACHINE (State-Managed Flow)
+  // ═══════════════════════════════════════════════════════════
+
+  /// Moves funds to escrow and activates the rental
+  Future<void> activateRental(String txId) async {
+    final txRef = FirebaseFirestore.instance.collection('transactions').doc(txId);
+    final txSnap = await txRef.get();
+    if (!txSnap.exists) return;
+
+    final data = txSnap.data()!;
+    final fee = (data['rentalFee'] ?? 0.0).toDouble();
+    final deposit = (data['depositAmount'] ?? 0.0).toDouble();
+    final leaseMonths = data['leaseMonths'] ?? 6;
+
+    // 🔒 Lock funds in escrow (Total = Rental Fee + Security Deposit)
+    await _walletService.lockFunds(fee + deposit);
+
+    final start = DateTime.now();
+    final expiry = start.add(Duration(days: leaseMonths * 30));
+
+    await txRef.update({
+      'status': 'active',
+      'startDate': start,
+      'expiryDate': expiry,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    // 🕒 Start a local timer for this rental
+    _watchRentalExpiry(txId, expiry);
+    debugPrint('🚀 Rental Activated: $txId. Expiry: $expiry');
+  }
+
+  /// Finalizes transaction: releases deposit to renter, pays fee to owner
+  Future<void> finalizeTransaction(String txId) async {
+    final txRef = FirebaseFirestore.instance.collection('transactions').doc(txId);
+    final txSnap = await txRef.get();
+    if (!txSnap.exists) return;
+
+    final data = txSnap.data()!;
+    if (data['status'] == 'completed' || data['status'] == 'disputed') return;
+
+    final fee = (data['rentalFee'] ?? 0.0).toDouble();
+    final deposit = (data['depositAmount'] ?? 0.0).toDouble();
+
+    // 💸 Distribute funds: Deposit back to user, Fee to owner
+    await _walletService.unlockFunds(deposit);
+    await _walletService.consumeLockedFunds(fee);
+
+    await txRef.update({
+      'status': 'completed',
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    // Reset asset availability
+    final assetId = data['assetId'];
+    if (assetId != null) {
+      await FirebaseFirestore.instance.collection('assets').doc(assetId).update({
+        'currentTenant': null,
+        'currentTenantAddress': null,
+        'isForRent': true, // Make it available again
+      });
+    }
+    debugPrint('🏁 Rental Finalized: $txId');
+  }
+
+  /// Owner recalls the asset with a pro-rata refund to the renter
+  Future<void> recallAsset(String txId) async {
+    final txRef = FirebaseFirestore.instance.collection('transactions').doc(txId);
+    final txSnap = await txRef.get();
+    if (!txSnap.exists) return;
+
+    final data = txSnap.data()!;
+    final startTs = data['startDate'] as Timestamp?;
+    final expiryTs = data['expiryDate'] as Timestamp?;
+    
+    if (startTs == null || expiryTs == null) return;
+
+    final start = startTs.toDate();
+    final expiry = expiryTs.toDate();
+    final totalDays = expiry.difference(start).inDays;
+    final usedDays = DateTime.now().difference(start).inDays;
+
+    final fee = (data['rentalFee'] ?? 0.0).toDouble();
+    final deposit = (data['depositAmount'] ?? 0.0).toDouble();
+
+    // 🧮 Pro-rata refund calculation: (RemainingTime / TotalTime) * Fee
+    double refund = 0;
+    if (totalDays > 0 && usedDays < totalDays) {
+      refund = fee * (1 - (usedDays / totalDays));
+    }
+
+    // Move status to recallPending before finalization
+    await txRef.update({
+      'status': 'recallPending',
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    // Finalize with refund
+    await _walletService.unlockFunds(deposit + refund);
+    await _walletService.consumeLockedFunds(fee - refund);
+
+    await txRef.update({
+      'status': 'completed',
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    final assetId = data['assetId'];
+    if (assetId != null) {
+      await FirebaseFirestore.instance.collection('assets').doc(assetId).update({
+        'currentTenant': null,
+        'currentTenantAddress': null,
+        'isForRent': true,
+      });
+    }
+    debugPrint('🚨 Asset Recalled: $txId. Refund: $refund');
+  }
+
+  /// Moves rental to DISPUTED status, locking funds for admin review
+  Future<void> disputeRental(String txId, String reason) async {
+    final txRef = FirebaseFirestore.instance.collection('transactions').doc(txId);
+    await txRef.update({
+      'status': 'disputed',
+      'disputeReason': reason,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    debugPrint('⚖️ Rental Disputed: $txId. Reason: $reason');
+  }
+
+  /// Internal watcher for rental expiry
+  void _watchRentalExpiry(String txId, DateTime expiry) {
+    final duration = expiry.difference(DateTime.now());
+    if (duration.isNegative) {
+      finalizeTransaction(txId);
+    } else {
+      Timer(duration, () => finalizeTransaction(txId));
+    }
   }
 }

@@ -54,14 +54,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   Future<void> _checkFirstLaunch() async {
     final prefs = await SharedPreferences.getInstance();
-    bool isFirstLaunch = prefs.getBool('onboarding_home_completed') ?? false;
-    if (!isFirstLaunch) {
-      if (mounted) {
-        setState(() => _showHandHelp = true);
-        ShowCaseWidget.of(context).startShowCase([_chatKey, _searchKey, _scanKey]);
-        await prefs.setBool('onboarding_home_completed', true);
-      }
-    }
+    await prefs.setBool('onboarding_home_completed', true);
   }
 
   void _openFilters() async {
@@ -96,8 +89,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ShowCaseWidget(
-      builder: (context) => Scaffold(
+    return Scaffold(
         appBar: _index == 3
             ? null
             : _index == 2
@@ -161,23 +153,14 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           ],
         ),
         floatingActionButton: _index == 0
-            ? HandHelpTooltip(
-          message: 'Need help? Chat with us!',
-          show: _showHandHelp,
-          offset: const Offset(-80, -10),
-          child: Showcase(
-            key: _chatKey,
-            description: 'Tap here to chat with suppliers or customers.',
-            child: FloatingActionButton(
-              heroTag: 'chat_fab',
-              child: const Icon(Icons.chat),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ChatListScreen()),
-              ),
-            ),
-          ),
-        )
+            ? FloatingActionButton(
+                heroTag: 'chat_fab',
+                child: const Icon(Icons.chat),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ChatListScreen()),
+                ),
+              )
             : null,
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _index,
@@ -189,12 +172,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           unselectedLabelStyle: AppTheme.body(12),
           items: [
             const BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
-            BottomNavigationBarItem(
-              icon: Showcase(
-                key: _scanKey,
-                description: 'Scan an asset QR code to verify its authenticity.',
-                child: const Icon(Icons.qr_code_scanner),
-              ),
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.qr_code_scanner),
               label: "Scan",
             ),
             const BottomNavigationBarItem(
@@ -212,10 +191,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             const MyAssetsScreen(),
             ProfileScreen(),
           ],
-        ),
       ),
-    );
-  }
+  );
+}
 
   Widget _mainMarketplaceBody() {
     final isLand = _category == 'land';
@@ -249,10 +227,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                       color: AppTheme.background,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Showcase(
-                      key: _searchKey,
-                      description: 'Search for properties or devices here.',
-                      child: TextField(
+                    child: TextField(
                         onChanged: (v) =>
                             setState(() => _search = v.trim().toLowerCase()),
                         decoration: InputDecoration(
@@ -268,7 +243,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                         ),
                       ),
                     ),
-                  ),
                 ),
                 const SizedBox(width: 12),
                 GestureDetector(
@@ -1416,7 +1390,7 @@ class _LatestAssetsRow extends StatelessWidget {
         .where('category', isEqualTo: category)
         .where('isMinted', isEqualTo: true)
         .orderBy('createdAt', descending: true)
-        .limit(5);
+        .limit(10);
 
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
@@ -1653,6 +1627,9 @@ class AssetListView extends StatelessWidget {
       );
     }
 
+    if (mode == 'rent') {
+      return q.orderBy("createdAt", descending: true);
+    }
     return q.orderBy("price").orderBy("createdAt", descending: true);
   }
 
@@ -1967,7 +1944,9 @@ class AssetGridCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          'PKR $price',
+                          data['isForRent'] == true
+                              ? "PKR ${(data['monthlyRent'] ?? 0).toStringAsFixed(0)} / mo"
+                              : "PKR ${(data['price'] ?? 0).toStringAsFixed(0)}",
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
