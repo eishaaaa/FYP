@@ -593,6 +593,16 @@ class BlockchainServiceEnhanced {
           updates['serialNumber'] = device['serialNumber'];
         }
 
+        // Check Stolen Status (from blockchain status field)
+        // status 0 = Normal, 1 = Stolen
+        final chainStolen = device['status'] == 1;
+        final dbStolen = data['isStolen'] == true || data['reportedStolen'] == true;
+        if (chainStolen != dbStolen) {
+          isTampered = true;
+          updates['isStolen'] = chainStolen;
+          updates['reportedStolen'] = chainStolen;
+        }
+
         // Check tokenURI / IPFS
         try {
           final uriFunction = _electronicsContract.function('tokenURI');

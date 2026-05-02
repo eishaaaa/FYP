@@ -510,7 +510,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
 
                 // ── Blockchain section ────────────────────────────────────
                 if (hasBlockchainId && _blockchainData != null) ...[
-                  _buildBlockchainSection(data['category']),
+                  _buildBlockchainSection(data['category'] ?? '', data),
                   const SizedBox(height: 16),
                 ],
 
@@ -706,7 +706,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
     );
   }
 
-  Widget _buildBlockchainSection(String category) {
+  Widget _buildBlockchainSection(String category, Map<String, dynamic> data) {
     return Card(
       color: const Color(0xFFE8F4F6),
       child: Padding(
@@ -779,6 +779,15 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                         ],
                       ),
                     ),
+                    if (_isDataHealthy && (data['verified'] == true || data['isVerified'] == true))
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.verified_user_rounded, color: Colors.green, size: 24),
+                      ),
                   ],
                 ),
               ] else if (category == 'land') ...[
@@ -1090,7 +1099,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
           if (data['category'] == 'land' && !isListed) ...[
             const SizedBox(height: 12),
             ListForRentButton(
-              onPressed: !canList
+              onPressed: (!canList || data['blockchainTokenId'] == null)
                   ? null
                   : () {
                       Navigator.push(

@@ -610,7 +610,7 @@ class AssetManagementScreen extends StatelessWidget {
                     ),
                     child: hasImage
                         ? Image.memory(
-                            base64Decode(images!.first as String),
+                            base64Decode(images.first as String),
                             width: double.infinity,
                             height: 160,
                             fit: BoxFit.cover,
@@ -721,7 +721,7 @@ class AssetManagementScreen extends StatelessWidget {
                                 onTap: () => _showDistributeRentDialog(
                                   context,
                                   doc.id,
-                                  tokenId!,
+                                  tokenId,
                                 ),
                               ),
                               const SizedBox(height: 8),

@@ -1018,6 +1018,8 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                               decoration: BoxDecoration(
                                 color: isSyncing
                                     ? Colors.orange.shade600
+                                    : (asset['verified'] == true)
+                                    ? Colors.green.shade600
                                     : tokenId != null
                                     ? AppTheme.primaryStart
                                     : Colors.grey.shade200,
@@ -1053,9 +1055,13 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                     ),
                                   const SizedBox(width: 6),
                                   Text(
-                                    isSyncing ? 'Syncing...' : (tokenId != null ? 'NFT' : 'Pending'),
+                                    isSyncing 
+                                        ? 'Syncing...' 
+                                        : (asset['verified'] == true)
+                                        ? 'Verified'
+                                        : (tokenId != null ? 'Minted' : 'Pending'),
                                     style: TextStyle(
-                                      color: (isSyncing || tokenId != null)
+                                      color: (isSyncing || tokenId != null || asset['verified'] == true)
                                           ? Colors.white
                                           : Colors.grey.shade700,
                                       fontSize: 11,

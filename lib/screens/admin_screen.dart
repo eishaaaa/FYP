@@ -82,6 +82,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     const AdminDashboard(),
     const UserManagement(),
     const AssetModeration(),
+    const DisputeManagement(),
     const TransactionMonitor(),
   ];
 
@@ -89,6 +90,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     'Dashboard',
     'Users',
     'Properties',
+    'Disputes',
     'Transactions',
   ];
 
@@ -155,8 +157,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                 label: 'Users',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.apartment_rounded),
-                label: 'Properties',
+                icon: Icon(Icons.gavel_rounded),
+                label: 'Disputes',
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.receipt_long_rounded),
@@ -265,10 +267,11 @@ class AdminDashboard extends StatelessWidget {
                 gradientColors: [AppTheme.accent, AppTheme.primaryStart],
               ),
               _StatCard(
-                title: 'Reviews',
-                collection: 'reviews',
-                icon: Icons.star_rounded,
-                gradientColors: [AppTheme.primaryStart, AppTheme.accent],
+                title: 'Active Disputes',
+                collection: 'assets',
+                query: db.collection('assets').where('disputeActive', isEqualTo: true),
+                icon: Icons.gavel_rounded,
+                gradientColors: [Colors.redAccent, Colors.orangeAccent],
               ),
             ],
           ),
@@ -403,12 +406,14 @@ class AdminDashboard extends StatelessWidget {
 class _StatCard extends StatelessWidget {
   final String title;
   final String collection;
+  final Query? query;
   final IconData icon;
   final List<Color> gradientColors;
 
   const _StatCard({
     required this.title,
     required this.collection,
+    this.query,
     required this.icon,
     required this.gradientColors,
   });
@@ -416,7 +421,7 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: db.collection(collection).snapshots(),
+      stream: (query ?? db.collection(collection)).snapshots(),
       builder: (context, snapshot) {
         final count = snapshot.data?.docs.length ?? 0;
         return Container(
@@ -1393,5 +1398,126 @@ class _TxInfo extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// ─── Dispute Management ───────────────────────────────────────────────────────
+class DisputeManagement extends StatelessWidget {
+  const DisputeManagement({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('assets').where('disputeActive', isEqualTo: true).snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        final disputes = snapshot.data!.docs;
+
+        if (disputes.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.verified_user_rounded, size: 64, color: Colors.green.withOpacity(0.3)),
+                const SizedBox(height: 16),
+                Text('No active disputes!', style: AppTheme.heading(16, color: AppTheme.textMid)),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: disputes.length,
+          itemBuilder: (context, index) {
+            final asset = disputes[index].data() as Map<String, dynamic>;
+            final assetId = disputes[index].id;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.red.withOpacity(0.2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.gavel_rounded, color: Colors.red),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(asset['title'] ?? 'Asset Dispute',
+                            style: AppTheme.heading(14, color: AppTheme.textPrimary)),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 24),
+                  Text('Reason:', style: AppTheme.body(12, color: AppTheme.textMid)),
+                  Text(asset['disputeReason'] ?? 'Unknown',
+                      style: AppTheme.body(13, weight: FontWeight.w600)),
+                  const SizedBox(height: 12),
+                  Text('Tenant Wallet: ${asset['currentTenantAddress'] ?? 'N/A'}',
+                      style: AppTheme.body(11, color: AppTheme.textMid)),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => _resolveDispute(context, assetId, 'owner'),
+                          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryStart),
+                          child: const Text('Rule for Owner'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _resolveDispute(context, assetId, 'tenant'),
+                          child: const Text('Rule for Tenant'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _resolveDispute(BuildContext context, String assetId, String winner) async {
+    final batch = FirebaseFirestore.instance.batch();
+    final assetRef = FirebaseFirestore.instance.collection('assets').doc(assetId);
+
+    if (winner == 'tenant') {
+      // Return deposit to tenant, end lease
+      batch.update(assetRef, {
+        'currentTenant': null,
+        'currentTenantAddress': null,
+        'isForRent': true,
+        'disputeActive': false,
+        'lastDisputeResolution': 'Ruled in favor of Tenant. Deposit returned.',
+      });
+    } else {
+      // Forfeit deposit to owner, end lease
+      batch.update(assetRef, {
+        'currentTenant': null,
+        'currentTenantAddress': null,
+        'isForRent': true,
+        'disputeActive': false,
+        'lastDisputeResolution': 'Ruled in favor of Owner. Deposit forfeited.',
+      });
+    }
+
+    await batch.commit();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('⚖️ Dispute resolved in favor of $winner')),
+      );
+    }
   }
 }
