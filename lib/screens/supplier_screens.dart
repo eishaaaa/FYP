@@ -21,7 +21,6 @@ import 'qr_scanner_enhanced.dart';
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
 import 'wallet_screen.dart';
-import 'rental_requests_tab.dart'; // 🏠 New Import
 import '../widgets/hand_help_tooltip.dart';
 import '../theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -236,7 +235,6 @@ class _SupplierHomeScreenState extends State<SupplierHomeScreen> {
       SupplierHome(type: widget.type, showHelp: () => _showHelp),
       const QRScannerEnhanced(),
       const MyAssetsScreen(),
-      const RentalRequestsTab(), // 🏠 New Tab
       const ProfileScreen(),
     ];
   }
@@ -271,10 +269,7 @@ class _SupplierHomeScreenState extends State<SupplierHomeScreen> {
             icon: Icon(Icons.inventory),
             label: 'My Assets',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.key_rounded),
-            label: 'Rent Requests',
-          ),
+          
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),
