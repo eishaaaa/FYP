@@ -217,7 +217,6 @@ class _WalletScreenState extends State<WalletScreen>
       final user = _auth.currentUser;
       if (user != null) {
         await _saveWalletToFirestore(user.uid, address);
-        // Notify user their wallet is now linked
         await _notif.notify(
           receiverUid: user.uid,
           title: '🔗 Wallet Connected',
@@ -307,7 +306,6 @@ class _WalletScreenState extends State<WalletScreen>
           .doc(user.uid)
           .update({"walletAddress": FieldValue.delete()});
 
-      // Notify the user their wallet was removed
       await _notif.notify(
         receiverUid: user.uid,
         title: '🔓 Wallet Removed',
@@ -345,7 +343,6 @@ class _WalletScreenState extends State<WalletScreen>
     try {
       await _loadBalance();
 
-      // Fetch on-chain transactions in parallel
       final results = await Future.wait([
         _explorer.getTransactions(_address!),
         _explorer.getNFTTransactions(_address!),
@@ -368,9 +365,17 @@ class _WalletScreenState extends State<WalletScreen>
             .get();
         firestoreTxs = txSnap.docs.map((doc) {
           final d = doc.data();
+          // Normalise type: treat "purchase", "buy", "mint" as "nft"
+          String txType = (d["type"] ?? "sent").toString().toLowerCase();
+          if (txType == "purchase" || txType == "buy" || txType == "mint") {
+            txType = "nft";
+          }
+          // Use assetName / assetTitle fields if present, falling back to title
+          final title = (d["assetName"] ?? d["assetTitle"] ?? d["title"] ?? "Transaction")
+              .toString();
           return TransactionModel(
-            type:    d["type"]  ?? "sent",
-            title:   d["title"] ?? "Transaction",
+            type:    txType,
+            title:   title,
             to:      d["to"]    ?? "",
             value:   d["value"]?.toString()  ?? "0",
             gas:     d["gas"]?.toString()    ?? "0",
@@ -381,63 +386,94 @@ class _WalletScreenState extends State<WalletScreen>
         }).toList();
 
         // ── Assets collection — source of truth for NFT ownership ──
-        // Query the global assets collection filtered by ownerId so the
-        // count reflects CURRENT ownership only (not historical transfers).
         final assetSnap = await _firestore
             .collection("assets")
             .where("ownerId", isEqualTo: user.uid)
             .get();
         fetchedAssets = assetSnap.docs.map((d) {
           final data = d.data();
-          // Preserve the Firestore document ID so we can resolve
-          // transaction titles that contain a raw doc ID.
           data['_docId'] = d.id;
+
+          // ── DEBUG: log asset fields so you can confirm the image field name ──
+          // Remove these lines once images are confirmed working.
+          debugPrint("🖼️ Asset [${d.id}] fields: ${data.keys.toList()}");
+          debugPrint("🖼️ Asset [${d.id}] data: $data");
+
           return data;
         }).toList();
       }
 
+      // ── Build asset lookups ────────────────────────────────
+      final assetByName = <String, Map<String, dynamic>>{
+        for (final a in fetchedAssets)
+          if (a["name"] != null)
+            (a["name"] as String).trim().toLowerCase(): a,
+        // also index by "title" field if present (some docs use "title" not "name")
+        for (final a in fetchedAssets)
+          if (a["title"] != null)
+            (a["title"] as String).trim().toLowerCase(): a,
+      };
+
+      final assetById = <String, Map<String, dynamic>>{
+        for (final a in fetchedAssets) ...{
+          if (a["assetId"]        != null) (a["assetId"]        as String).trim(): a,
+          if (a["_docId"]         != null) (a["_docId"]         as String).trim(): a,
+          if (a["blockchainTokenId"] != null)
+            a["blockchainTokenId"].toString().trim(): a,
+        },
+      };
+
+      // ── Build hash → asset map so NFT purchases on-chain get correct labels ──
+      // Assets store their mint/purchase tx in "blockchainTx" field.
+      final assetByTxHash = <String, Map<String, dynamic>>{
+        for (final a in fetchedAssets)
+          if (a["blockchainTx"] != null &&
+              (a["blockchainTx"] as String).trim().isNotEmpty)
+            (a["blockchainTx"] as String).trim().toLowerCase(): a,
+      };
+
+      // ── Merge + re-classify transactions ──────────────────
+      // Combine all sources, then for any "sent" tx whose hash matches an asset
+      // purchase, upgrade it to type="nft" with the correct asset name.
+      final List<TransactionModel> mergedRaw =
+      [...normalTxs, ...nftTxs, ...firestoreTxs];
+
+      final List<TransactionModel> reclassified = mergedRaw.map((tx) {
+        if (tx.type == "sent" || tx.type == "contract") {
+          final asset = assetByTxHash[tx.hash.trim().toLowerCase()];
+          if (asset != null) {
+            final assetName = (asset["name"] ?? asset["title"] ?? "").toString().trim();
+            return TransactionModel(
+              type:    "nft",
+              title:   assetName.isNotEmpty ? assetName : tx.title,
+              to:      tx.to,
+              value:   tx.value,
+              gas:     tx.gas,
+              time:    tx.time,
+              success: tx.success,
+              hash:    tx.hash,
+            );
+          }
+        }
+        return tx;
+      }).toList();
+
       // ── Deduplicate by hash, newest first ──────────────────
       final seen   = <String>{};
-      final allTxs = [...normalTxs, ...nftTxs, ...firestoreTxs]
+      final allTxs = reclassified
           .where((tx) => tx.hash.isNotEmpty && seen.add(tx.hash))
           .toList()
         ..sort((a, b) => int.parse(b.time).compareTo(int.parse(a.time)));
 
-      // Build a quick lookup: assetName (lowercase) → asset data
-      // Used to enrich transaction tiles with asset price/category.
-      final assetByName = <String, Map<String, dynamic>>{
-        for (final a in fetchedAssets)
-          if (a["name"] != null)
-            (a["name"] as String).toLowerCase(): a,
-      };
-
-      // Build a secondary lookup: assetId / Firestore doc ID → asset data
-      // Lets us resolve tx.title values that are raw IDs rather than names.
-      final assetById = <String, Map<String, dynamic>>{
-        for (final a in fetchedAssets) ...{
-          if (a["assetId"] != null) a["assetId"] as String: a,
-          if (a["_docId"]  != null) a["_docId"]  as String: a,
-        },
-      };
-
-      // txCount = total number of deduplicated transactions across all types
       final txCount = allTxs.length;
 
-      // Store asset lookups before setState so tile builder can use them
       _assetByName = assetByName;
       _assetById   = assetById;
-
-      // Notifications for wallet activity are sent from explicit app flows.
-      // Avoid replaying historical transactions here, which can create
-      // duplicate notifications after reconnects or refreshes.
 
       setState(() {
         _transactions = allTxs.take(15).toList();
         _assets       = fetchedAssets;
         _txCount      = txCount;
-        // Owned NFT count comes from the assets collection, not transaction count.
-        // Fallback to counting NFT-type txs if the assets collection is empty
-        // (e.g., user hasn't opened My Assets yet to populate it).
         _nftCount = fetchedAssets.isNotEmpty
             ? fetchedAssets.length
             : allTxs.where((tx) => tx.type == "nft").length;
@@ -460,13 +496,10 @@ class _WalletScreenState extends State<WalletScreen>
     try {
       final ethAddress = EthereumAddress.fromHex(_address!);
       final balanceWei = await _client.getBalance(ethAddress);
-      // getValueInUnit returns the value in the given unit (ether = POL on Polygon)
       _balance = balanceWei.getValueInUnit(EtherUnit.ether);
 
-      // Low balance alert — fire once per session when balance drops below 0.05 POL
       final user = _auth.currentUser;
       if (user != null && _balance < 0.05 && _balance >= 0) {
-        // Use a debounce key so we don't spam on every refresh
         final balKey = 'low_balance_alerted';
         if (!_seenTxHashes.contains(balKey)) {
           _seenTxHashes.add(balKey);
@@ -515,8 +548,6 @@ class _WalletScreenState extends State<WalletScreen>
   String _formatTime(String rawTime) {
     final ts = int.tryParse(rawTime) ?? 0;
     if (ts == 0) return "Unknown";
-    // Firestore/on-chain timestamps can be seconds (10-digit) or
-    // milliseconds (13-digit). Normalise to milliseconds.
     final ms = ts > 9999999999 ? ts : ts * 1000;
     final time = DateTime.fromMillisecondsSinceEpoch(ms);
     final diff = DateTime.now().difference(time);
@@ -527,6 +558,32 @@ class _WalletScreenState extends State<WalletScreen>
     if (diff.inDays    < 30) return "${(diff.inDays / 7).floor()}w ago";
     if (diff.inDays    < 365) return "${(diff.inDays / 30).floor()}mo ago";
     return "${(diff.inDays / 365).floor()}y ago";
+  }
+
+  // ── FIX: resolve image URL from asset map, covering all common field names ──
+  String? _resolveImageUrl(Map<String, dynamic>? asset) {
+    if (asset == null) return null;
+    final candidates = [
+      asset["imageUrl"],
+      asset["image"],
+      asset["thumbnailUrl"],
+      asset["photoUrl"],
+      asset["photo"],
+      asset["assetImage"],
+      asset["fileUrl"],
+      asset["url"],
+      asset["coverImage"],
+      asset["coverUrl"],
+      asset["nftImage"],
+      asset["mediaUrl"],
+      asset["assetUrl"],
+      asset["imgUrl"],
+      asset["thumbnail"],
+    ];
+    for (final c in candidates) {
+      if (c is String && c.trim().isNotEmpty) return c.trim();
+    }
+    return null;
   }
 
   void _confirmAction(
@@ -930,7 +987,7 @@ class _WalletScreenState extends State<WalletScreen>
                 ),
               ),
 
-              // POL asset mini-pill (shows name + icon)
+              // POL asset mini-pill
               Container(
                 padding: const EdgeInsets.symmetric(
                     horizontal: 10, vertical: 6),
@@ -989,28 +1046,32 @@ class _WalletScreenState extends State<WalletScreen>
 
   // ─── Stats Row ───────────────────────────────────────────
   Widget _buildStatsRow() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildStatCard(
-            label: "Transactions",
-            value: "$_txCount",
-            icon: Icons.swap_horiz_rounded,
-            iconColor: Colors.white,
-            iconBg: kTeal,
+    // IntrinsicHeight forces both cards to match the height of the taller one
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: _buildStatCard(
+              label: "Transactions",
+              value: "$_txCount",
+              icon: Icons.swap_horiz_rounded,
+              iconColor: Colors.white,
+              iconBg: kTeal,
+            ),
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _buildStatCard(
-            label: "NFTs",
-            value: "$_nftCount",
-            icon: Icons.image_rounded,
-            iconColor: Colors.white,
-            iconBg: kTeal,
+          const SizedBox(width: 12),
+          Expanded(
+            child: _buildStatCard(
+              label: "NFTs",
+              value: "$_nftCount",
+              icon: Icons.image_rounded,
+              iconColor: Colors.white,
+              iconBg: kTeal,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1155,16 +1216,27 @@ class _WalletScreenState extends State<WalletScreen>
   }
 
   Widget _buildTxTile(TransactionModel tx) {
-    final isSent     = tx.type == "sent";
-    final isNft      = tx.type == "nft";
-    final isContract = tx.type == "contract";
+    // ── Safety re-classification: if type=="sent" but title looks like an
+    //    asset name (not a generic label), treat it as an NFT purchase.
+    final bool titleLooksLikeAsset =
+        tx.title.isNotEmpty &&
+            tx.title != "Transaction" &&
+            tx.title != "Sent POL" &&
+            tx.title != "Received POL" &&
+            tx.title != "Contract Interaction" &&
+            !tx.title.startsWith("0x");   // raw address → not an asset name
+
+    final bool isSent     = tx.type == "sent"     && !titleLooksLikeAsset;
+    final bool isNft      = tx.type == "nft"      || (tx.type == "sent" && titleLooksLikeAsset);
+    final bool isContract = tx.type == "contract" && !titleLooksLikeAsset;
+
     // ── Colour + icon per type ─────────────────────────────
     final Color iconColor = isNft
-        ? Colors.white
+        ? kTealAccent
         : isContract
-        ? Colors.white
+        ? kTeal
         : isSent
-        ? Colors.white
+        ? Colors.redAccent
         : kTealAccent;
 
     final IconData iconData = isNft
@@ -1176,17 +1248,15 @@ class _WalletScreenState extends State<WalletScreen>
         : Icons.arrow_downward_rounded;
 
     // ── Asset name: prefer tx.title when it is meaningful ──
-    // tx.title is set to the asset/contract name for NFT and contract txs.
     final bool hasMeaningfulTitle =
         tx.title.isNotEmpty &&
             tx.title != "Transaction" &&
             tx.title != "Contract Interaction";
 
-    // If tx.title looks like a raw asset ID (matched in our ID map) resolve it
-    // to the asset's human-readable name so IDs are never shown to the user.
+    // If tx.title looks like a raw asset ID, resolve it to the human-readable name
     String resolvedNftTitle = tx.title;
     if (isNft && hasMeaningfulTitle) {
-      final byId = _assetById[tx.title];
+      final byId = _assetById[tx.title.trim()];
       if (byId != null) {
         resolvedNftTitle = (byId["name"] as String?)?.trim().isNotEmpty == true
             ? byId["name"] as String
@@ -1203,10 +1273,12 @@ class _WalletScreenState extends State<WalletScreen>
         : "Received POL";
 
     // ── Subtitle: asset category or address ───────────────
-    // For NFT/contract, try to look up the asset category from the assets map.
     String subtitle;
     if (isNft) {
-      final asset = _assetByName[mainLabel.toLowerCase()] ?? _assetById[tx.title];
+      // ── FIX: use trim() on lookup key ──
+      final asset = _assetByName[mainLabel.trim().toLowerCase()]
+          ?? _assetById[tx.title.trim()]
+          ?? _assetById[resolvedNftTitle.trim()];
       final category = asset?["category"] as String?;
       subtitle = category?.isNotEmpty == true ? category! : "NFT Asset";
     } else if (isContract) {
@@ -1223,7 +1295,7 @@ class _WalletScreenState extends State<WalletScreen>
     if (isNft || isContract) {
       if (hasPrice) {
         amountWidget = Text(
-          "${isNft ? '' : ''}${polValue!.toStringAsFixed(4)} POL",
+          "${polValue!.toStringAsFixed(4)} POL",
           style: TextStyle(
               fontWeight: FontWeight.w700,
               fontSize: 13,
@@ -1267,15 +1339,22 @@ class _WalletScreenState extends State<WalletScreen>
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
-            // ── Icon / Asset Image ─────────────────────────
+            // ── FIX: Icon / Asset Image with expanded field name resolution ──
             Builder(builder: (_) {
-              // For NFT tiles: try to show the actual asset image
               if (isNft) {
-                final asset = _assetByName[mainLabel.toLowerCase()] ?? _assetById[tx.title];
-                final imgUrl = (asset?["imageUrl"] as String?)?.trim() ??
-                    (asset?["image"]    as String?)?.trim() ??
-                    (asset?["thumbnailUrl"] as String?)?.trim();
-                if (imgUrl != null && imgUrl.isNotEmpty) {
+                // ── FIX: trim() the lookup key and also try resolvedNftTitle ──
+                final asset = _assetByName[mainLabel.trim().toLowerCase()]
+                    ?? _assetById[tx.title.trim()]
+                    ?? _assetById[resolvedNftTitle.trim()];
+
+                // ── FIX: use _resolveImageUrl() which checks 15+ field names ──
+                final imgUrl = _resolveImageUrl(asset);
+
+                debugPrint(
+                  "🖼️ TX tile [${tx.title}] → asset=${asset?['name']} imgUrl=$imgUrl",
+                );
+
+                if (imgUrl != null) {
                   return ClipRRect(
                     borderRadius: BorderRadius.circular(13),
                     child: CachedNetworkImage(
@@ -1288,20 +1367,32 @@ class _WalletScreenState extends State<WalletScreen>
                           color: iconColor.withOpacity(0.10),
                           borderRadius: BorderRadius.circular(13),
                         ),
-                        child: Icon(Icons.image_rounded, color: iconColor, size: 20),
-                      ),
-                      errorWidget: (_, __, ___) => Container(
-                        width: 46, height: 46,
-                        decoration: BoxDecoration(
-                          color: iconColor.withOpacity(0.10),
-                          borderRadius: BorderRadius.circular(13),
+                        child: const Center(
+                          child: SizedBox(
+                            width: 20, height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2, color: kTeal,
+                            ),
+                          ),
                         ),
-                        child: Icon(Icons.image_rounded, color: iconColor, size: 20),
                       ),
+                      errorWidget: (_, url, err) {
+                        debugPrint("❌ Image load failed for $url: $err");
+                        return Container(
+                          width: 46, height: 46,
+                          decoration: BoxDecoration(
+                            color: iconColor.withOpacity(0.10),
+                            borderRadius: BorderRadius.circular(13),
+                          ),
+                          child: Icon(Icons.broken_image_rounded,
+                              color: iconColor, size: 20),
+                        );
+                      },
                     ),
                   );
                 }
               }
+
               // Fallback: coloured icon box
               return Container(
                 width: 46, height: 46,
