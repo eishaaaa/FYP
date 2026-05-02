@@ -344,17 +344,53 @@ class _TransferScreenState extends State<TransferScreen> {
 
   Future<void> _finalizeOwnership() async {
     final batch = _db.batch();
+    final isLand = widget.assetType == AssetType.land;
 
     final assetRef = _db.collection('assets').doc(widget.assetId);
-    batch.update(assetRef, {
-      'ownerId': widget.buyerUid,
-      'ownerUid': widget.buyerUid,
-      'previousOwnerId': widget.sellerUid,
-      'transferredAt': FieldValue.serverTimestamp(),
-      'txHash': _txHash,
-      'isListedForResale': false,
-      'isSyncingWithBlockchain': false,
-    });
+    
+    // For Electronics: Standard 1-to-1 ownership
+    // For Land: Master record remains, fractional holdings tracked separately
+    if (!isLand) {
+      batch.update(assetRef, {
+        'ownerId': widget.buyerUid,
+        'ownerUid': widget.buyerUid,
+        'previousOwnerId': widget.sellerUid,
+        'transferredAt': FieldValue.serverTimestamp(),
+        'txHash': _txHash,
+        'isListedForResale': false,
+        'isSyncingWithBlockchain': false,
+      });
+    } else {
+      // Land: Just clear the syncing flag on master doc
+      batch.update(assetRef, {
+        'isSyncingWithBlockchain': false,
+        'lastFractionTransferAt': FieldValue.serverTimestamp(),
+      });
+
+      // Update/Create Fractional Holdings for Buyer
+      final buyerHoldingRef = _db
+          .collection('fractional_holdings')
+          .doc('${widget.buyerUid}_${widget.assetId}');
+      batch.set(buyerHoldingRef, {
+        'userId': widget.buyerUid,
+        'assetId': widget.assetId,
+        'propertyId': widget.propertyId,
+        'fractionsOwned': FieldValue.increment(widget.fractionAmount ?? 0),
+        'lastUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // Update/Create Fractional Holdings for Seller
+      final sellerHoldingRef = _db
+          .collection('fractional_holdings')
+          .doc('${widget.sellerUid}_${widget.assetId}');
+      batch.set(sellerHoldingRef, {
+        'userId': widget.sellerUid,
+        'assetId': widget.assetId,
+        'propertyId': widget.propertyId,
+        'fractionsOwned': FieldValue.increment(-(widget.fractionAmount ?? 0)),
+        'lastUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
 
     final txRef = _db.collection('transactions').doc(widget.transactionId);
     batch.update(txRef, {
@@ -368,15 +404,15 @@ class _TransferScreenState extends State<TransferScreen> {
       'buyerId': widget.buyerUid,
       'sellerUid': widget.sellerUid,
       'assetId': widget.assetId,
-      'category': widget.assetType == AssetType.electronics ? 'electronics' : 'land',
+      'category': isLand ? 'land' : 'electronics',
       'assetPrice': widget.assetPrice,
       'txHash': _txHash,
       'transferredAt': FieldValue.serverTimestamp(),
-      if (widget.assetType == AssetType.electronics && widget.tokenId != null) ...{
+      if (!isLand && widget.tokenId != null) ...{
         'tokenId': widget.tokenId,
         'warrantyActivatedAt': FieldValue.serverTimestamp(),
       },
-      if (widget.assetType == AssetType.land) ...{
+      if (isLand) ...{
         'propertyId': widget.propertyId,
         'fractionAmount': widget.fractionAmount ?? 1,
       },

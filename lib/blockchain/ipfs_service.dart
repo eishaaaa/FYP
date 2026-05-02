@@ -1,8 +1,9 @@
-// lib/services/ipfs_service.dart
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
+import 'package:path_provider/path_provider.dart';
 
 class IPFSService {
   // Pinata credentials (free tier: 1GB storage)
@@ -158,6 +159,47 @@ class IPFSService {
       }
     } catch (e) {
       print('❌ Error retrieving from IPFS: $e');
+      return null;
+    }
+  }
+
+  /// Download file from IPFS and save to local Downloads directory
+  Future<String?> downloadFile(String ipfsHash, String fileName) async {
+    try {
+      final bytes = await retrieveFile(ipfsHash);
+      if (bytes == null) return null;
+
+      Directory? directory;
+      if (Platform.isAndroid) {
+        directory = Directory('/storage/emulated/0/Download');
+        if (!await directory.exists()) {
+          directory = await getExternalStorageDirectory();
+        }
+      } else {
+        directory = await getDownloadsDirectory();
+      }
+
+      if (directory == null) return null;
+
+      final filePath = '${directory.path}/$fileName';
+      final file = File(filePath);
+      
+      // Handle file name collisions
+      var finalFile = file;
+      var counter = 1;
+      while (await finalFile.exists()) {
+        final extension = fileName.contains('.') ? fileName.split('.').last : '';
+        final baseName = fileName.contains('.') ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+        final newName = '${baseName}_$counter.${extension.isEmpty ? 'file' : extension}';
+        finalFile = File('${directory.path}/$newName');
+        counter++;
+      }
+
+      await finalFile.writeAsBytes(bytes);
+      print('✅ File downloaded and saved to: ${finalFile.path}');
+      return finalFile.path;
+    } catch (e) {
+      print('❌ Error downloading file: $e');
       return null;
     }
   }

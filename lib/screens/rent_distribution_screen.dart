@@ -7,8 +7,6 @@ import '../blockchain/blockchain_service.dart';
 import '../theme.dart';
 import '../widgets/rent_actions.dart';
 
-// Brand colors removed - using AppTheme
-
 class RentDistributionScreen extends StatefulWidget {
   final String assetId;
   final int    propertyId;
@@ -31,16 +29,20 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
   final _blockchainService = BlockchainServiceEnhanced();
   final _amountCtrl        = TextEditingController();
   final _rentPriceCtrl     = TextEditingController();
+  final _depositCtrl       = TextEditingController();
   final _db                = FirebaseFirestore.instance;
   final _auth              = FirebaseAuth.instance;
 
   Map<String, dynamic>? _propertyData;
   BigInt _unclaimedRent = BigInt.zero;
   int    _userFractions = 0;
+  int    _escrowFractions = 0;
+  bool   _isMasterOwner = false;
   bool   _loading       = true;
+  bool   _processing    = false;
+  int?   _activePropertyId;
   String? _errorMessage;
 
-  // Page entrance animation
   late AnimationController _animCtrl;
   late Animation<double>   _fadeAnim;
   late Animation<Offset>   _slideAnim;
@@ -63,51 +65,134 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     _animCtrl.dispose();
     _amountCtrl.dispose();
     _rentPriceCtrl.dispose();
+    _depositCtrl.dispose();
     super.dispose();
   }
 
-  // ── Data ──────────────────────────────────────────────────────────────────
   Future<void> _loadData() async {
     try {
       await _blockchainService.init();
-      final property =
-      await _blockchainService.getLandProperty(widget.propertyId);
+      
+      int currentId = widget.propertyId;
+      _activePropertyId = currentId;
+      var property = await _blockchainService.getLandProperty(currentId);
 
-      if (_blockchainService.isConnected) {
-        _unclaimedRent = await _blockchainService.getUnclaimedRent(
-          _blockchainService.connectedAddress!,
-          widget.propertyId,
-        );
-        _userFractions = await _blockchainService.getUserFractions(
-          _blockchainService.connectedAddress!,
-          widget.propertyId,
+      if (property == null) {
+        if (currentId > 0) {
+            final fallback = await _blockchainService.getLandProperty(currentId - 1);
+            if (fallback != null && await _isMatch(fallback)) {
+              await _db.collection('assets').doc(widget.assetId).update({'blockchainTokenId': currentId - 1});
+              property = fallback;
+              _activePropertyId = currentId - 1;
+            }
+        }
+        if (property == null) {
+            final fallback = await _blockchainService.getLandProperty(currentId + 1);
+            if (fallback != null && await _isMatch(fallback)) {
+              await _db.collection('assets').doc(widget.assetId).update({'blockchainTokenId': currentId + 1});
+              property = fallback;
+              _activePropertyId = currentId + 1;
+            }
+        }
+      }
+      currentId = _activePropertyId!;
+      
+      if (property != null) {
+        await _blockchainService.verifyAndHealAsset(
+          type: 'land',
+          blockchainId: currentId,
+          firestoreDocId: widget.assetId,
+          firestore: _db,
         );
       }
 
-      // Fetch owner info from Firestore
-      final assetDoc = await _db.collection('assets').doc(widget.assetId).get();
-      final ownerUid = assetDoc.data()?['ownerId'] ?? assetDoc.data()?['ownerUid'];
+      final addr = _blockchainService.connectedAddress;
+      final assetDocTask = _db.collection('assets').doc(widget.assetId).get();
       
+      if (addr != null && property != null) {
+        final results = await Future.wait([
+          _blockchainService.getUnclaimedRent(addr, currentId),
+          _blockchainService.getUserFractions(addr, currentId),
+          _blockchainService.getEscrowBalance(currentId),
+          assetDocTask,
+        ]);
+        
+        _unclaimedRent = results[0] as BigInt;
+        _userFractions = results[1] as int;
+        _escrowFractions = results[2] as int;
+        final assetDoc = results[3] as DocumentSnapshot;
+        _finishLoading(property, assetDoc, addr);
+      } else {
+        final assetDoc = await assetDocTask;
+        _finishLoading(property, assetDoc, addr);
+      }
+    } catch (e) {
+      debugPrint("LoadError: $e");
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  void _finishLoading(Map<String, dynamic>? property, DocumentSnapshot assetDoc, String? addr) {
+    final assetData = assetDoc.data() as Map<String, dynamic>?;
+    final ownerUid = assetData?['ownerId'] ?? assetData?['ownerUid'];
+    final currentAddress = addr?.toLowerCase();
+    final chainOwner     = property?['originalOwner']?.toString().toLowerCase();
+    
+    _isMasterOwner = (_auth.currentUser?.uid == ownerUid) || 
+                     (currentAddress != null && currentAddress == chainOwner);
+    
+    if (_isMasterOwner && _userFractions == 0) {
+      final totalF = property?['totalFractions'] as int? ?? 100;
+      _userFractions = totalF - _escrowFractions;
+    }
+
+    if (mounted) {
       setState(() {
         if (property != null) {
           _propertyData = Map<String, dynamic>.from(property);
           _propertyData!['originalOwnerUid'] = ownerUid;
+          _propertyData!['securityDeposit'] = assetData?['securityDeposit'] ?? 0.0;
+          _propertyData!['disputeActive'] = assetData?['disputeActive'] ?? false;
+          _propertyData!['disputeReason'] = assetData?['disputeReason'] ?? '';
         } else {
-          _errorMessage = "Property not found on blockchain (ID: ${widget.propertyId})";
+          _errorMessage = "Property data not found on blockchain.";
         }
-        _loading = false;
-      });
-    } catch (e) {
-      debugPrint("RentDataLoadError: $e");
-      setState(() {
-        _errorMessage = e.toString();
         _loading = false;
       });
     }
   }
 
-  // ── Distribute ────────────────────────────────────────────────────────────
+  Future<bool> _isMatch(Map<String, dynamic> chainData) async {
+    final assetDoc = await _db.collection('assets').doc(widget.assetId).get();
+    final fsTitle = assetDoc.data()?['title']?.toString().toLowerCase() ?? '';
+    final chainTitle = chainData['location']?.toString().toLowerCase() ?? '';
+    return fsTitle.contains(chainTitle) || chainTitle.contains(fsTitle);
+  }
+
+  bool _checkBlockchainOwnership() {
+    final currentAddress = _blockchainService.connectedAddress?.toLowerCase();
+    final chainOwner = _propertyData?['originalOwner']?.toString().toLowerCase();
+    
+    if (currentAddress == null || currentAddress != chainOwner) {
+      _showSnack(
+        '❌ Wallet Mismatch\n\n'
+        'This action requires the owner wallet ($chainOwner).\n'
+        'You are currently using: ${currentAddress ?? "None"}',
+        color: Colors.red,
+      );
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _distributeRent() async {
+    if (!_checkBlockchainOwnership()) return;
+    
     final amount = double.tryParse(_amountCtrl.text);
     if (amount == null || amount <= 0) {
       _showSnack('Please enter a valid amount');
@@ -116,24 +201,21 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     final weiAmount = _blockchainService.etherToWei(amount);
     _showProcessingDialog('Distributing rent…');
     try {
-      if (!_blockchainService.isConnected) {
-        await _blockchainService.connectWallet(context);
-      }
       final txHash = await _blockchainService.distributeLandRent(
-        propertyId: widget.propertyId,
+        propertyId: _activePropertyId ?? widget.propertyId,
         amount    : weiAmount,
       );
       if (txHash != null) {
         final ok = await _blockchainService.waitForConfirmation(txHash);
         if (mounted) Navigator.pop(context);
         if (ok) {
-          _showSnack('✅ Rent distributed successfully!',
-              color: Colors.green);
+          _showSnack('✅ Rent distributed successfully!', color: Colors.green);
           _amountCtrl.clear();
           _loadData();
         }
       } else {
         if (mounted) Navigator.pop(context);
+        _showSnack('❌ Transaction failed.');
       }
     } catch (e) {
       if (mounted) Navigator.pop(context);
@@ -141,31 +223,75 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     }
   }
 
-  // ── Rental Logic ──────────────────────────────────────────────────────────
   Future<void> _listForRent() async {
+    if (!_checkBlockchainOwnership()) return;
+
     final rentAmount = double.tryParse(_rentPriceCtrl.text);
+    final depositAmount = double.tryParse(_depositCtrl.text) ?? 0.0;
+
     if (rentAmount == null || rentAmount <= 0) {
       _showSnack('Please enter a valid monthly rent');
       return;
     }
+    
+    setState(() => _processing = true);
     final weiRent = _blockchainService.etherToWei(rentAmount);
-    _showProcessingDialog('Listing for rent…');
+    _showProcessingDialog('Signature Required\nPlease check your wallet app.');
+    
     try {
       final txHash = await _blockchainService.listLandForRent(
-        propertyId: widget.propertyId,
+        propertyId: _activePropertyId ?? widget.propertyId,
         rentAmount: weiRent,
       );
+      
+      if (txHash != null) {
+        await _db.collection('assets').doc(widget.assetId).update({
+          'isForRent': true,
+          'monthlyRent': rentAmount,
+          'securityDeposit': depositAmount,
+        });
+        
+        if (mounted) {
+           Navigator.pop(context);
+           _showSnack('⚡ Listing property (Optimistic)...', color: Colors.blue);
+           setState(() {
+             _propertyData!['isForRent'] = true;
+             _propertyData!['monthlyRent'] = weiRent;
+           });
+        }
+
+        _blockchainService.waitForConfirmation(txHash).then((ok) {
+          if (ok) {
+            _showSnack('✅ Rental listing confirmed!', color: Colors.green);
+          } else {
+            _showSnack('❌ Transaction failed.', color: Colors.red);
+            _loadData(); 
+          }
+        });
+      } else {
+        if (mounted) Navigator.pop(context);
+        _showSnack('❌ Failed to initiate transaction.', color: Colors.red);
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      _showSnack('Error: $e', color: Colors.red);
+    } finally {
+      if (mounted) setState(() => _processing = false);
+    }
+  }
+
+  Future<void> _claimRent() async {
+    _showProcessingDialog('Claiming your rent share…');
+    try {
+      final txHash = await _blockchainService.claimLandRent(_activePropertyId ?? widget.propertyId);
       if (txHash != null) {
         final ok = await _blockchainService.waitForConfirmation(txHash);
+        if (mounted) Navigator.pop(context);
         if (ok) {
-          // Sync with Firestore
-          await _db.collection('assets').doc(widget.assetId).update({
-            'isForRent': true,
-            'monthlyRent': rentAmount,
-          });
-          if (mounted) Navigator.pop(context);
-          _showSnack('✅ Listed for rent successfully!', color: Colors.green);
+          _showSnack('✅ Rent claimed successfully!', color: Colors.green);
           _loadData();
+        } else {
+          _showSnack('❌ Claim failed on blockchain', color: Colors.red);
         }
       } else {
         if (mounted) Navigator.pop(context);
@@ -182,20 +308,19 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     
     _showProcessingDialog('Sending rent request…');
     try {
-      final txHash = await _blockchainService.requestLandRent(widget.propertyId);
+      final txHash = await _blockchainService.requestLandRent(_activePropertyId ?? widget.propertyId);
       if (txHash != null) {
         final ok = await _blockchainService.waitForConfirmation(txHash);
         if (ok) {
           final requestId = _db.collection('rent_requests').doc().id;
           final batch = _db.batch();
-          
           final rentAmount = _blockchainService.weiToEther(_propertyData!['monthlyRent']);
 
           batch.set(_db.collection('rent_requests').doc(requestId), {
             'assetId': widget.assetId,
-            'propertyId': widget.propertyId,
+            'propertyId': _activePropertyId ?? widget.propertyId,
             'tenantUid': user.uid,
-            'ownerUid': _propertyData!['originalOwnerUid'] ?? '', // We'll need to ensure this is in _propertyData or fetched
+            'ownerUid': _propertyData!['originalOwnerUid'] ?? '',
             'rentAmount': rentAmount,
             'status': 'pending',
             'createdAt': FieldValue.serverTimestamp(),
@@ -204,13 +329,13 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
           batch.set(_db.collection('transactions').doc(requestId), {
             'transactionId': requestId,
             'assetId': widget.assetId,
-            'buyerUid': user.uid, // tenant
-            'sellerUid': _propertyData!['originalOwnerUid'] ?? '', // owner
+            'buyerUid': user.uid,
+            'sellerUid': _propertyData!['originalOwnerUid'] ?? '',
             'status': 'pending',
             'category': 'land',
             'requestType': 'rent_request',
             'amount': rentAmount,
-            'blockchainPropertyId': widget.propertyId,
+            'blockchainPropertyId': _activePropertyId ?? widget.propertyId,
             'createdAt': FieldValue.serverTimestamp(),
           });
 
@@ -233,7 +358,7 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     _showProcessingDialog('Paying monthly rent…');
     try {
       final txHash = await _blockchainService.payLandMonthlyRent(
-        propertyId: widget.propertyId,
+        propertyId: _activePropertyId ?? widget.propertyId,
         amount: rentWei,
       );
       if (txHash != null) {
@@ -252,653 +377,13 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     }
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  void _showSnack(String msg, {Color? color}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content        : Text(msg, style: GoogleFonts.poppins()),
-      backgroundColor: color ?? AppTheme.primaryStart,
-      behavior       : SnackBarBehavior.floating,
-      shape          : RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10)),
-    ));
-  }
-
-  void _showProcessingDialog(String label) {
-    showDialog(
-      context           : context,
-      barrierDismissible: false,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          padding   : const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color       : Colors.white,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children    : [
-              const CircularProgressIndicator(color: AppTheme.primaryStart),
-              const SizedBox(height: 18),
-              Text(label,
-                  style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w600,
-                      color     : AppTheme.textPrimary)),
-              const SizedBox(height: 6),
-              Text('Please wait…',
-                  style: GoogleFonts.poppins(
-                      fontSize: 12, color: AppTheme.textSecondary)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Build ─────────────────────────────────────────────────────────────────
-  @override
-  Widget build(BuildContext context) {
-    // Loading
-    if (_loading) {
-      return Scaffold(
-        backgroundColor: AppTheme.background,
-        body: Container(
-          decoration: const BoxDecoration(
-            gradient: AppTheme.primaryGradient,
-          ),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const CircularProgressIndicator(color: Colors.white),
-                const SizedBox(height: 16),
-                Text('Loading rent data…',
-                    style: GoogleFonts.poppins(
-                        color: Colors.white70, fontSize: 14)),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    // Error
-    if (_propertyData == null) {
-      return Scaffold(
-        backgroundColor: AppTheme.background,
-        appBar: _buildAppBar(),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline_rounded,
-                  size: 48, color: AppTheme.textSecondary),
-              const SizedBox(height: 12),
-              Text(_errorMessage ?? 'Failed to load property data',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                      color: AppTheme.textSecondary, fontSize: 15)),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final totalFractions  = _propertyData!['totalFractions'] as int;
-    final ownershipPct    = totalFractions > 0
-        ? (_userFractions / totalFractions * 100)
-        : 0.0;
-    final hasRent = _unclaimedRent > BigInt.zero;
-
-    return Scaffold(
-      backgroundColor: AppTheme.background,
-      body: Column(
-        children: [
-          // ── Gradient header ──
-          _buildHeader(totalFractions, ownershipPct),
-
-          // ── Scrollable body ──
-          Expanded(
-            child: FadeTransition(
-              opacity : _fadeAnim,
-              child   : SlideTransition(
-                position: _slideAnim,
-                child   : SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
-                  child  : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-
-                      // Property card
-                      _buildPropertyCard(totalFractions, ownershipPct),
-                      const SizedBox(height: 16),
-
-                      // Unclaimed rent hero card
-                      _buildRentHeroCard(hasRent),
-                      const SizedBox(height: 16),
-
-                      // Rental Listing / Request Section
-                      _buildRentalSection(),
-                      const SizedBox(height: 16),
-
-                      // Distribute section (owner only)
-                      if (widget.isOwner) ...[
-                        _buildDistributeSection(),
-                        const SizedBox(height: 16),
-                      ],
-
-                      // Info card
-                      _buildInfoCard(ownershipPct),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Gradient header ───────────────────────────────────────────────────────
-  Widget _buildHeader(int totalFractions, double ownershipPct) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-            colors: [AppTheme.primaryStartDark, AppTheme.primaryStart],
-            begin : Alignment.topLeft,
-            end   : Alignment.bottomRight),
-        borderRadius: BorderRadius.only(
-          bottomLeft : Radius.circular(28),
-          bottomRight: Radius.circular(28),
-        ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child : Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          child  : Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Back + title
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      padding   : const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color       : Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.arrow_back_ios_new_rounded,
-                          color: Colors.white, size: 18),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Rent Management',
-                          style: GoogleFonts.poppins(
-                            fontSize  : 18,
-                            fontWeight: FontWeight.w700,
-                            color     : Colors.white,
-                          )),
-                      Text(
-                        widget.isOwner
-                            ? 'Distribute & claim rent'
-                            : 'Claim your rent share',
-                        style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color   : Colors.white.withOpacity(0.8)),
-                      ),
-                    ],
-                  ),
-                  if (widget.isOwner) ...[
-                    const Spacer(),
-                    Container(
-                      padding   : const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color       : Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text('Owner',
-                          style: GoogleFonts.poppins(
-                            color     : Colors.white,
-                            fontSize  : 11,
-                            fontWeight: FontWeight.w700,
-                          )),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              // Stats row
-              Row(
-                children: [
-                  _HeaderStat(
-                    icon : Icons.layers_rounded,
-                    label: 'Your Fractions',
-                    value: '$_userFractions',
-                  ),
-                  const SizedBox(width: 10),
-                  _HeaderStat(
-                    icon : Icons.pie_chart_rounded,
-                    label: 'Ownership',
-                    value: '${ownershipPct.toStringAsFixed(1)}%',
-                  ),
-                  const SizedBox(width: 10),
-                  _HeaderStat(
-                    icon : Icons.grid_view_rounded,
-                    label: 'Total',
-                    value: '${_propertyData!['totalFractions']}',
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Property info card ────────────────────────────────────────────────────
-  Widget _buildPropertyCard(int totalFractions, double ownershipPct) {
-    return _Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding   : const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color       : AppTheme.surface,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.location_on_rounded,
-                    color: AppTheme.primaryStart, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(_propertyData!['location'] ?? '—',
-                        style: GoogleFonts.poppins(
-                          fontSize  : 15,
-                          fontWeight: FontWeight.w700,
-                          color     : AppTheme.textPrimary,
-                        )),
-                    Text(
-                      '${_propertyData!['city']}  •  '
-                          '${_propertyData!['totalArea']} ${_propertyData!['areaUnit']}',
-                      style: GoogleFonts.poppins(
-                          fontSize: 12, color: AppTheme.textSecondary),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Divider(color: AppTheme.primaryStart.withOpacity(0.1)),
-          const SizedBox(height: 10),
-          // Ownership bar
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Your ownership share',
-                  style: GoogleFonts.poppins(
-                      fontSize: 12, color: AppTheme.textSecondary)),
-              Text('${ownershipPct.toStringAsFixed(2)}%',
-                  style: GoogleFonts.poppins(
-                    fontSize  : 12,
-                    fontWeight: FontWeight.w700,
-                    color     : AppTheme.primaryStart,
-                  )),
-            ],
-          ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value          : totalFractions > 0
-                  ? _userFractions / totalFractions
-                  : 0,
-              minHeight      : 8,
-              backgroundColor: AppTheme.surface,
-              valueColor     :
-              const AlwaysStoppedAnimation<Color>(AppTheme.primaryStart),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Rent hero card ────────────────────────────────────────────────────────
-  Widget _buildRentHeroCard(bool hasRent) {
-    return Container(
-      width    : double.infinity,
-      padding  : const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: hasRent
-              ? [const Color(0xFF1B6B3A), const Color(0xFF2ECC71)]
-              : [AppTheme.primaryStartDark, AppTheme.primaryStart],
-          begin: Alignment.topLeft,
-          end  : Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color     : (hasRent ? Colors.green : AppTheme.primaryStart).withOpacity(0.3),
-            blurRadius: 16,
-            offset    : const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding   : const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.account_balance_wallet_rounded,
-                color: Colors.white, size: 36),
-          ),
-          const SizedBox(height: 14),
-          Text('Unclaimed Rent',
-              style: GoogleFonts.poppins(
-                  color: Colors.white70, fontSize: 14)),
-          const SizedBox(height: 6),
-          Text(
-            '${_blockchainService.weiToEther(_unclaimedRent)} MATIC',
-            style: GoogleFonts.poppins(
-              color     : Colors.white,
-              fontSize  : 34,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // Claim button
-                  ClaimRentButton(
-                    onPressed: _claimRent,
-                    isLoading: false, // Could add loading state
-                  ),
-        ],
-      ),
-    );
-  }
-
-  // ── Distribute section ────────────────────────────────────────────────────
-  Widget _buildDistributeSection() {
-    return _Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding   : const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color       : AppTheme.surface,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.upload_rounded,
-                    color: AppTheme.primaryStart, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Distribute Rent',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w700,
-                        fontSize  : 15,
-                        color     : AppTheme.textPrimary,
-                      )),
-                  Text('Send rent to all fraction holders',
-                      style: GoogleFonts.poppins(
-                          fontSize: 12, color: AppTheme.textSecondary)),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Divider(color: AppTheme.primaryStart.withOpacity(0.1)),
-          const SizedBox(height: 14),
-
-          // Amount field
-          Container(
-            decoration: BoxDecoration(
-              color       : Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border      : Border.all(color: AppTheme.primaryStart.withOpacity(0.2)),
-              boxShadow   : [
-                BoxShadow(
-                  color     : AppTheme.primaryStart.withOpacity(0.05),
-                  blurRadius: 8,
-                  offset    : const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: TextField(
-              controller  : _amountCtrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true),
-              style       : GoogleFonts.poppins(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color     : AppTheme.textPrimary),
-              decoration  : InputDecoration(
-                hintText      : 'Enter amount to distribute',
-                hintStyle     : GoogleFonts.poppins(
-                    color: AppTheme.textSecondary.withOpacity(0.6),
-                    fontSize: 14),
-                prefixIcon    : const Icon(
-                    Icons.monetization_on_rounded, color: AppTheme.primaryStart),
-                suffixText    : 'MATIC',
-                suffixStyle   : GoogleFonts.poppins(
-                    color     : AppTheme.primaryStart,
-                    fontWeight: FontWeight.w700),
-                border        : InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 16),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Distribute button
-          _GradientButton(
-            label    : 'Distribute Rent',
-            icon     : Icons.upload_rounded,
-            onPressed: _distributeRent,
-          ),
-          const SizedBox(height: 10),
-
-          Center(
-            child: Text(
-              'Rent is distributed proportionally to all fraction holders.',
-              textAlign: TextAlign.center,
-              style    : GoogleFonts.poppins(
-                  fontSize: 12, color: AppTheme.textSecondary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Rental Section ────────────────────────────────────────────────────────
-  Widget _buildRentalSection() {
-    final bool isForRent = _propertyData!['isForRent'] ?? false;
-    final BigInt monthlyRent = _propertyData!['monthlyRent'] ?? BigInt.zero;
-    final String currentTenant = _propertyData!['currentTenant'] ?? '0x0000000000000000000000000000000000000000';
-    final String pendingTenant = _propertyData!['pendingTenant'] ?? '0x0000000000000000000000000000000000000000';
-    final bool hasTenant = currentTenant != '0x0000000000000000000000000000000000000000';
-    final bool hasPending = pendingTenant != '0x0000000000000000000000000000000000000000';
-    
-    final userAddr = _blockchainService.connectedAddress?.toLowerCase() ?? '';
-    final bool isTenant = currentTenant.toLowerCase() == userAddr;
-
-    return _Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppTheme.surface,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.vpn_key_rounded, color: AppTheme.primaryStart, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Text('Rental Status',
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                    color: AppTheme.textPrimary,
-                  )),
-            ],
-          ),
-          const SizedBox(height: 16),
-          
-          if (widget.isOwner) ...[
-            if (!isForRent && !hasTenant) ...[
-              Text('Property is not yet listed for rent.',
-                  style: GoogleFonts.poppins(fontSize: 13, color: AppTheme.textSecondary)),
-              const SizedBox(height: 12),
-              _buildRentInputField(),
-              const SizedBox(height: 12),
-              ListForRentButton(onPressed: _listForRent),
-            ] else if (isForRent && !hasPending) ...[
-              _buildStatusRow('Status', 'Available for Rent', Colors.green),
-              _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', AppTheme.primaryStart),
-              const SizedBox(height: 12),
-              const Center(child: Text('Waiting for tenants…', style: TextStyle(fontSize: 12, color: Colors.grey))),
-            ] else if (hasPending) ...[
-              _buildStatusRow('Status', 'Pending Request', Colors.orange),
-              _buildStatusRow('Tenant Address', pendingTenant, AppTheme.textPrimary),
-              const SizedBox(height: 12),
-              AcceptRentRequestButton(onPressed: _acceptRentRequest),
-            ] else if (hasTenant) ...[
-              _buildStatusRow('Status', 'Rented', AppTheme.primaryStart),
-              _buildStatusRow('Current Tenant', currentTenant, AppTheme.textPrimary),
-              _buildStatusRow('Monthly Income', '${_blockchainService.weiToEther(monthlyRent)} MATIC', AppTheme.primaryStart),
-            ],
-          ] else ...[
-            // Non-owner view
-            if (isTenant) ...[
-              _buildStatusRow('Status', 'You are the Tenant', AppTheme.primaryStart),
-              _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', AppTheme.primaryStart),
-              const SizedBox(height: 16),
-              PayRentButton(onPressed: _payMonthlyRent),
-            ] else if (isForRent) ...[
-              _buildStatusRow('Status', 'Available for Rent', Colors.green),
-              _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', AppTheme.primaryStart),
-              const SizedBox(height: 16),
-              _GradientButton(
-                label: 'Request to Rent',
-                icon: Icons.send_rounded,
-                onPressed: _requestRent,
-              ),
-            ] else if (hasTenant) ...[
-              _buildStatusRow('Status', 'Already Rented', Colors.grey),
-            ] else ...[
-              _buildStatusRow('Status', 'Not for Rent', Colors.grey),
-            ],
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRentInputField() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.primaryStart.withOpacity(0.2)),
-      ),
-      child: TextField(
-        controller: _rentPriceCtrl,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        style: GoogleFonts.poppins(fontSize: 14),
-        decoration: InputDecoration(
-          hintText: 'Enter monthly rent amount',
-          prefixIcon: const Icon(Icons.monetization_on_rounded, color: AppTheme.primaryStart),
-          suffixText: 'MATIC',
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusRow(String label, String value, Color valueColor) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textSecondary)),
-          Flexible(
-            child: Text(value,
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: valueColor,
-                ),
-                overflow: TextOverflow.ellipsis),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _claimRent() async {
-    _showProcessingDialog('Claiming your rent share…');
-    try {
-      final txHash = await _blockchainService.claimLandRent(widget.propertyId);
-      if (txHash != null) {
-        final ok = await _blockchainService.waitForConfirmation(txHash);
-        if (mounted) Navigator.pop(context);
-        if (ok) {
-          _showSnack('✅ Rent claimed successfully!', color: Colors.green);
-          _loadData();
-        } else {
-          _showSnack('❌ Claim failed on blockchain', color: Colors.red);
-        }
-      } else {
-        if (mounted) Navigator.pop(context);
-      }
-    } catch (e) {
-      if (mounted) Navigator.pop(context);
-      _showSnack('Error: $e', color: Colors.red);
-    }
-  }
-
   Future<void> _acceptRentRequest() async {
     _showProcessingDialog('Accepting tenant…');
     try {
-      final txHash = await _blockchainService.acceptLandRentRequest(widget.propertyId);
+      final txHash = await _blockchainService.acceptLandRentRequest(_activePropertyId ?? widget.propertyId);
       if (txHash != null) {
         final ok = await _blockchainService.waitForConfirmation(txHash);
         if (ok) {
-          // Update Firestore: find the pending request and mark as approved
           final q = await _db.collection('rent_requests')
               .where('assetId', isEqualTo: widget.assetId)
               .where('status', isEqualTo: 'pending')
@@ -908,14 +393,11 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
             final batch = _db.batch();
             batch.update(q.docs.first.reference, {'status': 'approved'});
             batch.update(_db.collection('transactions').doc(q.docs.first.id), {'status': 'approved'});
-            
-            // Update asset doc
             batch.update(_db.collection('assets').doc(widget.assetId), {
               'isForRent': false,
               'currentTenant': q.docs.first.data()['tenantUid'],
               'currentTenantAddress': _propertyData!['pendingTenant'],
             });
-            
             await batch.commit();
           }
 
@@ -932,14 +414,260 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     }
   }
 
-  // ── Info card ─────────────────────────────────────────────────────────────
-  Widget _buildInfoCard(double ownershipPct) {
-    final bullets = [
-      'Rent is distributed proportionally based on fraction ownership',
-      'You can claim your share at any time',
-      'All transactions are recorded on the blockchain',
-      'Your share: ${ownershipPct.toStringAsFixed(2)}% of total rent',
-    ];
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        backgroundColor: AppTheme.background,
+        body: Container(
+          decoration: const BoxDecoration(gradient: AppTheme.primaryGradient),
+          child: const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(color: Colors.white),
+                SizedBox(height: 16),
+                Text('Loading rent data…', style: TextStyle(color: Colors.white70, fontSize: 14)),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_propertyData == null) {
+      return Scaffold(
+        backgroundColor: AppTheme.background,
+        appBar: _buildAppBar(),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline_rounded, size: 48, color: AppTheme.textSecondary),
+              const SizedBox(height: 12),
+              Text(_errorMessage ?? 'Failed to load property data',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(color: AppTheme.textSecondary, fontSize: 15)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final totalFractions  = _propertyData!['totalFractions'] as int;
+    final ownershipPct    = (_isMasterOwner && _userFractions == 0 && _escrowFractions == 0)
+        ? 100.0
+        : (totalFractions > 0)
+            ? ((_userFractions + _escrowFractions) / totalFractions * 100).clamp(0, 100).toDouble()
+            : 0.0;
+    final hasRent = _unclaimedRent > BigInt.zero;
+
+    return Scaffold(
+      backgroundColor: AppTheme.background,
+      body: Column(
+        children: [
+          _buildHeader(totalFractions, ownershipPct),
+          Expanded(
+            child: FadeTransition(
+              opacity : _fadeAnim,
+              child   : SlideTransition(
+                position: _slideAnim,
+                child   : SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+                  child  : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildPropertyCard(totalFractions, ownershipPct),
+                      const SizedBox(height: 16),
+                      _buildRentHeroCard(hasRent),
+                      const SizedBox(height: 16),
+                      _buildRentalSection(),
+                      const SizedBox(height: 16),
+                      if (widget.isOwner) ...[
+                        _buildDistributeSection(),
+                        const SizedBox(height: 16),
+                      ],
+                      _buildInfoCard(ownershipPct),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(int totalFractions, double ownershipPct) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+            colors: [AppTheme.primaryStartDark, AppTheme.primaryStart],
+            begin : Alignment.topLeft,
+            end   : Alignment.bottomRight),
+        borderRadius: BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child : Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          child  : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
+                      child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Rent Management', 
+                             style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+                             overflow: TextOverflow.ellipsis),
+                        Text(widget.isOwner ? 'Distribute & claim rent' : 'Claim your rent share',
+                            style: GoogleFonts.poppins(fontSize: 11, color: Colors.white.withOpacity(0.8)),
+                            overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  // Actions wrapped to prevent overflow
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.isOwner) ...[
+                        _HeaderIconButton(icon: Icons.refresh_rounded, onTap: _loadData),
+                        const SizedBox(width: 6),
+                        _HeaderIconButton(icon: Icons.help_outline_rounded, onTap: _showHowItWorks),
+                        const SizedBox(width: 6),
+                        _WalletStatusBadge(
+                          isCorrect: _blockchainService.connectedAddress?.toLowerCase() == _propertyData?['originalOwner']?.toString().toLowerCase(),
+                          onTap: () async {
+                            await _blockchainService.connectWallet(context);
+                            _loadData();
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Wrap(
+                spacing   : 8,
+                runSpacing: 8,
+                children: [
+                  _HeaderStat(icon: Icons.layers_rounded, label: _isMasterOwner ? 'Managed' : 'Yours', value: _isMasterOwner ? '${_userFractions + _escrowFractions}' : '$_userFractions'),
+                  _HeaderStat(icon: Icons.pie_chart_rounded, label: 'Ownership', value: '${ownershipPct.toStringAsFixed(1)}%'),
+                  _HeaderStat(icon: Icons.shopping_bag_rounded, label: 'Escrow', value: '$_escrowFractions'),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPropertyCard(int totalFractions, double ownershipPct) {
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.location_on_rounded, color: AppTheme.primaryStart, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_propertyData!['location'] ?? '—', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
+                    Text('${_propertyData!['city']}  •  ${_propertyData!['totalArea']} ${_propertyData!['areaUnit']}',
+                        style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textSecondary)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Divider(color: AppTheme.primaryStart.withOpacity(0.1)),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Your ownership share', style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textSecondary)),
+              Text('${ownershipPct.toStringAsFixed(2)}%', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryStart)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: totalFractions > 0 ? _userFractions / totalFractions : 0,
+              minHeight: 8,
+              backgroundColor: AppTheme.surface,
+              valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.primaryStart),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRentHeroCard(bool hasRent) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: hasRent ? [const Color(0xFF1B6B3A), const Color(0xFF2ECC71)] : [AppTheme.primaryStartDark, AppTheme.primaryStart],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [BoxShadow(color: (hasRent ? Colors.green : AppTheme.primaryStart).withOpacity(0.3), blurRadius: 16, offset: const Offset(0, 6))],
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+            child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 36),
+          ),
+          const SizedBox(height: 14),
+          Text('Unclaimed Rent', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 14)),
+          const SizedBox(height: 6),
+          Text('${_blockchainService.weiToEther(_unclaimedRent)} MATIC',
+              style: GoogleFonts.poppins(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 20),
+          ClaimRentButton(onPressed: _claimRent, isLoading: false),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRentalSection() {
+    final bool isForRent = _propertyData!['isForRent'] ?? false;
+    final BigInt monthlyRent = _propertyData!['monthlyRent'] ?? BigInt.zero;
+    final String currentTenant = _propertyData!['currentTenant'] ?? '0x0000000000000000000000000000000000000000';
+    final String pendingTenant = _propertyData!['pendingTenant'] ?? '0x0000000000000000000000000000000000000000';
+    final bool hasTenant = currentTenant != '0x0000000000000000000000000000000000000000';
+    final bool hasPending = pendingTenant != '0x0000000000000000000000000000000000000000';
+    final userAddr = _blockchainService.connectedAddress?.toLowerCase() ?? '';
+    final bool isTenant = currentTenant.toLowerCase() == userAddr;
 
     return _Card(
       child: Column(
@@ -948,47 +676,182 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
           Row(
             children: [
               Container(
-                padding   : const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color       : AppTheme.surface,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.info_outline_rounded,
-                    color: AppTheme.primaryStart, size: 20),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.vpn_key_rounded, color: AppTheme.primaryStart, size: 22),
               ),
+              const SizedBox(width: 12),
+              Text('Rental Status', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 15, color: AppTheme.textPrimary)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (!_blockchainService.isConnected) ...[
+            _buildConnectWalletPrompt(),
+            const SizedBox(height: 16),
+          ],
+          if (widget.isOwner) ...[
+            if (!isForRent && !hasTenant) ...[
+              _buildOwnerListForRentFlow(),
+            ] else if (isForRent && !hasPending) ...[
+              _buildStatusRow('Status', 'Available for Rent', Colors.green),
+              _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', AppTheme.primaryStart),
+              if ((_propertyData!['securityDeposit'] ?? 0) > 0) _buildStatusRow('Security Deposit', '${_propertyData!['securityDeposit']} MATIC', Colors.orange),
+              const SizedBox(height: 12),
+              const Center(child: Text('Waiting for tenants…', style: TextStyle(fontSize: 12, color: Colors.grey))),
+            ] else if (hasPending) ...[
+              _buildStatusRow('Status', 'Pending Request', Colors.orange),
+              _buildStatusRow('Tenant Address', pendingTenant, AppTheme.textPrimary),
+              const SizedBox(height: 12),
+              AcceptRentRequestButton(onPressed: _acceptRentRequest),
+            ] else if (hasTenant) ...[
+              _buildRentedView(currentTenant, monthlyRent),
+            ],
+          ] else ...[
+            if (isTenant) ...[
+              _buildTenantView(monthlyRent),
+            ] else if (isForRent) ...[
+              _buildAvailableForRentView(monthlyRent),
+            ] else if (hasTenant) ...[
+              _buildStatusRow('Status', 'Already Rented', Colors.grey),
+            ] else ...[
+              _buildStatusRow('Status', 'Not for Rent', Colors.grey),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOwnerListForRentFlow() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Property is not yet listed for rent.', style: GoogleFonts.poppins(fontSize: 13, color: AppTheme.textSecondary)),
+        const SizedBox(height: 12),
+        _buildRentInputField('Monthly Rent Amount', _rentPriceCtrl),
+        const SizedBox(height: 8),
+        _buildRentInputField('Security Deposit (Optional)', _depositCtrl),
+        const SizedBox(height: 12),
+        ListForRentButton(onPressed: _processing ? null : _listForRent, isLoading: _processing),
+      ],
+    );
+  }
+
+  Widget _buildRentedView(String currentTenant, BigInt monthlyRent) {
+    return Column(
+      children: [
+        _buildStatusRow('Status', 'Rented', AppTheme.primaryStart),
+        _buildStatusRow('Current Tenant', currentTenant, AppTheme.textPrimary),
+        _buildStatusRow('Monthly Income', '${_blockchainService.weiToEther(monthlyRent)} MATIC', AppTheme.primaryStart),
+        if ((_propertyData!['securityDeposit'] ?? 0) > 0) _buildStatusRow('Security Deposit Held', '${_propertyData!['securityDeposit']} MATIC', Colors.orange),
+        const SizedBox(height: 16),
+        if (!(_propertyData!['disputeActive'] ?? false))
+          Row(
+            children: [
+              Expanded(child: OutlinedButton.icon(onPressed: _releaseDeposit, icon: const Icon(Icons.keyboard_return_rounded, size: 18), label: const Text('Return Deposit'), style: OutlinedButton.styleFrom(foregroundColor: Colors.green, side: const BorderSide(color: Colors.green)))),
               const SizedBox(width: 10),
-              Text('How Rent Distribution Works',
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w700,
-                    fontSize  : 14,
-                    color     : AppTheme.textPrimary,
-                  )),
+              Expanded(child: OutlinedButton.icon(onPressed: () => _raiseDispute('Owner: Non-payment of rent'), icon: const Icon(Icons.warning_amber_rounded, size: 18), label: const Text('Raise Dispute'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)))),
+            ],
+          )
+        else
+          _buildDisputeBadge(),
+      ],
+    );
+  }
+
+  Widget _buildTenantView(BigInt monthlyRent) {
+    return Column(
+      children: [
+        _buildStatusRow('Status', 'You are the Tenant', AppTheme.primaryStart),
+        _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', AppTheme.primaryStart),
+        const SizedBox(height: 16),
+        PayRentButton(onPressed: _payMonthlyRent),
+        const SizedBox(height: 10),
+        if (!(_propertyData!['disputeActive'] ?? false))
+          OutlinedButton.icon(onPressed: () => _raiseDispute('Tenant: Deposit not being returned'), icon: const Icon(Icons.gavel_rounded, size: 18), label: const Text('Dispute: My Deposit'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red), minimumSize: const Size.fromHeight(44)))
+        else
+          _buildDisputeBadge(),
+      ],
+    );
+  }
+
+  Widget _buildAvailableForRentView(BigInt monthlyRent) {
+    return Column(
+      children: [
+        _buildStatusRow('Status', 'Available for Rent', Colors.green),
+        _buildStatusRow('Monthly Rent', '${_blockchainService.weiToEther(monthlyRent)} MATIC', AppTheme.primaryStart),
+        if ((_propertyData!['securityDeposit'] ?? 0) > 0) _buildStatusRow('Required Deposit', '${_propertyData!['securityDeposit']} MATIC', Colors.orange),
+        const SizedBox(height: 16),
+        _GradientButton(label: 'Request to Rent', icon: Icons.send_rounded, onPressed: _requestRent),
+      ],
+    );
+  }
+
+  Widget _buildConnectWalletPrompt() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.withOpacity(0.3))),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 20),
+          const SizedBox(width: 10),
+          Expanded(child: Text('Connect your wallet to manage rental status.', style: AppTheme.body(12, color: Colors.orange.shade800))),
+          TextButton(onPressed: () async { await _blockchainService.connectWallet(context); _loadData(); }, child: const Text('Connect')),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDistributeSection() {
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.upload_rounded, color: AppTheme.primaryStart, size: 22)),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Distribute Rent', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 15, color: AppTheme.textPrimary)),
+                  Text('Send rent to all fraction holders', style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textSecondary)),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildRentInputField('Amount to distribute', _amountCtrl),
+          const SizedBox(height: 16),
+          _GradientButton(label: 'Distribute Rent', icon: Icons.upload_rounded, onPressed: _distributeRent),
+          const SizedBox(height: 10),
+          Center(child: Text('Rent is distributed proportionally to all holders.', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textSecondary))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoCard(double ownershipPct) {
+    final bullets = [
+      'Rent is distributed based on fraction ownership',
+      'You can claim your share at any time',
+      'All transactions are recorded on the blockchain',
+      if (_escrowFractions > 0) 'Note: $_escrowFractions fractions are in escrow.',
+      'Your share: ${ownershipPct.toStringAsFixed(2)}% of total rent',
+    ];
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.info_outline_rounded, color: AppTheme.primaryStart, size: 20)),
+              const SizedBox(width: 10),
+              Text('How Rent Distribution Works', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 14, color: AppTheme.textPrimary)),
             ],
           ),
           const SizedBox(height: 14),
-          ...bullets.map((b) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child  : Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children          : [
-                Container(
-                  margin    : const EdgeInsets.only(top: 5),
-                  width     : 6,
-                  height    : 6,
-                  decoration: const BoxDecoration(
-                      color: AppTheme.primaryStart, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(b,
-                      style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          color   : AppTheme.textSecondary,
-                          height  : 1.4)),
-                ),
-              ],
-            ),
-          )),
+          ...bullets.map((b) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(margin: const EdgeInsets.only(top: 5), width: 6, height: 6, decoration: const BoxDecoration(color: AppTheme.primaryStart, shape: BoxShape.circle)), const SizedBox(width: 10), Expanded(child: Text(b, style: GoogleFonts.poppins(fontSize: 13, color: AppTheme.textSecondary, height: 1.4)))]))),
         ],
       ),
     );
@@ -996,128 +859,182 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
 
   PreferredSizeWidget _buildAppBar() => AppBar(
     backgroundColor: AppTheme.primaryStart,
-    flexibleSpace  : Container(
-      decoration: const BoxDecoration(
-        gradient: AppTheme.primaryGradient,
-      ),
-    ),
-    leading: IconButton(
-      icon     : const Icon(Icons.arrow_back_ios_new_rounded,
-          color: Colors.white, size: 18),
-      onPressed: () => Navigator.pop(context),
-    ),
-    title: Text('Rent Management',
-        style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w700, color: Colors.white)),
+    flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
+    leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18), onPressed: () => Navigator.pop(context)),
+    title: Text('Rent Management', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: Colors.white)),
   );
+
+  void _showSnack(String msg, {Color color = AppTheme.primaryStart}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: color, behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))));
+  }
+
+  void _showProcessingDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: AppTheme.primaryStart),
+            const SizedBox(height: 20),
+            Text(message, textAlign: TextAlign.center, style: AppTheme.heading(14)),
+            const SizedBox(height: 20),
+            TextButton(onPressed: () { Navigator.pop(ctx); setState(() => _processing = false); }, child: const Text('Cancel', style: TextStyle(color: Colors.red))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusRow(String label, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textSecondary)),
+          Flexible(child: Text(value, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: color), overflow: TextOverflow.ellipsis)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRentInputField(String hint, TextEditingController ctrl) {
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppTheme.primaryStart.withOpacity(0.2))),
+      child: TextField(
+        controller: ctrl,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        style: GoogleFonts.poppins(fontSize: 14),
+        decoration: InputDecoration(hintText: hint, prefixIcon: const Icon(Icons.monetization_on_rounded, color: AppTheme.primaryStart), suffixText: 'MATIC', border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14)),
+      ),
+    );
+  }
+
+  Widget _buildDisputeBadge() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.red.withOpacity(0.3))),
+      child: Column(
+        children: [
+          Row(children: [const Icon(Icons.gavel_rounded, color: Colors.red, size: 20), const SizedBox(width: 10), Text('ACTIVE DISPUTE', style: GoogleFonts.poppins(color: Colors.red, fontWeight: FontWeight.w700, fontSize: 13))]),
+          const SizedBox(height: 4),
+          Text('Blockchain Admin notified. Funds locked.', style: GoogleFonts.poppins(color: Colors.red.withOpacity(0.8), fontSize: 11)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _raiseDispute(String reason) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Raise Dispute?'),
+        content: Text('This will flag the rental for Admin arbitration. $reason?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Yes')),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _db.collection('assets').doc(widget.assetId).update({'disputeActive': true, 'disputeReason': reason, 'disputeTimestamp': FieldValue.serverTimestamp()});
+      _showSnack('⚖️ Dispute raised.', color: Colors.red);
+      _loadData();
+    }
+  }
+
+  Future<void> _releaseDeposit() async {
+    _showProcessingDialog('Releasing deposit…');
+    try {
+      await _db.collection('assets').doc(widget.assetId).update({'currentTenant': null, 'currentTenantAddress': null, 'isForRent': true, 'disputeActive': false});
+      if (mounted) Navigator.pop(context);
+      _showSnack('✅ Deposit released.', color: Colors.green);
+      _loadData();
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      _showSnack('Error: $e', color: Colors.red);
+    }
+  }
+
+  void _showHowItWorks() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('How it Works', style: AppTheme.heading(20)),
+        content: const Text('Rent is distributed proportionally based on fractional ownership. Holders must claim their share manually.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Got it!'))],
+      ),
+    );
+  }
 }
 
-// ─── Reusable widgets ─────────────────────────────────────────────────────────
 class _Card extends StatelessWidget {
   final Widget child;
   const _Card({required this.child});
-
   @override
-  Widget build(BuildContext context) => Container(
-    padding   : const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      color       : Colors.white,
-      borderRadius: BorderRadius.circular(18),
-      boxShadow   : [
-        BoxShadow(
-          color     : AppTheme.primaryStart.withOpacity(0.07),
-          blurRadius: 14,
-          offset    : const Offset(0, 4),
-        ),
-      ],
-    ),
-    child: child,
-  );
+  Widget build(BuildContext context) => Container(padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), boxShadow: [BoxShadow(color: AppTheme.primaryStart.withOpacity(0.07), blurRadius: 14, offset: const Offset(0, 4))]), child: child);
 }
 
 class _HeaderStat extends StatelessWidget {
   final IconData icon;
   final String   label;
   final String   value;
-  const _HeaderStat(
-      {required this.icon, required this.label, required this.value});
-
+  const _HeaderStat({required this.icon, required this.label, required this.value});
   @override
-  Widget build(BuildContext context) => Expanded(
-    child: Container(
-      padding   : const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-      decoration: BoxDecoration(
-        color       : Colors.white.withOpacity(0.18),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: Colors.white70, size: 18),
-          const SizedBox(height: 4),
-          Text(value,
-              style: GoogleFonts.poppins(
-                color     : Colors.white,
-                fontWeight: FontWeight.w800,
-                fontSize  : 16,
-              )),
-          Text(label,
-              style: GoogleFonts.poppins(
-                  color: Colors.white70, fontSize: 10),
-              textAlign: TextAlign.center),
-        ],
-      ),
-    ),
-  );
+  Widget build(BuildContext context) => Container(width: 105, padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4), decoration: BoxDecoration(color: Colors.white.withOpacity(0.18), borderRadius: BorderRadius.circular(14)), child: Column(children: [Icon(icon, color: Colors.white70, size: 18), const SizedBox(height: 4), Text(value, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)), Text(label, style: GoogleFonts.poppins(color: Colors.white70, fontSize: 10), textAlign: TextAlign.center)]));
 }
 
 class _GradientButton extends StatelessWidget {
   final String       label;
   final IconData     icon;
   final VoidCallback onPressed;
-
-  const _GradientButton({
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-  });
-
+  const _GradientButton({required this.label, required this.icon, required this.onPressed});
   @override
-  Widget build(BuildContext context) => Container(
-    height    : 52,
-    decoration: BoxDecoration(
-      gradient    : LinearGradient(
-        colors: [AppTheme.primaryStartDark, AppTheme.primaryStart],
-        begin : Alignment.topLeft,
-        end   : Alignment.bottomRight,
-      ),
-      borderRadius: BorderRadius.circular(14),
-      boxShadow   : [
-        BoxShadow(
-          color     : AppTheme.primaryStart.withOpacity(0.35),
-          blurRadius: 12,
-          offset    : const Offset(0, 5),
-        ),
-      ],
+  Widget build(BuildContext context) => Container(height: 52, decoration: BoxDecoration(gradient: LinearGradient(colors: [AppTheme.primaryStartDark, AppTheme.primaryStart], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: AppTheme.primaryStart.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 5))]), child: Material(color: Colors.transparent, borderRadius: BorderRadius.circular(14), child: InkWell(borderRadius: BorderRadius.circular(14), onTap: onPressed, child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: Colors.white, size: 20), const SizedBox(width: 10), Text(label, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15))]))));
+}
+
+class _HeaderIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _HeaderIconButton({required this.icon, required this.onTap});
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
+      child: Icon(icon, color: Colors.white, size: 20),
     ),
-    child: Material(
-      color       : Colors.transparent,
-      borderRadius: BorderRadius.circular(14),
-      child       : InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap       : onPressed,
-        child       : Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children         : [
-            Icon(icon, color: Colors.white, size: 20),
-            const SizedBox(width: 10),
-            Text(label,
-                style: GoogleFonts.poppins(
-                  color     : Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize  : 15,
-                )),
-          ],
-        ),
+  );
+}
+
+class _WalletStatusBadge extends StatelessWidget {
+  final bool isCorrect;
+  final VoidCallback onTap;
+  const _WalletStatusBadge({required this.isCorrect, required this.onTap});
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: isCorrect ? Colors.green.withOpacity(0.2) : Colors.orange.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: isCorrect ? Colors.green.withOpacity(0.4) : Colors.orange.withOpacity(0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(isCorrect ? Icons.account_balance_wallet_rounded : Icons.warning_amber_rounded, 
+               color: isCorrect ? Colors.greenAccent : Colors.orangeAccent, size: 14),
+          const SizedBox(width: 6),
+          Text('Owner', style: GoogleFonts.poppins(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+        ],
       ),
     ),
   );
