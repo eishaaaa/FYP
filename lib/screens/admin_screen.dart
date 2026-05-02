@@ -9,64 +9,6 @@ import '../theme.dart';
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
 
-// Brand colors removed - using AppTheme
-ThemeData get adminTheme => ThemeData(
-  useMaterial3: true,
-  fontFamily: 'Poppins',
-  colorScheme: ColorScheme.fromSeed(
-    seedColor: AppTheme.primaryStart,
-    primary: AppTheme.primaryStart,
-    secondary: AppTheme.accent,
-    surface: AppTheme.background,
-  ),
-  scaffoldBackgroundColor: AppTheme.background,
-  appBarTheme: const AppBarTheme(
-    backgroundColor: AppTheme.primaryStart,
-    foregroundColor: Colors.white,
-    elevation: 0,
-    centerTitle: true,
-    titleTextStyle: TextStyle(
-      fontFamily: 'Poppins',
-      fontSize: 18,
-      fontWeight: FontWeight.w600,
-      color: Colors.white,
-    ),
-  ),
-  cardTheme: CardThemeData(
-    color: Colors.white,
-    elevation: 0,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(16),
-    ),
-    margin: EdgeInsets.zero,
-  ),
-  bottomNavigationBarTheme: BottomNavigationBarThemeData(
-    backgroundColor: Colors.white,
-    selectedItemColor: AppTheme.primaryStart,
-    unselectedItemColor: Colors.grey,
-    selectedLabelStyle: AppTheme.body(11, weight: FontWeight.w600),
-    unselectedLabelStyle: AppTheme.body(11),
-    elevation: 12,
-    type: BottomNavigationBarType.fixed,
-  ),
-  elevatedButtonTheme: ElevatedButtonThemeData(
-    style: ElevatedButton.styleFrom(
-      backgroundColor: AppTheme.primaryStart,
-      foregroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      textStyle: AppTheme.body(14, weight: FontWeight.w600),
-    ),
-  ),
-  chipTheme: ChipThemeData(
-    selectedColor: AppTheme.primaryStart,
-    backgroundColor: AppTheme.surface,
-    labelStyle: AppTheme.body(13, weight: FontWeight.w500),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-    side: BorderSide.none,
-  ),
-);
-
 // ─── Admin Home ───────────────────────────────────────────────────────────────
 class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({super.key});
@@ -78,6 +20,7 @@ class AdminHomeScreen extends StatefulWidget {
 class _AdminHomeScreenState extends State<AdminHomeScreen> {
   int _selectedIndex = 0;
 
+  // Pages aligned 1-to-1 with bottom nav items (indices 0–4)
   final List<Widget> _pages = [
     const AdminDashboard(),
     const UserManagement(),
@@ -96,65 +39,80 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Theme(
-      data: adminTheme,
-      child: Scaffold(
-        backgroundColor: AppTheme.background,
-        appBar: AppBar(
-          title: Text(_titles[_selectedIndex]),
-          flexibleSpace: Container(
-            decoration: const BoxDecoration(
-              gradient: AppTheme.primaryGradient,
+    return Scaffold(
+      backgroundColor: AppTheme.background,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        automaticallyImplyLeading: false,
+        title: Text(
+          _titles[_selectedIndex],
+          style: AppTheme.heading(17, color: AppTheme.textPrimary),
+        ),
+        actions: [
+          Container(
+            margin: const EdgeInsets.only(right: 12),
+            child: IconButton(
+              icon: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F4F4),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.logout_rounded, color: AppTheme.textPrimary, size: 20),
+              ),
+              onPressed: () async {
+                await auth.signOut();
+                if (context.mounted) {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                        (_) => false,
+                  );
+                }
+              },
             ),
           ),
-          actions: [
-            Container(
-              margin: const EdgeInsets.only(right: 12),
-              child: IconButton(
-                icon: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.logout_rounded, size: 20),
-                ),
-                onPressed: () async {
-                  await auth.signOut();
-                  if (context.mounted) {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                          (_) => false,
-                    );
-                  }
-                },
-              ),
+        ],
+      ),
+      body: _pages[_selectedIndex],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 20,
+              offset: const Offset(0, -4),
             ),
           ],
         ),
-        body: _pages[_selectedIndex],
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 20,
-                offset: const Offset(0, -4),
-              ),
-            ],
-          ),
-          child: BottomNavigationBar(
-            currentIndex: _selectedIndex,
-            onTap: (i) => setState(() => _selectedIndex = i),
-            items: const [
-              BottomNavigationBarItem(icon: Icon(Icons.dashboard_rounded), label: 'Dashboard'),
-              BottomNavigationBarItem(icon: Icon(Icons.people_rounded), label: 'Users'),
-              BottomNavigationBarItem(icon: Icon(Icons.apartment_rounded), label: 'Properties'),
-              BottomNavigationBarItem(icon: Icon(Icons.gavel_rounded), label: 'Disputes'),
-              BottomNavigationBarItem(icon: Icon(Icons.receipt_long_rounded), label: 'Transactions'),
-            ],
-          ),
+        child: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: (i) => setState(() => _selectedIndex = i),
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.grid_view_rounded),
+              label: 'Dashboard',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.people_alt_rounded),
+              label: 'Users',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.apartment_rounded),
+              label: 'Properties',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.gavel_rounded),
+              label: 'Disputes',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.receipt_long_rounded),
+              label: 'Transactions',
+            ),
+          ],
         ),
       ),
     );
@@ -694,8 +652,8 @@ class _AssetModerationState extends State<AssetModeration> {
       children: [
         // Filter header
         Container(
-          color: AppTheme.primaryStart,
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           child: Row(
             children: [
               _FilterChip(
@@ -912,24 +870,16 @@ class _AssetModerationState extends State<AssetModeration> {
                               else
                                 SizedBox(
                                   width: double.infinity,
-                                  child: Column(
-                                    children: [
-                                        const SizedBox.shrink(),
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: OutlinedButton.icon(
-                                          onPressed: () => _revokeVerification(assetId),
-                                          icon: const Icon(Icons.remove_circle_outline_rounded, size: 18),
-                                          label: const Text('Revoke Verification'),
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: Colors.orange,
-                                            side: const BorderSide(color: Colors.orange),
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                            padding: const EdgeInsets.symmetric(vertical: 12),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _revokeVerification(assetId),
+                                    icon: const Icon(Icons.remove_circle_outline_rounded, size: 18),
+                                    label: const Text('Revoke Verification'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.orange,
+                                      side: const BorderSide(color: Colors.orange),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                    ),
                                   ),
                                 ),
                             ],
@@ -1035,7 +985,6 @@ class _AssetModerationState extends State<AssetModeration> {
     });
     if (mounted) _showSnack('Verification revoked', color: Colors.orange);
   }
-
 
   void _showSnack(String msg, {Color? color}) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1228,12 +1177,12 @@ class _FilterChip extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? Colors.white : Colors.white.withOpacity(0.2),
+          color: selected ? AppTheme.primaryStart : AppTheme.primaryLight,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
           label,
-            style: AppTheme.heading(13, color: selected ? AppTheme.primaryStart : Colors.white),
+          style: AppTheme.heading(13, color: selected ? Colors.white : AppTheme.primaryStart),
         ),
       ),
     );
@@ -1306,8 +1255,32 @@ class DisputeManagement extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('assets').where('disputeActive', isEqualTo: true).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('assets')
+          .where('disputeActive', isEqualTo: true)
+          .snapshots(),
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline_rounded, color: Colors.red, size: 48),
+                  const SizedBox(height: 12),
+                  Text('Firestore Error', style: AppTheme.heading(16, color: Colors.red)),
+                  const SizedBox(height: 8),
+                  Text(
+                    snapshot.error.toString(),
+                    style: AppTheme.body(12, color: AppTheme.textMid),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         final disputes = snapshot.data!.docs;
 
@@ -1319,6 +1292,12 @@ class DisputeManagement extends StatelessWidget {
                 Icon(Icons.verified_user_rounded, size: 64, color: Colors.green.withOpacity(0.3)),
                 const SizedBox(height: 16),
                 Text('No active disputes!', style: AppTheme.heading(16, color: AppTheme.textMid)),
+                const SizedBox(height: 8),
+                Text(
+                  'Querying assets where disputeActive == true',
+                  style: AppTheme.body(11, color: AppTheme.textSecondary),
+                  textAlign: TextAlign.center,
+                ),
               ],
             ),
           );
