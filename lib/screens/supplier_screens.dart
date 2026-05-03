@@ -269,7 +269,7 @@ class _SupplierHomeScreenState extends State<SupplierHomeScreen> {
             icon: Icon(Icons.inventory),
             label: 'My Assets',
           ),
-          
+
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),
@@ -548,24 +548,17 @@ class AssetManagementScreen extends StatelessWidget {
         }
         if (!snap.hasData)
           return const Center(child: CircularProgressIndicator());
-        // Client-side filter by category & ownership
+        // Client-side filter: only show assets listed for sale by this supplier
         final docs = snap.data!.docs.where((doc) {
           final d = doc.data() as Map<String, dynamic>;
           final category = (d['category'] ?? '').toString().toLowerCase();
           if (category != type.toLowerCase()) return false;
 
-          // For land, check if the user still has fractions
-          if (category == 'land') {
-             final fractionsOwned = d['fractionsOwned'] ?? d['totalFractions'] ?? 0;
-             // If this is the original supplier, we need to check if they still hold a master stake 
-             // or if they've sold everything.
-             // Actually, it's better to check the 'fractional_holdings' but for now we'll check 
-             // if ownerId matches and they haven't transferred full ownership.
-             if (d['ownerId'] != auth.currentUser!.uid) return false;
-          } else {
-             // For electronics, ownerId must match
-             if (d['ownerId'] != auth.currentUser!.uid) return false;
-          }
+          // Only show assets the supplier has explicitly listed for sale
+          if (d['isForSale'] != true) return false;
+
+          // Ownership check
+          if (d['ownerId'] != auth.currentUser!.uid) return false;
 
           return true;
         }).toList();
@@ -822,44 +815,48 @@ class AssetManagementScreen extends StatelessWidget {
                         ),
                       ],
                     )
-                        : Row(
+                        : Column(
                       children: [
-                        Expanded(
-                          child: _actionButton(
-                            icon: Icons.qr_code_rounded,
-                            label: 'QR Code',
-                            color: AppTheme.primaryStart,
-                            bgColor: AppTheme.primaryStart.withOpacity(0.08),
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => QRGeneratorScreen(
-                                  assetId: doc.id,
-                                  category: type,
-                                  blockchainTokenId: tokenId,
-                                  title: data['title'] ?? 'Asset',
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _actionButton(
+                                icon: Icons.qr_code_rounded,
+                                label: 'QR Code',
+                                color: AppTheme.primaryStart,
+                                bgColor: AppTheme.primaryStart.withOpacity(0.08),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => QRGeneratorScreen(
+                                      assetId: doc.id,
+                                      category: type,
+                                      blockchainTokenId: tokenId,
+                                      title: data['title'] ?? 'Asset',
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _actionButton(
-                            icon: Icons.edit_rounded,
-                            label: 'Edit',
-                            color: Colors.indigo[600]!,
-                            bgColor: Colors.indigo[50]!,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => EditAssetScreen(
-                                  assetId: doc.id,
-                                  type: type,
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _actionButton(
+                                icon: Icons.edit_rounded,
+                                label: 'Edit',
+                                color: Colors.indigo[600]!,
+                                bgColor: Colors.indigo[50]!,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => EditAssetScreen(
+                                      assetId: doc.id,
+                                      type: type,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
+                          ],
                         ),
                       ],
                     ),
@@ -923,6 +920,7 @@ class AssetManagementScreen extends StatelessWidget {
       ),
     );
   }
+
 }
 
 // -----------------------------------------------------------------------------
@@ -1973,7 +1971,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         'blockchainTokenId': newTokenId, // ← now correctly saved
         'ipfsMetadataHash': metadataHash,
         'isMinted': true,
-        'isForSale': true,
+        'isForSale': false, // ← supplier must explicitly list for sale from inventory
         'verified': false, // ← pending admin approval
         'isListedForResale': false,
         'createdAt': FieldValue.serverTimestamp(),

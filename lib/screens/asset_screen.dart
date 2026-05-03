@@ -430,7 +430,7 @@ class _SupplierAssetsViewState extends State<_SupplierAssetsView> {
                     final isLand = (d['category'] ?? '') == 'land';
                     final img = _firstImage(d);
                     final hasNFT = d['blockchainTokenId'] != null;
-                    final isListedForSale = d['isListedForResale'] == true;
+                    final isListedForSale = d['isForSale'] == true;
 
                     return _AssetCard(
                       image: img,
