@@ -49,11 +49,11 @@ class FractionRequestsPanel extends StatelessWidget {
   });
 
   Future<void> _updateRequest(
-    BuildContext context,
-    String requestId,
-    String transactionId,
-    String newStatus,
-  ) async {
+      BuildContext context,
+      String requestId,
+      String transactionId,
+      String newStatus,
+      ) async {
     final existingTransactionId = await _existingTransactionId(transactionId);
     final batch = db.batch();
     batch.update(db.collection('fraction_requests').doc(requestId), {
@@ -135,8 +135,8 @@ class FractionRequestsPanel extends StatelessWidget {
                         builder: (ctx, userSnap) {
                           final name = userSnap.hasData && userSnap.data!.exists
                               ? (userSnap.data!.data()
-                                        as Map<String, dynamic>)['name'] ??
-                                    'Buyer'
+                          as Map<String, dynamic>)['name'] ??
+                              'Buyer'
                               : _shorten(buyerUid);
                           return Row(
                             children: [
@@ -278,8 +278,8 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
           if (ownerSnap.exists) {
             ownerName =
                 ownerSnap.data()?['name'] ??
-                ownerSnap.data()?['email'] ??
-                'Unknown';
+                    ownerSnap.data()?['email'] ??
+                    'Unknown';
           }
         } catch (_) {}
       }
@@ -415,12 +415,12 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
   }
 
   Widget _buildAssetDetails(
-    BuildContext context,
-    Map<String, dynamic> data,
-    String role,
-    String ownerName,
-    Map<String, dynamic>? activeTx,
-  ) {
+      BuildContext context,
+      Map<String, dynamic> data,
+      String role,
+      String ownerName,
+      Map<String, dynamic>? activeTx,
+      ) {
     final images = (data['images'] as List?)?.cast<String>() ?? [];
     final hasBlockchainId = data['blockchainTokenId'] != null;
     final isLand = data['category'] == 'land';
@@ -569,7 +569,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                               );
                             }
                             final liveData =
-                                assetLive.data!.data() as Map<String, dynamic>;
+                            assetLive.data!.data() as Map<String, dynamic>;
                             final liveOwnerId =
                                 liveData['ownerId'] ?? liveData['ownerUid'];
                             if (liveOwnerId == null) {
@@ -587,14 +587,14 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                                 String displayName = ownerName;
                                 if (userSnap.hasData && userSnap.data!.exists) {
                                   final ud =
-                                      userSnap.data!.data()
-                                          as Map<String, dynamic>;
+                                  userSnap.data!.data()
+                                  as Map<String, dynamic>;
                                   displayName =
                                       ud['name'] ?? ud['email'] ?? ownerName;
                                 }
                                 final isSold =
                                     liveOwnerId !=
-                                    (data['ownerId'] ?? data['ownerUid']);
+                                        (data['ownerId'] ?? data['ownerUid']);
                                 return Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -675,7 +675,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                 ],
 
                 // ── Action buttons ────────────────────────────────────────
-                // Logic: 
+                // Logic:
                 // 1. If owner: Show Supplier Management (Transfer/QR) AND User Actions (Resale)
                 // 2. If NOT owner: Show User Actions (Request to Buy)
                 Builder(builder: (context) {
@@ -804,8 +804,8 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                             style: AppTheme.heading(14, color: _isDataHealthy ? AppTheme.accent : Colors.orange),
                           ),
                           Text(
-                            _isDataHealthy 
-                                ? 'Data matches immutable blockchain record' 
+                            _isDataHealthy
+                                ? 'Data matches immutable blockchain record'
                                 : 'Firestore data was restored from source of truth',
                             style: AppTheme.body(11, color: AppTheme.textMid),
                           ),
@@ -863,8 +863,8 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                             style: AppTheme.heading(14, color: _isDataHealthy ? AppTheme.accent : Colors.orange),
                           ),
                           Text(
-                            _isDataHealthy 
-                                ? 'Land data matches immutable blockchain record' 
+                            _isDataHealthy
+                                ? 'Land data matches immutable blockchain record'
                                 : 'Firestore data was restored from source of truth',
                             style: AppTheme.body(11, color: AppTheme.textMid),
                           ),
@@ -919,7 +919,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                 title: Text(name),
                 subtitle: Text(
                   '${(d['type'] ?? 'FILE').toString().toUpperCase()} • '
-                  '${formatFileSize(d['size'] ?? 0)}',
+                      '${formatFileSize(d['size'] ?? 0)}',
                 ),
                 trailing: hash == null ? null : IconButton(
                   icon: const Icon(Icons.download, color: AppTheme.primaryStart),
@@ -958,14 +958,14 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
   }
 
   Future<void> _openFile(String path) async {
-     try {
-       // Simple open logic using url_launcher if it's a path the OS can handle
-       // Or just notify the user it's in Downloads.
-       // For real file opening, we'd use open_file package, but it's not in pubspec.
-       // So we'll just show the path for now.
-     } catch (e) {
-       debugPrint('Error opening file: $e');
-     }
+    try {
+      // Simple open logic using url_launcher if it's a path the OS can handle
+      // Or just notify the user it's in Downloads.
+      // For real file opening, we'd use open_file package, but it's not in pubspec.
+      // So we'll just show the path for now.
+    } catch (e) {
+      debugPrint('Error opening file: $e');
+    }
   }
 
   // ── Resale helpers (owner-only) ───────────────────────────────────────────
@@ -1066,20 +1066,20 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                 border: Border.all(color: Colors.orange[300]!),
               ),
               child: Row(
-              children: [
-                Icon(Icons.storefront, size: 16, color: Colors.orange[700]),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    resalePrice != null
-                        ? 'Listed on marketplace · PKR $resalePrice'
-                        : 'Listed for Resale',
-                    style: AppTheme.heading(13, color: Colors.orange[700]!),
-                    overflow: TextOverflow.ellipsis,
+                children: [
+                  Icon(Icons.storefront, size: 16, color: Colors.orange[700]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      resalePrice != null
+                          ? 'Listed on marketplace · PKR $resalePrice'
+                          : 'Listed for Resale',
+                      style: AppTheme.heading(13, color: Colors.orange[700]!),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
             ),
 
           Row(
@@ -1088,19 +1088,19 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
               Expanded(
                 child: isListed
                     ? ElevatedButton.icon(
-                        onPressed: _removeListing,
-                        icon: const Icon(Icons.remove_circle_outline),
-                        label: const Text('Remove Listing'),
-                        style: ElevatedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(50),
-                          backgroundColor: AppTheme.error,
-                          foregroundColor: Colors.white,
-                        ),
-                      )
+                  onPressed: _removeListing,
+                  icon: const Icon(Icons.remove_circle_outline),
+                  label: const Text('Remove Listing'),
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(50),
+                    backgroundColor: AppTheme.error,
+                    foregroundColor: Colors.white,
+                  ),
+                )
                     : ListForSaleButton(
-                        onPressed: !canList ? null : () => _listForResale(data),
-                        isLoading: _listingInProgress,
-                      ),
+                  onPressed: !canList ? null : () => _listForResale(data),
+                  isLoading: _listingInProgress,
+                ),
               ),
 
               // Certificate button (only when NFT exists)
@@ -1135,17 +1135,17 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
               onPressed: (!canList || data['blockchainTokenId'] == null)
                   ? null
                   : () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => RentDistributionScreen(
-                            assetId: widget.assetId,
-                            propertyId: (data['blockchainTokenId'] as num).toInt(),
-                            isOwner: true,
-                          ),
-                        ),
-                      );
-                    },
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => RentDistributionScreen(
+                      assetId: widget.assetId,
+                      propertyId: (data['blockchainTokenId'] as num).toInt(),
+                      isOwner: true,
+                    ),
+                  ),
+                );
+              },
             ),
           ],
         ],
@@ -1246,11 +1246,11 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
   }
 
   Widget _buildSupplierActions(
-    BuildContext context,
-    Map<String, dynamic> data,
-    String role,
-    Map<String, dynamic>? activeTx,
-  ) {
+      BuildContext context,
+      Map<String, dynamic> data,
+      String role,
+      Map<String, dynamic>? activeTx,
+      ) {
     final isLand = data['category'] == 'land';
     final hasBlockchainId = data['blockchainTokenId'] != null;
 
@@ -1389,11 +1389,11 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
   }
 
   Future<void> _requestToBuy(
-    BuildContext ctx,
-    String assetId,
-    String? sellerId,
-    Map<String, dynamic> assetData,
-  ) async {
+      BuildContext ctx,
+      String assetId,
+      String? sellerId,
+      Map<String, dynamic> assetData,
+      ) async {
     final user = auth.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(
@@ -1512,11 +1512,11 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
   }
 
   Future<void> _requestToRent(
-    BuildContext ctx,
-    String assetId,
-    String ownerUid,
-    Map<String, dynamic> assetData,
-  ) async {
+      BuildContext ctx,
+      String assetId,
+      String ownerUid,
+      Map<String, dynamic> assetData,
+      ) async {
     final user = auth.currentUser;
     if (user == null) return;
 
@@ -1548,20 +1548,56 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
     // 🔗 Optional: Blockchain Request (Only for Land)
     String? txHash;
     if (category == 'land' && blockchainTokenId != null) {
-       _showProcessingDialog(ctx, 'Signing Blockchain Request...');
-       try {
-         txHash = await _blockchainService.requestLandRent((blockchainTokenId as num).toInt());
-         if (txHash == null) {
-            if (ctx.mounted) Navigator.pop(ctx);
-            return;
-         }
-         await _blockchainService.waitForConfirmation(txHash);
-         if (ctx.mounted) Navigator.pop(ctx);
-       } catch (e) {
-         if (ctx.mounted) Navigator.pop(ctx);
-         ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Blockchain Error: $e')));
-         return;
-       }
+      if (!ctx.mounted) return;
+
+      // Show dismissible dialog — user must be able to switch to MetaMask
+      showDialog(
+        context: ctx,
+        barrierDismissible: true,
+        builder: (dialogCtx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Approve in MetaMask'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const Text(
+                'A rent request transaction has been sent to MetaMask.\n\n'
+                    'Please open MetaMask and tap Confirm.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Tap outside this dialog to switch to MetaMask manually.',
+                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+
+      try {
+        txHash = await _blockchainService.requestLandRent(
+          (blockchainTokenId as num).toInt(),
+        );
+        await _blockchainService.waitForConfirmation(txHash ?? '');
+      } catch (e) {
+        if (ctx.mounted) {
+          Navigator.of(ctx, rootNavigator: true).pop(); // close dialog
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            SnackBar(
+              content: Text('Blockchain Error: $e'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 8),
+            ),
+          );
+        }
+        return;
+      }
+
+      if (ctx.mounted) Navigator.of(ctx, rootNavigator: true).pop();
     }
 
     final txId = _uuid.v4();
@@ -1626,64 +1662,161 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
   }
 
   Future<void> _verifyAsset(BuildContext ctx, String assetId) async {
-    try {
-      final doc = await db.collection('assets').doc(assetId).get();
-      if (!doc.exists) return;
-      
-      final data = doc.data()!;
-      final tokenId = data['blockchainTokenId'];
-      final category = data['category']?.toString().toLowerCase();
-      
-      if (tokenId == null) throw Exception('Missing blockchainTokenId');
-      
+    // ── Step 1: Wallet check ────────────────────────────────────────────────
+    if (!_blockchainService.isConnected) {
       if (ctx.mounted) {
         ScaffoldMessenger.of(ctx).showSnackBar(
-          const SnackBar(content: Text('⏳ Initiating blockchain verification...'), backgroundColor: AppTheme.primaryStart),
+          const SnackBar(
+            content: Text('⚠️ Connect your wallet first.'),
+            backgroundColor: Colors.orange,
+          ),
         );
       }
-      
-      final bs = BlockchainServiceEnhanced();
-      await bs.init();
-      
-      String? txHash;
-      final id = (tokenId is int) ? tokenId : int.parse(tokenId.toString());
-      
-      if (category == 'land') {
-        txHash = await bs.verifyProperty(id);
-      } else {
-        txHash = await bs.verifyDevice(id);
-      }
-      
-      if (txHash == null) throw Exception('Transaction rejected or failed.');
-      
-      if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(
-          const SnackBar(content: Text('⏳ Waiting for blockchain confirmation...'), backgroundColor: Colors.orange),
-        );
-      }
-      
-      final success = await bs.waitForConfirmation(txHash);
-      if (!success) throw Exception('Transaction failed on-chain.');
+      return;
+    }
 
-      await db.collection('assets').doc(assetId).update({
-        'verified': true, 
-        'verifiedAt': FieldValue.serverTimestamp(),
-      });
-      
-      if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(
-          const SnackBar(content: Text('✅ Asset verified successfully on-chain!'), backgroundColor: Colors.green),
-        );
-        setState(() {
-          _loadFuture = _load();
-        });
+    // ── Step 2: Load asset data ─────────────────────────────────────────────
+    final doc = await db.collection('assets').doc(assetId).get();
+    if (!doc.exists || !ctx.mounted) return;
+
+    final data = doc.data()!;
+    final tokenId = data['blockchainTokenId'];
+    final category = data['category']?.toString().toLowerCase();
+
+    if (tokenId == null) {
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Asset has no blockchain token ID.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final id = (tokenId is int) ? tokenId : int.parse(tokenId.toString());
+
+    // ── Step 3: Show MetaMask-aware dialog ──────────────────────────────────
+    // This dialog stays visible while MetaMask is open in the background.
+    // It is deliberately dismissible so the user can switch apps manually
+    // if the deep link does not bring MetaMask to the foreground.
+    if (!ctx.mounted) return;
+    showDialog(
+      context: ctx,
+      barrierDismissible: true, // ← allows user to switch to MetaMask manually
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Approve in MetaMask'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            const Text(
+              'A transaction has been sent to MetaMask.\n\n'
+                  'Please open MetaMask and tap Confirm to verify this asset on-chain.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'You can tap outside this dialog to switch to MetaMask manually.',
+              style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    // ── Step 4: Execute blockchain verification ─────────────────────────────
+    String? txHash;
+    try {
+      await _blockchainService.init();
+      if (category == 'land') {
+        txHash = await _blockchainService.verifyProperty(id);
+      } else {
+        txHash = await _blockchainService.verifyDevice(id);
       }
     } catch (e) {
+      // Close the dialog and surface the real error (Timeout, Rejected, etc.)
       if (ctx.mounted) {
+        Navigator.of(ctx, rootNavigator: true).pop(); // close dialog
         ScaffoldMessenger.of(ctx).showSnackBar(
-          SnackBar(content: Text('❌ Verification failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('❌ Verification failed: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 8),
+          ),
         );
       }
+      return;
+    }
+
+    // Close the MetaMask dialog now that the wallet responded
+    if (ctx.mounted) Navigator.of(ctx, rootNavigator: true).pop();
+
+    if (txHash == null) {
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Transaction was rejected.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    // ── Step 5: Poll for on-chain confirmation ──────────────────────────────
+    if (ctx.mounted) {
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(
+          content: Text('⏳ Confirming on Polygon Amoy...'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 30),
+        ),
+      );
+    }
+
+    final confirmed = await _blockchainService.waitForConfirmation(txHash);
+    if (!confirmed) {
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(
+              '⚠️ Tx submitted but not confirmed yet.\n'
+                  'Hash: ${txHash.substring(0, 18)}...\n'
+                  'Check Polygonscan Amoy if it does not update.',
+            ),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 10),
+          ),
+        );
+      }
+      // Still update Firestore optimistically — the tx IS on-chain
+      await db.collection('assets').doc(assetId).update({
+        'verified': true,
+        'verifiedAt': FieldValue.serverTimestamp(),
+        'verifyTxHash': txHash,
+      });
+      if (ctx.mounted) setState(() => _loadFuture = _load());
+      return;
+    }
+
+    // ── Step 6: Confirmed — update Firestore ────────────────────────────────
+    await db.collection('assets').doc(assetId).update({
+      'verified': true,
+      'verifiedAt': FieldValue.serverTimestamp(),
+      'verifyTxHash': txHash,
+    });
+
+    if (ctx.mounted) {
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Asset verified on-chain!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      setState(() => _loadFuture = _load());
     }
   }
 
@@ -1792,8 +1925,8 @@ class _ApprovedFractionTransferButton extends StatelessWidget {
                         builder: (ctx, userSnap) {
                           final name = userSnap.hasData && userSnap.data!.exists
                               ? (userSnap.data!.data()
-                                        as Map<String, dynamic>)['name'] ??
-                                    'Buyer'
+                          as Map<String, dynamic>)['name'] ??
+                              'Buyer'
                               : buyerUid;
                           return Row(
                             children: [
@@ -1857,12 +1990,12 @@ class _ApprovedFractionTransferButton extends StatelessWidget {
   }
 
   Future<void> _executeFractionTransfer(
-    BuildContext context,
-    String fractionRequestId,
-    String buyerUid,
-    int fractionsRequested,
-    String transactionId,
-  ) async {
+      BuildContext context,
+      String fractionRequestId,
+      String buyerUid,
+      int fractionsRequested,
+      String transactionId,
+      ) async {
     final sellerUid = FirebaseAuth.instance.currentUser?.uid;
     if (sellerUid == null) return;
 
@@ -1998,7 +2131,7 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
         if (ws is int && ws > 0) {
           final dt = DateTime.fromMillisecondsSinceEpoch(ws * 1000);
           _warrantyStart =
-              '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+          '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
         } else if (ws is String && ws.isNotEmpty) {
           _warrantyStart = ws;
         }
@@ -2020,8 +2153,8 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
           if (ownerSnap.exists) {
             _originalOwnerName =
                 ownerSnap.data()?['name'] ??
-                ownerSnap.data()?['email'] ??
-                'Unknown';
+                    ownerSnap.data()?['email'] ??
+                    'Unknown';
           }
         } catch (_) {}
       }
@@ -2044,8 +2177,8 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
           final d = assetSnap.data()!;
           _isReportedStolen =
               d['isStolen'] == true ||
-              d['reportedStolen'] == true ||
-              d['stolenReported'] == true;
+                  d['reportedStolen'] == true ||
+                  d['stolenReported'] == true;
         }
       } catch (_) {}
 
@@ -2079,51 +2212,51 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
           ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.error_outline,
-                      size: 64,
-                      color: AppTheme.error,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Failed to load certificate: $_error',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          _loading = true;
-                          _error = null;
-                        });
-                        _loadCertificateData();
-                      },
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                size: 64,
+                color: AppTheme.error,
               ),
-            )
+              const SizedBox(height: 16),
+              Text(
+                'Failed to load certificate: $_error',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _loading = true;
+                    _error = null;
+                  });
+                  _loadCertificateData();
+                },
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      )
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  _buildCertificateHeader(),
-                  const SizedBox(height: 16),
-                  _buildModelDetailsCard(isElectronics),
-                  const SizedBox(height: 12),
-                  _buildVerificationChecksCard(),
-                  const SizedBox(height: 12),
-                  _buildBuyerConfirmationBanner(),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            _buildCertificateHeader(),
+            const SizedBox(height: 16),
+            _buildModelDetailsCard(isElectronics),
+            const SizedBox(height: 12),
+            _buildVerificationChecksCard(),
+            const SizedBox(height: 12),
+            _buildBuyerConfirmationBanner(),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
     );
   }
 
@@ -2264,7 +2397,7 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
               passed: notResold,
               passText: 'Never previously resold',
               failText:
-                  'Resold $_priorTransferCount time${_priorTransferCount == 1 ? '' : 's'} before',
+              'Resold $_priorTransferCount time${_priorTransferCount == 1 ? '' : 's'} before',
             ),
             const SizedBox(height: 10),
             _checkRow(
