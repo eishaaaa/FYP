@@ -198,8 +198,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   Widget _mainMarketplaceBody() {
     final isLand = _category == 'land';
     final headline = isLand
-        ? 'Find Your\nBest Property 🏡'
-        : 'Find Your\nBest Device 📱';
+        ? 'Find Your\nBest Property '
+        : 'Find Your\nBest Device ';
     final latestLabel = isLand ? 'Latest Property' : 'Latest Device';
 
     return SafeArea(
