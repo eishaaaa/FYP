@@ -46,6 +46,13 @@ class BlockchainServiceEnhanced {
     return clean;
   }
 
+  String? _extractTransactionHash(dynamic rawValue) {
+    if (rawValue == null) return null;
+    final raw = rawValue.toString().trim();
+    final match = RegExp(r'0x[a-fA-F0-9]{64}').firstMatch(raw);
+    return match?.group(0);
+  }
+
   /// Initialize Contracts & ABIs
   Future<void> init() async {
     if (_isInitialized) return;
@@ -160,8 +167,14 @@ class BlockchainServiceEnhanced {
         },
       );
 
-      debugPrint('✅ Transaction Hash: $result');
-      return result.toString();
+      final normalizedHash = _extractTransactionHash(result);
+      if (normalizedHash == null) {
+        debugPrint('⚠️ Unexpected wallet response: $result');
+        return result.toString().trim();
+      }
+
+      debugPrint('✅ Transaction Hash: $normalizedHash');
+      return normalizedHash;
 
     } catch (e) {
       debugPrint('❌ Transaction Failed: $e');
@@ -516,10 +529,16 @@ class BlockchainServiceEnhanced {
   }
 
   Future<bool> waitForConfirmation(String txHash, {int retries = 30}) async {
-    debugPrint('⏳ Waiting for confirmation: $txHash');
+    final normalizedHash = _extractTransactionHash(txHash) ?? txHash.trim();
+    if (!RegExp(r'^0x[a-fA-F0-9]{64}$').hasMatch(normalizedHash)) {
+      debugPrint('❌ Invalid transaction hash for confirmation: $txHash');
+      return false;
+    }
+
+    debugPrint('⏳ Waiting for confirmation: $normalizedHash');
     for (int i = 0; i < retries; i++) {
       try {
-        final receipt = await _client.getTransactionReceipt(txHash);
+        final receipt = await _client.getTransactionReceipt(normalizedHash);
         if (receipt != null) {
           if (receipt.status == true) {
             debugPrint('✅ Transaction Confirmed!');

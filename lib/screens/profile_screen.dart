@@ -755,16 +755,10 @@ class FavoritesScreen extends StatelessWidget {
                 );
               }
 
-              return GridView.builder(
+              return ListView.separated(
                 padding: const EdgeInsets.all(16),
                 itemCount: assets.length,
-                gridDelegate:
-                const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 0.72,
-                ),
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
                 itemBuilder: (_, i) {
                   final doc = assets[i];
                   final data = doc.data() as Map<String, dynamic>;
@@ -799,88 +793,94 @@ class FavoritesScreen extends StatelessWidget {
                           ),
                         ],
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
                           // ── Image ──────────────────────────────
-                          Expanded(
-                            child: Stack(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: const BorderRadius.vertical(
-                                    top: Radius.circular(16),
-                                  ),
-                                  child: buildAssetImage(
-                                    firstImg,
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                  ),
+                          Stack(
+                            children: [
+                              ClipRRect(
+                                borderRadius: const BorderRadius.horizontal(
+                                  left: Radius.circular(16),
                                 ),
-                                // Heart button — tap to un-favourite
-                                Positioned(
-                                  top: 8,
-                                  right: 8,
-                                  child: _UnfavouriteButton(
-                                    assetId: doc.id,
-                                    userId: uid,
-                                  ),
+                                child: buildAssetImage(
+                                  firstImg,
+                                  width: 120,
+                                  height: 110,
                                 ),
-                              ],
-                            ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                left: 8,
+                                child: _UnfavouriteButton(
+                                  assetId: doc.id,
+                                  userId: uid,
+                                ),
+                              ),
+                            ],
                           ),
 
                           // ── Info ───────────────────────────────
-                          Padding(
-                            padding:
-                            const EdgeInsets.fromLTRB(10, 8, 10, 10),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                    color: Color(0xFF1A1A2E),
+                          Expanded(
+                            child: Padding(
+                              padding:
+                              const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                      color: Color(0xFF1A1A2E),
+                                    ),
                                   ),
-                                ),
-                                if (city.isNotEmpty) ...[
-                                  const SizedBox(height: 3),
-                                  Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.location_on_outlined,
-                                        size: 11,
-                                        color: Colors.grey,
-                                      ),
-                                      const SizedBox(width: 2),
-                                      Expanded(
-                                        child: Text(
-                                          city,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 10,
-                                            color: Colors.grey,
+                                  if (city.isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.location_on_outlined,
+                                          size: 13,
+                                          color: Colors.grey,
+                                        ),
+                                        const SizedBox(width: 3),
+                                        Expanded(
+                                          child: Text(
+                                            city,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
+                                  ],
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'PKR $price',
+                                    style: const TextStyle(
+                                      color: Color(0xFF2A7F8F),
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
+                                    ),
                                   ),
                                 ],
-                                const SizedBox(height: 6),
-                                Text(
-                                  'PKR $price',
-                                  style: const TextStyle(
-                                    color: Color(0xFF2A7F8F),
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
+                              ),
+                            ),
+                          ),
+
+                          // ── Arrow ──────────────────────────────
+                          Padding(
+                            padding: const EdgeInsets.only(right: 12),
+                            child: Icon(
+                              Icons.chevron_right_rounded,
+                              color: Colors.grey.shade400,
                             ),
                           ),
                         ],

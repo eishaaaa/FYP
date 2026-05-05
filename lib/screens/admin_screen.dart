@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'auth_screens.dart';
-import '../blockchain/blockchain_service.dart';
 import '../theme.dart';
 
 final db = FirebaseFirestore.instance;
@@ -435,7 +434,7 @@ class UserManagement extends StatelessWidget {
       children: [
         // Search bar
         Container(
-          color: AppTheme.primaryStart,
+          color: Colors.white,
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
           child: Container(
             decoration: BoxDecoration(
@@ -637,8 +636,6 @@ class AssetModeration extends StatefulWidget {
 
 class _AssetModerationState extends State<AssetModeration> {
   bool _showVerified = false;
-  final _blockchainService = BlockchainServiceEnhanced();
-
 
   @override
   Widget build(BuildContext context) {
@@ -831,7 +828,7 @@ class _AssetModerationState extends State<AssetModeration> {
                                     Expanded(
                                       child: ElevatedButton.icon(
                                         onPressed: () =>
-                                            _approveAsset(assetId, asset),
+                                            _approveAsset(assetId),
                                         icon: const Icon(Icons.check_rounded,
                                             size: 18),
                                         label: const Text('Approve'),
@@ -897,48 +894,20 @@ class _AssetModerationState extends State<AssetModeration> {
     );
   }
 
-  Future<void> _approveAsset(String assetId, Map<String, dynamic> assetData) async {
+  // ── FIXED: purely Firestore-based approval — no blockchain call needed.
+  // The NFT is already minted on-chain when the user created the listing.
+  // Admin approval is an off-chain moderation gate stored in Firestore.
+  Future<void> _approveAsset(String assetId) async {
     try {
-      final tokenId = assetData['blockchainTokenId'];
-      final category = assetData['category']?.toString().toLowerCase() ?? '';
-      final id = (tokenId is int) ? tokenId : int.tryParse(tokenId.toString());
+      _showSnack('⏳ Approving asset...', color: AppTheme.primaryStart);
 
-      if (id == null) {
-        _showSnack('❌ Invalid Blockchain ID', color: Colors.red);
-        return;
-      }
-
-      _showSnack('⏳ Initiating blockchain verification...', color: AppTheme.primaryStart);
-
-      // 1. Trigger Blockchain Verification
-      String? txHash;
-      if (category == 'land') {
-        txHash = await _blockchainService.verifyProperty(id);
-      } else {
-        txHash = await _blockchainService.verifyDevice(id);
-      }
-
-      if (txHash == null) {
-        throw Exception('Transaction rejected or failed to initiate.');
-      }
-
-      _showSnack('⏳ Waiting for blockchain confirmation...', color: Colors.orange);
-
-      // 2. Wait for confirmation
-      final success = await _blockchainService.waitForConfirmation(txHash);
-      if (!success) {
-        throw Exception('Blockchain verification failed on-chain.');
-      }
-
-      // 3. Update Firebase ONLY after blockchain success
       await db.collection('assets').doc(assetId).update({
         'verified': true,
-        'isMinted': true,
         'verifiedAt': FieldValue.serverTimestamp(),
       });
 
       if (mounted) {
-        _showSnack('✅ Asset approved & verified on blockchain!', color: Colors.green);
+        _showSnack('✅ Asset approved!', color: Colors.green);
       }
     } catch (e) {
       if (mounted) _showSnack('❌ Approval failed: $e', color: Colors.red);
@@ -1157,97 +1126,6 @@ class TransactionMonitor extends StatelessWidget {
   }
 }
 
-// ─── Small reusable widgets ───────────────────────────────────────────────────
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? AppTheme.primaryStart : AppTheme.primaryLight,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: AppTheme.heading(13, color: selected ? Colors.white : AppTheme.primaryStart),
-        ),
-      ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-
-  const _InfoRow(
-      {required this.icon, required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: AppTheme.primaryStart),
-        const SizedBox(width: 8),
-        Text(
-          '$label: ',
-          style: AppTheme.body(13, color: AppTheme.textMid),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: AppTheme.heading(13, color: AppTheme.textPrimary),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TxInfo extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _TxInfo({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: RichText(
-        text: TextSpan(
-          style: const TextStyle(fontSize: 12),
-          children: [
-            TextSpan(
-              text: '$label: ',
-              style: AppTheme.body(12, color: AppTheme.textMid),
-            ),
-            TextSpan(
-              text: value,
-              style: AppTheme.heading(12, color: AppTheme.textPrimary),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ─── Dispute Management ───────────────────────────────────────────────────────
 class DisputeManagement extends StatelessWidget {
   const DisputeManagement({super.key});
@@ -1371,7 +1249,6 @@ class DisputeManagement extends StatelessWidget {
     final assetRef = FirebaseFirestore.instance.collection('assets').doc(assetId);
 
     if (winner == 'tenant') {
-      // Return deposit to tenant, end lease
       batch.update(assetRef, {
         'currentTenant': null,
         'currentTenantAddress': null,
@@ -1380,7 +1257,6 @@ class DisputeManagement extends StatelessWidget {
         'lastDisputeResolution': 'Ruled in favor of Tenant. Deposit returned.',
       });
     } else {
-      // Forfeit deposit to owner, end lease
       batch.update(assetRef, {
         'currentTenant': null,
         'currentTenantAddress': null,
@@ -1396,5 +1272,96 @@ class DisputeManagement extends StatelessWidget {
         SnackBar(content: Text('⚖️ Dispute resolved in favor of $winner')),
       );
     }
+  }
+}
+
+// ─── Small reusable widgets ───────────────────────────────────────────────────
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.primaryStart : AppTheme.primaryLight,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: AppTheme.heading(13, color: selected ? Colors.white : AppTheme.primaryStart),
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _InfoRow(
+      {required this.icon, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: AppTheme.primaryStart),
+        const SizedBox(width: 8),
+        Text(
+          '$label: ',
+          style: AppTheme.body(13, color: AppTheme.textMid),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: AppTheme.heading(13, color: AppTheme.textPrimary),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TxInfo extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _TxInfo({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: RichText(
+        text: TextSpan(
+          style: const TextStyle(fontSize: 12),
+          children: [
+            TextSpan(
+              text: '$label: ',
+              style: AppTheme.body(12, color: AppTheme.textMid),
+            ),
+            TextSpan(
+              text: value,
+              style: AppTheme.heading(12, color: AppTheme.textPrimary),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

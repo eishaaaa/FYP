@@ -25,7 +25,7 @@ Future<String> fetchCurrentRole() async {
   try {
     final user = auth.currentUser;
     if (user == null) return '';
-    
+
     // Return cached role if available
     if (_cachedRole != null) return _cachedRole!;
 
@@ -34,7 +34,7 @@ Future<String> fetchCurrentRole() async {
 
     final r = snap.data()?['role'] as String?;
     if (r == null || r.isEmpty) return 'user';
-    
+
     _cachedRole = r; // Cache for next call
     return r;
   } catch (_) {
@@ -193,12 +193,27 @@ class TransactionsScreen extends StatefulWidget {
 class _TransactionsScreenState extends State<TransactionsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  bool? _isBuyingMode; // Initialized in build() based on role
+  bool _isBuyingMode = true;
+  bool _isSupplier   = false;
+  bool _loadingRole  = true;
+  String? _uid;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _uid = auth.currentUser?.uid;
+    _resolveRole();
+  }
+
+  Future<void> _resolveRole() async {
+    final role = await fetchCurrentRole();
+    if (!mounted) return;
+    setState(() {
+      _isSupplier   = role.toLowerCase().contains('supplier');
+      _isBuyingMode = !_isSupplier;
+      _loadingRole  = false;
+    });
   }
 
   @override
@@ -231,93 +246,100 @@ class _TransactionsScreenState extends State<TransactionsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final user = auth.currentUser;
-    if (user == null) {
+    if (_uid == null) {
       return const Scaffold(body: Center(child: Text('Not logged in')));
     }
+    if (_loadingRole) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
-    return FutureBuilder<String>(
-      future: fetchCurrentRole(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        }
-        final role       = snap.data ?? 'user';
-        final isSupplier = role.toLowerCase().contains('supplier');
+    final isSupplier = _isSupplier;
 
-        // Initialize mode: Suppliers land on 'Sales', Users land on 'Purchases'
-        _isBuyingMode ??= !isSupplier;
-
-        return Scaffold(
-          appBar: AppBar(
-            backgroundColor: Colors.white,
-            elevation: 0,
-            centerTitle: true,
-            automaticallyImplyLeading: false,
-            title: Text(_isBuyingMode! ? 'My Purchases' : 'My Sales',
-                style: TextStyle(
-                    color: Color(0xFF1A1A2E),
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600),),
-            leading: IconButton(
-              icon: const Icon(Icons.chevron_left, color: Colors.black),
-              onPressed: () => Navigator.pop(context),
-            ),
-            actions: [
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: TextButton.icon(
-                  onPressed: () => setState(() => _isBuyingMode = !_isBuyingMode!),
-                  icon: Icon(_isBuyingMode! ? Icons.sell : Icons.shopping_cart, size: 18, color: Colors.black),
-                  label: Text(_isBuyingMode! ? 'Switch to Selling' : 'Switch to Buying',
-                      style: TextStyle(
-                      fontSize:12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black)),
-                  style: TextButton.styleFrom(foregroundColor: Colors.white),
-                ),
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
+        automaticallyImplyLeading: false,
+        titleSpacing: 0,
+        leading: IconButton(
+          icon: Icon(Icons.chevron_left, color: AppTheme.textPrimary),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          _isBuyingMode ? 'My Purchases' : 'My Sales',
+          style: AppTheme.heading(17, color: AppTheme.textPrimary),
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton.icon(
+              onPressed: () => setState(() => _isBuyingMode = !_isBuyingMode),
+              icon: Icon(
+                _isBuyingMode ? Icons.sell : Icons.shopping_cart,
+                size: 16,
+                color: AppTheme.primaryStart,
               ),
-            ],
-            bottom: TabBar(
+              label: Text(
+                _isBuyingMode ? 'Switch to Selling' : 'Switch to Buying',
+                style: AppTheme.body(12, color: AppTheme.primaryStart),
+              ),
+              style: TextButton.styleFrom(foregroundColor: AppTheme.primaryStart),
+            ),
+          ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(56),
+          child: Container(
+            color: Colors.white,
+            child: TabBar(
               controller: _tabController,
-              indicatorColor: Colors.white,
+              indicatorColor: AppTheme.primaryStart,
               indicatorWeight: 3,
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white.withOpacity(0.7),
-              labelStyle: AppTheme.heading(13, color: Colors.white),
-              unselectedLabelStyle: AppTheme.body(13, color: Colors.white.withOpacity(0.7)),
+              indicatorSize: TabBarIndicatorSize.tab,
+              labelColor: AppTheme.primaryStart,
+              unselectedLabelColor: AppTheme.primaryStart.withOpacity(0.45),
+              labelStyle: AppTheme.heading(12, color: AppTheme.primaryStart),
+              unselectedLabelStyle: AppTheme.body(12, color: AppTheme.primaryStart.withOpacity(0.45)),
+              dividerColor: const Color(0xFFCAE8E8),
               isScrollable: true,
+              tabAlignment: TabAlignment.start,
               tabs: [
-                _buildTab(Icons.hourglass_empty, 'Pending'),
-                _buildTab(Icons.check_circle,    'Accepted'),
-                _buildTab(Icons.pie_chart,        'Fractions'),
-                _buildTab(Icons.cancel,           'Rejected'),
+                _buildTab(Icons.hourglass_empty_rounded, 'Pending'),
+                _buildTab(Icons.check_circle_outline,    'Accepted'),
+                _buildTab(Icons.pie_chart_outline,       'Fractions'),
+                _buildTab(Icons.cancel_outlined,         'Rejected'),
               ],
             ),
           ),
-          body: TabBarView(
-            controller: _tabController,
-            children: [
-              _buildTransactionList(user.uid, isSupplier && !_isBuyingMode!, 'pending',  context),
-              _buildTransactionList(user.uid, isSupplier && !_isBuyingMode!, 'approved', context),
-              _buildFractionRequestsTab(user.uid, isSupplier && !_isBuyingMode!, context),
-              _buildTransactionList(user.uid, isSupplier && !_isBuyingMode!, 'rejected', context),
-            ],
-          ),
-        );
-      },
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildTransactionList(_uid!, isSupplier && !_isBuyingMode, 'pending',  context),
+          _buildTransactionList(_uid!, isSupplier && !_isBuyingMode, 'approved', context),
+          _buildFractionRequestsTab(_uid!, isSupplier && !_isBuyingMode, context),
+          _buildTransactionList(_uid!, isSupplier && !_isBuyingMode, 'rejected', context),
+        ],
+      ),
     );
   }
 
   Tab _buildTab(IconData icon, String label) {
     return Tab(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 16),
-          const SizedBox(width: 4),
-          Text(label),
-        ],
+      height: 46,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15),
+            const SizedBox(width: 6),
+            Text(label),
+          ],
+        ),
       ),
     );
   }
@@ -370,7 +392,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
             final buyerUid       = r['buyerUid']  ?? '';
             final sellerUid      = r['sellerUid'] ?? '';
             final assetId        = r['assetId']   ?? '';
-            final transactionId  = r['transactionId'] ?? docId;
+            final transactionId  = (r['transactionId'] ?? '').toString().trim();
             final ts             = r['createdAt'] as Timestamp?;
             final date = ts != null
                 ? '${ts.toDate().day}/${ts.toDate().month}/${ts.toDate().year}'
@@ -401,9 +423,10 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                     FutureBuilder<DocumentSnapshot>(
                       future: db.collection('assets').doc(assetId).get(),
                       builder: (ctx, assetSnap) {
-                        final title = assetSnap.hasData
-                            ? (assetSnap.data!.data() as Map<String, dynamic>)['title'] ?? 'Asset'
-                            : 'Loading…';
+                        final data = assetSnap.hasData && assetSnap.data!.exists
+                            ? assetSnap.data!.data() as Map<String, dynamic>?
+                            : null;
+                        final title = data?['title'] as String? ?? 'Asset';
                         return Row(children: [
                           const Icon(Icons.home_work_outlined, size: 16, color: AppTheme.primaryStart),
                           const SizedBox(width: 6),
@@ -420,9 +443,13 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                       children: [
                         Icon(Icons.pie_chart_outline, size: 14, color: Colors.grey[600]),
                         const SizedBox(width: 6),
-                        Text(
-                          '$fractionsReq fractions  •  ${_weiDisplay(totalCostWei)} MATIC',
-                          style: AppTheme.body(13, color: AppTheme.textMid),
+                        Expanded(
+                          child: Text(
+                            '$fractionsReq fractions  •  ${_weiDisplay(totalCostWei)} MATIC',
+                            style: AppTheme.body(13, color: AppTheme.textMid),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
@@ -433,19 +460,23 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                           .doc(isSupplier ? buyerUid : sellerUid)
                           .get(),
                       builder: (ctx, userSnap) {
-                        final name = userSnap.hasData && userSnap.data!.exists
-                            ? (userSnap.data!.data()
-                        as Map<String, dynamic>)['name'] ?? '—'
-                            : '—';
+                        final userData = userSnap.hasData && userSnap.data!.exists
+                            ? userSnap.data!.data() as Map<String, dynamic>?
+                            : null;
+                        final name = userData?['name'] as String? ?? '—';
                         return Row(children: [
                           Icon(
                             isSupplier ? Icons.person_outline : Icons.store_outlined,
                             size: 14, color: Colors.grey,
                           ),
                           const SizedBox(width: 6),
-                          Text(
-                            isSupplier ? 'Buyer: $name' : 'Seller: $name',
-                            style: AppTheme.body(13, color: AppTheme.textMid),
+                          Expanded(
+                            child: Text(
+                              isSupplier ? 'Buyer: $name' : 'Seller: $name',
+                              style: AppTheme.body(13, color: AppTheme.textMid),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ]);
                       },
@@ -453,64 +484,74 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                     const SizedBox(height: 12),
                     const Divider(height: 1),
                     const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton.icon(
-                          icon: const Icon(Icons.visibility_outlined, size: 16),
-                          label: const Text('View'),
-                          style: TextButton.styleFrom(
-                            foregroundColor: AppTheme.accent,
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                          ),
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => AssetDetailScreen(assetId: assetId)),
-                          ),
-                        ),
-                        if (isSupplier && status == 'pending') ...[
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Wrap(
+                        alignment: WrapAlignment.end,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
                           TextButton.icon(
-                            icon: const Icon(Icons.check, size: 16),
-                            label: const Text('Approve'),
+                            icon: const Icon(Icons.visibility_outlined, size: 16),
+                            label: const Text('View'),
                             style: TextButton.styleFrom(
                               foregroundColor: AppTheme.accent,
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                             ),
-                            onPressed: () => _updateFractionRequest(
-                                context, docId, transactionId, 'approved'),
-                          ),
-                          TextButton.icon(
-                            icon: const Icon(Icons.close, size: 16),
-                            label: const Text('Reject'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.red,
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => AssetDetailScreen(assetId: assetId)),
                             ),
-                            onPressed: () => _updateFractionRequest(
-                                context, docId, transactionId, 'rejected'),
                           ),
+                          if (status == 'approved')
+                            TextButton.icon(
+                              icon: const Icon(Icons.chat_outlined, size: 16),
+                              label: const Text('Chat'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppTheme.accent,
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                              ),
+                              onPressed: () => _openFractionChat(
+                                context,
+                                chatId: transactionId.isNotEmpty ? transactionId : docId,
+                                assetId: assetId,
+                                buyerUid: buyerUid,
+                                sellerUid: sellerUid,
+                              ),
+                            ),
+                          if (isSupplier && status == 'pending')
+                            TextButton.icon(
+                              icon: const Icon(Icons.check, size: 16),
+                              label: const Text('Approve'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppTheme.accent,
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                              ),
+                              onPressed: () => _updateFractionRequest(
+                                  context, docId, transactionId, 'approved'),
+                            ),
+                          if (isSupplier && status == 'pending')
+                            TextButton.icon(
+                              icon: const Icon(Icons.close, size: 16),
+                              label: const Text('Reject'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.red,
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                              ),
+                              onPressed: () => _updateFractionRequest(
+                                  context, docId, transactionId, 'rejected'),
+                            ),
+                          if (status == 'completed')
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: MediaQuery.of(context).size.width - 96,
+                              ),
+                              child: _statusChip('✅ Transfer complete'),
+                            ),
                         ],
-                        if (isSupplier && status == 'approved')
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.send, size: 14),
-                            label: const Text('Transfer'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1A4F5C),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                            ),
-                            onPressed: () => _navigateToFractionTransfer(
-                              context, docId, assetId, buyerUid,
-                              fractionsReq, transactionId,
-                              r['blockchainPropertyId'] ?? r['blockchainTokenId'],
-                            ),
-                          ),
-                        if (!isSupplier && status == 'approved')
-                          _statusChip('Approved — awaiting transfer'),
-                        if (!isSupplier && status == 'completed')
-                          _statusChip('✅ Transfer complete'),
-                      ],
+                      ),
                     ),
                   ],
                 ),
@@ -590,9 +631,8 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                       builder: (context, assetSnap) {
                         String title = 'Loading...';
                         if (assetSnap.hasData && assetSnap.data!.exists) {
-                          title = (assetSnap.data!.data()
-                          as Map<String, dynamic>)['title'] ??
-                              'Unnamed Asset';
+                          final data = assetSnap.data!.data() as Map<String, dynamic>?;
+                          title = data?['title'] as String? ?? 'Unnamed Asset';
                         } else if (assetSnap.hasError) {
                           title = 'Asset ID: ${t['assetId'] ?? '—'}';
                         }
@@ -672,7 +712,8 @@ class _TransactionsScreenState extends State<TransactionsScreen>
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                             ),
                             onPressed: () async {
-                              final myUid   = auth.currentUser!.uid;
+                              final myUid = auth.currentUser?.uid;
+                              if (myUid == null) return;
                               final otherUid = isSupplier
                                   ? t['buyerUid']
                                   : t['sellerUid'];
@@ -829,12 +870,61 @@ class _TransactionsScreenState extends State<TransactionsScreen>
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppTheme.accent.withOpacity(0.3)),
       ),
-      child: Text(label,
-          style: AppTheme.body(12, color: AppTheme.accent)),
+      child: Text(
+        label,
+        softWrap: true,
+        style: AppTheme.body(12, color: AppTheme.accent),
+      ),
     );
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+
+  Future<void> _openFractionChat(
+      BuildContext context, {
+        required String chatId,
+        required String assetId,
+        required String buyerUid,
+        required String sellerUid,
+      }) async {
+    final myUid = auth.currentUser?.uid;
+    if (myUid == null) return;
+
+    final otherUid = myUid == sellerUid ? buyerUid : sellerUid;
+    await db.collection('chats').doc(chatId).set({
+      'transactionId': chatId,
+      'participants': [buyerUid, sellerUid],
+      'assetId': assetId,
+      'assetType': 'land',
+      'sellerUid': sellerUid,
+      'buyerUid': buyerUid,
+      'lastMessage': '',
+      'lastMessageTime': FieldValue.serverTimestamp(),
+      'createdAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    if (!context.mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(chatId: chatId, otherUserId: otherUid),
+      ),
+    );
+  }
+
+  Future<String?> _existingTransactionId(String transactionId) async {
+    final trimmedId = transactionId.trim();
+    if (trimmedId.isEmpty) return null;
+
+    final txSnap = await db.collection('transactions').doc(trimmedId).get();
+    if (!txSnap.exists) {
+      debugPrint(
+        'Skipping missing transaction update for fraction request: $trimmedId',
+      );
+      return null;
+    }
+    return trimmedId;
+  }
 
   Future<void> _updateFractionRequest(
       BuildContext context,
@@ -842,14 +932,15 @@ class _TransactionsScreenState extends State<TransactionsScreen>
       String transactionId,
       String newStatus,
       ) async {
+    final existingTransactionId = await _existingTransactionId(transactionId);
     final batch = db.batch();
     batch.update(
       db.collection('fraction_requests').doc(fractionRequestId),
       {'status': newStatus, 'respondedAt': FieldValue.serverTimestamp()},
     );
-    if (transactionId.isNotEmpty) {
+    if (existingTransactionId != null) {
       batch.update(
-        db.collection('transactions').doc(transactionId),
+        db.collection('transactions').doc(existingTransactionId),
         {'status': newStatus == 'approved' ? 'approved' : 'rejected'},
       );
     }
@@ -907,14 +998,15 @@ class _TransactionsScreenState extends State<TransactionsScreen>
     );
 
     if (result == true) {
+      final existingTransactionId = await _existingTransactionId(transactionId);
       final batch = db.batch();
       batch.update(
         db.collection('fraction_requests').doc(fractionRequestId),
         {'status': 'completed', 'completedAt': FieldValue.serverTimestamp()},
       );
-      if (transactionId.isNotEmpty) {
+      if (existingTransactionId != null) {
         batch.update(
-          db.collection('transactions').doc(transactionId),
+          db.collection('transactions').doc(existingTransactionId),
           {'status': 'completed', 'completedAt': FieldValue.serverTimestamp()},
         );
       }

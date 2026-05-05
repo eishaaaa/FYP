@@ -156,6 +156,7 @@ class _WalletScreenState extends State<WalletScreen>
   void dispose() {
     _walletService.appKitModal.removeListener(_onWalletNotify);
     _pulseCtrl.dispose();
+    _client.dispose();
     super.dispose();
   }
 
@@ -191,6 +192,7 @@ class _WalletScreenState extends State<WalletScreen>
     final user = _auth.currentUser;
     if (user == null) return;
     final doc = await _firestore.collection("users").doc(user.uid).get();
+    if (!mounted) return;
     if (!doc.exists) return;
     final data = doc.data();
     _address  = data?["walletAddress"];
@@ -339,6 +341,7 @@ class _WalletScreenState extends State<WalletScreen>
 
   Future<void> _loadAllData() async {
     if (_address == null) return;
+    if (!mounted) return;
     setState(() => _loading = true);
     try {
       await _loadBalance();
@@ -393,12 +396,6 @@ class _WalletScreenState extends State<WalletScreen>
         fetchedAssets = assetSnap.docs.map((d) {
           final data = d.data();
           data['_docId'] = d.id;
-
-          // ── DEBUG: log asset fields so you can confirm the image field name ──
-          // Remove these lines once images are confirmed working.
-          debugPrint("🖼️ Asset [${d.id}] fields: ${data.keys.toList()}");
-          debugPrint("🖼️ Asset [${d.id}] data: $data");
-
           return data;
         }).toList();
       }
@@ -470,6 +467,7 @@ class _WalletScreenState extends State<WalletScreen>
       _assetByName = assetByName;
       _assetById   = assetById;
 
+      if (!mounted) return;
       setState(() {
         _transactions = allTxs.take(15).toList();
         _assets       = fetchedAssets;
@@ -480,7 +478,7 @@ class _WalletScreenState extends State<WalletScreen>
       });
     } catch (e) {
       debugPrint("Load data error: $e");
-      setState(() {
+      if (mounted) setState(() {
         _transactions = [];
         _assets       = [];
         _txCount      = 0;
@@ -496,6 +494,7 @@ class _WalletScreenState extends State<WalletScreen>
     try {
       final ethAddress = EthereumAddress.fromHex(_address!);
       final balanceWei = await _client.getBalance(ethAddress);
+      if (!mounted) return;
       _balance = balanceWei.getValueInUnit(EtherUnit.ether);
 
       final user = _auth.currentUser;
@@ -1349,10 +1348,6 @@ class _WalletScreenState extends State<WalletScreen>
 
                 // ── FIX: use _resolveImageUrl() which checks 15+ field names ──
                 final imgUrl = _resolveImageUrl(asset);
-
-                debugPrint(
-                  "🖼️ TX tile [${tx.title}] → asset=${asset?['name']} imgUrl=$imgUrl",
-                );
 
                 if (imgUrl != null) {
                   return ClipRRect(
