@@ -123,11 +123,11 @@ class BlockchainServiceEnhanced {
     try {
       debugPrint('🚀 Preparing Transaction...');
 
-      // FIX: TUNED GAS FEES (Lowest Safe Values for Amoy)
-      // Network Requirement: Min 25 Gwei Tip
-      // Our Setting: 25.5 Gwei Tip (Just enough to pass)
-      final maxPriorityFee = BigInt.from(25500000000); // 25.5 Gwei
-      final maxFee = BigInt.from(50000000000);         // 50 Gwei (Cap)
+      // FIX: TUNED GAS FEES (Robust values for Amoy — basefee can spike to 50+ Gwei)
+      // maxFeePerGas must always exceed basefee + priority tip or MetaMask rejects immediately.
+      // Rule: maxFeePerGas >= network basefee + maxPriorityFeePerGas
+      final maxPriorityFee = BigInt.from(30000000000); // 30 Gwei tip
+      final maxFee = BigInt.from(100000000000);        // 100 Gwei cap (absorbs basefee spikes)
 
       // 2. CLEAN PARAMETERS
       final txParams = {
@@ -160,10 +160,18 @@ class BlockchainServiceEnhanced {
       debugPrint('⏳ Waiting for user signature...');
 
       // 5. TIMEOUT
+      // NOTE: 8 minutes because Reown AppKit sometimes receives the WalletConnect
+      // approval event (visible in logs as "[WalletKit] ✅ storeEvent") but does NOT
+      // resolve the pending future. Giving extra time reduces false timeouts.
+      // Callers must handle TimeoutException gracefully by verifying on-chain.
       final result = await futureResult.timeout(
-        const Duration(minutes: 3),
+        const Duration(minutes: 8),
         onTimeout: () {
-          throw Exception('Timeout. Please open MetaMask and check for "Pending" transactions to clear.');
+          throw Exception(
+            'Timeout: WalletConnect did not return the transaction hash. '
+                'Your transaction may still have been submitted — '
+                'check MetaMask Activity or Polygonscan for a pending tx.',
+          );
         },
       );
 
@@ -201,8 +209,8 @@ class BlockchainServiceEnhanced {
       );
       return await _sendTransaction(transaction);
     } catch (e) {
-      debugPrint('Error in _sendContractTransaction: $e');
-      return null;
+      debugPrint('Error in _sendContractTransaction ($functionName): $e');
+      rethrow; // ← Surface real errors to the UI instead of silently returning null
     }
   }
 
@@ -352,7 +360,7 @@ class BlockchainServiceEnhanced {
         function: function,
         params: [],
       );
-        return (result.first as BigInt).toInt(); // IDs are 1-indexed in contract (_tokenIds++)
+      return (result.first as BigInt).toInt(); // IDs are 1-indexed in contract (_tokenIds++)
     } catch (e) {
       debugPrint('getLastElectronicsTokenId error: $e');
       return null;
@@ -370,7 +378,7 @@ class BlockchainServiceEnhanced {
         function: function,
         params: [],
       );
-        return (result.first as BigInt).toInt(); // IDs are 1-indexed in contract (_propertyIds += 1)
+      return (result.first as BigInt).toInt(); // IDs are 1-indexed in contract (_propertyIds += 1)
     } catch (e) {
       debugPrint('getLastLandPropertyId error: $e');
       return null;
@@ -528,7 +536,7 @@ class BlockchainServiceEnhanced {
     return EtherAmount.inWei(wei).getValueInUnit(EtherUnit.ether).toString();
   }
 
-  Future<bool> waitForConfirmation(String txHash, {int retries = 30}) async {
+  Future<bool> waitForConfirmation(String txHash, {int retries = 80}) async {
     final normalizedHash = _extractTransactionHash(txHash) ?? txHash.trim();
     if (!RegExp(r'^0x[a-fA-F0-9]{64}$').hasMatch(normalizedHash)) {
       debugPrint('❌ Invalid transaction hash for confirmation: $txHash');
@@ -548,10 +556,36 @@ class BlockchainServiceEnhanced {
             return false;
           }
         }
-      } catch (e) {
-        // Ignore temporary network issues
-      }
-      await Future.delayed(const Duration(seconds: 2));
+      } catch (_) {}
+
+      try {
+        final resp = await http.post(
+          Uri.parse('https://rpc-amoy.polygon.technology'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'jsonrpc': '2.0',
+            'method': 'eth_getTransactionReceipt',
+            'params': [normalizedHash],
+            'id': 1,
+          }),
+        ).timeout(const Duration(seconds: 10));
+
+        final body = jsonDecode(resp.body) as Map<String, dynamic>;
+        final result = body['result'];
+        if (result != null && result is Map) {
+          final status = result['status'] as String?;
+          if (status == '0x1') {
+            debugPrint('✅ Transaction Confirmed via fallback RPC!');
+            return true;
+          }
+          if (status == '0x0') {
+            debugPrint('❌ Transaction Reverted via fallback RPC');
+            return false;
+          }
+        }
+      } catch (_) {}
+
+      await Future.delayed(const Duration(seconds: 4));
     }
     return false;
   }
@@ -600,7 +634,7 @@ class BlockchainServiceEnhanced {
       final userQuery = await firestore.collection('users')
           .where('walletAddress', isEqualTo: owner)
           .limit(1).get();
-      
+
       String? ownerUid;
       if (userQuery.docs.isNotEmpty) {
         ownerUid = userQuery.docs.first.id;
@@ -635,7 +669,7 @@ class BlockchainServiceEnhanced {
       await init();
       final docRef = firestore.collection('assets').doc(firestoreDocId);
       final docSnap = await docRef.get();
-      
+
       if (!docSnap.exists) {
         // 🚨 Problem 7: If deleted from Firebase, recreate it!
         await restoreAssetFromBlockchain(type: type, tokenId: blockchainId, firestore: firestore);
@@ -643,7 +677,7 @@ class BlockchainServiceEnhanced {
       }
 
       final data = docSnap.data()!;
-      
+
       // 🚨 NEW: Grace period (2 minutes) to allow blockchain confirmation
       final lastUpdate = data['updatedAt'] ?? data['createdAt'];
       if (lastUpdate is Timestamp) {
@@ -660,13 +694,13 @@ class BlockchainServiceEnhanced {
       if (type == 'electronics') {
         final device = await getDevice(blockchainId);
         if (device == null) return true;
-        
+
         // Check Owner & Heal ownerId/ownerUid
         final currentOwner = await getOwnerOf(type, blockchainId);
         if (currentOwner != null) {
           final chainAddr = currentOwner.toLowerCase();
           final dbAddr = data['currentOwnerAddress']?.toString().toLowerCase();
-          
+
           if (dbAddr != chainAddr) {
             isTampered = true;
             updates['currentOwnerAddress'] = currentOwner;
@@ -676,7 +710,7 @@ class BlockchainServiceEnhanced {
           final userQuery = await firestore.collection('users')
               .where('walletAddress', isEqualTo: currentOwner)
               .limit(1).get();
-          
+
           if (userQuery.docs.isNotEmpty) {
             final correctUid = userQuery.docs.first.id;
             if (data['ownerId'] != correctUid) {
@@ -726,7 +760,7 @@ class BlockchainServiceEnhanced {
         // Check Price
         final chainPriceEther = double.parse(weiToEther(property['pricePerFraction']));
         final dbPrice = (data['pricePerFraction'] ?? 0).toDouble();
-        
+
         // Allow tiny precision diffs, but flag major tampering
         if ((chainPriceEther - dbPrice).abs() > 0.0001) {
           isTampered = true;
@@ -745,7 +779,7 @@ class BlockchainServiceEnhanced {
             isTampered = true;
             updates['isForRent'] = property['isForRent'];
           }
-          
+
           final chainRentEther = double.parse(weiToEther(property['monthlyRent']));
           final dbRent = (data['monthlyRent'] ?? 0).toDouble();
           if ((chainRentEther - dbRent).abs() > 0.0001) {
@@ -796,7 +830,7 @@ class BlockchainServiceEnhanced {
     await init();
     final overloads = _electronicsContract.findFunctionsByName('safeTransferFrom');
     final function = overloads.firstWhere(
-      (f) => f.parameters.length == 3,
+          (f) => f.parameters.length == 3,
       orElse: () => overloads.first,
     );
     return _sendContractTransaction(_electronicsContract, 'safeTransferFrom', [
@@ -826,7 +860,7 @@ class BlockchainServiceEnhanced {
     // and Lock Deposit in Escrow
     await _walletService.lockFunds(fee + deposit);
     await _walletService.consumeLockedFunds(fee); // Transfer rent to owner immediately
-    
+
     // Log the transaction for the owner
     if (ownerUid != null) {
       await FirebaseFirestore.instance.collection('users').doc(ownerUid).collection('history').add({
@@ -895,7 +929,7 @@ class BlockchainServiceEnhanced {
     final data = txSnap.data()!;
     final startTs = data['startDate'] as Timestamp?;
     final expiryTs = data['expiryDate'] as Timestamp?;
-    
+
     if (startTs == null || expiryTs == null) return;
 
     final start = startTs.toDate();

@@ -27,6 +27,7 @@ class RentDistributionScreen extends StatefulWidget {
 
 class _RentDistributionScreenState extends State<RentDistributionScreen>
     with SingleTickerProviderStateMixin {
+  static const String _zeroAddress = '0x0000000000000000000000000000000000000000';
   final _blockchainService = BlockchainServiceEnhanced();
   final _amountCtrl        = TextEditingController();
   final _rentPriceCtrl     = TextEditingController();
@@ -196,6 +197,23 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
       setState(() {
         if (property != null) {
           _propertyData = Map<String, dynamic>.from(property);
+          final hasRentalData = property['hasRentalData'] == true;
+          if (!hasRentalData && assetData != null) {
+            final rentPkr =
+                assetData['monthlyRent'] ?? assetData['rentAmount'] ?? 0.0;
+            final rentPkrValue =
+                double.tryParse(rentPkr.toString()) ?? 0.0;
+            final rentMatic = rentPkrValue / 200.0;
+            final rentWei =
+            BigInt.parse((rentMatic * 1e18).toStringAsFixed(0));
+
+            _propertyData!['isForRent'] = assetData['isForRent'] == true;
+            _propertyData!['monthlyRent'] = rentWei;
+            _propertyData!['currentTenant'] =
+                (assetData['currentTenantAddress'] ?? _zeroAddress).toString();
+            _propertyData!['pendingTenant'] =
+                (assetData['pendingTenant'] ?? _zeroAddress).toString();
+          }
           _propertyData!['originalOwnerUid'] = ownerUid;
           _propertyData!['securityDeposit'] = assetData?['securityDeposit'] ?? 0.0;
           _propertyData!['disputeActive'] = assetData?['disputeActive'] ?? false;
@@ -249,6 +267,10 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
       _activePropertyId ?? widget.propertyId,
     );
     if (property == null) return false;
+
+    if (property['hasRentalData'] != true) {
+      return false;
+    }
 
     final listedOnChain = property['isForRent'] == true;
     final monthlyRent = property['monthlyRent'];
@@ -305,29 +327,35 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
     }
 
     setState(() => _processing = true);
-    // Convert PKR → MATIC → Wei manually.
-    // etherToWei uses BigInt.parse internally, which throws FormatException
-    // on decimal strings like "0.125". We multiply by 10^18 and round instead.
     final maticAmount = rentAmount / 200.0;
     final weiRent = BigInt.parse((maticAmount * 1e18).toStringAsFixed(0));
     _showProcessingDialog('Signature Required\nPlease check your wallet app.');
 
+    String? txHash;
     try {
-      final txHash = await _blockchainService.listLandForRent(
+      txHash = await _blockchainService.listLandForRent(
         propertyId: _activePropertyId ?? widget.propertyId,
         rentAmount: weiRent,
       );
+    } catch (e) {
+      // Dialog may already be dismissed if user tapped outside — pop safely
+      if (mounted) {
+        try { Navigator.of(context, rootNavigator: true).pop(); } catch (_) {}
+      }
 
-      if (txHash != null) {
-        if (mounted) Navigator.pop(context);
-        _showSnack('⏳ Waiting for blockchain confirmation...', color: Colors.orange);
-
-        var ok = await _blockchainService.waitForConfirmation(txHash);
-        if (!ok) {
-          ok = await _verifyRentListingOnChain(weiRent);
-        }
-
-        if (ok) {
+      final isWalletConnectTimeout = e.toString().contains('Timeout');
+      if (isWalletConnectTimeout) {
+        // ─── Known AppKit bug: user approved in MetaMask but WalletConnect
+        // never delivered the txHash back to Flutter (event is stored but
+        // the pending future is never resolved). The tx IS on-chain.
+        // Wait a few seconds for Amoy to index it, then verify directly.
+        _showSnack(
+          '⏳ Checking on-chain — your approval was detected...',
+          color: Colors.orange,
+        );
+        await Future.delayed(const Duration(seconds: 6));
+        final confirmedOnChain = await _verifyRentListingOnChain(weiRent);
+        if (confirmedOnChain) {
           await _db.collection('assets').doc(widget.assetId).update({
             'isForRent': true,
             'monthlyRent': rentAmount,
@@ -338,30 +366,92 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
             'pendingTenant': null,
             'updatedAt': FieldValue.serverTimestamp(),
           });
-
           if (mounted) {
-            _showSnack('✅ Rental listing confirmed!', color: Colors.green);
+            _showSnack('✅ Listing confirmed on-chain!', color: Colors.green);
             _loadData();
           }
         } else {
+          // Still not visible — tx may be pending, save optimistically
+          await _db.collection('assets').doc(widget.assetId).update({
+            'isForRent': true,
+            'monthlyRent': rentAmount,
+            'securityDeposit': depositAmount,
+            'leaseMonths': leaseMonths,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
           if (mounted) {
             _showSnack(
-              '❌ Transaction was submitted but could not be verified. '
-              'Please wait a moment and refresh, or check the transaction in MetaMask/Polygonscan.',
-              color: Colors.red,
+              '⚠️ Transaction approved but not yet indexed. '
+                  'Listing saved — verify on Polygonscan Amoy if needed.',
+              color: Colors.orange,
             );
+            _loadData();
           }
         }
       } else {
-        if (mounted) Navigator.pop(context);
-        _showSnack('❌ Failed to initiate transaction.', color: Colors.red);
+        _showSnack('Transaction failed: $e', color: Colors.red);
       }
-    } catch (e) {
-      if (mounted) Navigator.pop(context);
-      _showSnack('Error: $e', color: Colors.red);
-    } finally {
+
       if (mounted) setState(() => _processing = false);
+      return;
     }
+
+    // Dialog dismissed — now wait for on-chain confirmation
+    if (mounted) {
+      try { Navigator.of(context, rootNavigator: true).pop(); } catch (_) {}
+    }
+
+    if (txHash == null) {
+      _showSnack('❌ Failed to initiate transaction.', color: Colors.red);
+      if (mounted) setState(() => _processing = false);
+      return;
+    }
+
+    _showSnack('⏳ Waiting for blockchain confirmation...', color: Colors.orange);
+
+    var ok = await _blockchainService.waitForConfirmation(txHash);
+    if (!ok) {
+      // Fallback: verify directly on-chain (handles slow Amoy confirmations)
+      ok = await _verifyRentListingOnChain(weiRent);
+    }
+
+    if (ok) {
+      await _db.collection('assets').doc(widget.assetId).update({
+        'isForRent': true,
+        'monthlyRent': rentAmount,
+        'securityDeposit': depositAmount,
+        'leaseMonths': leaseMonths,
+        'currentTenant': null,
+        'currentTenantAddress': null,
+        'pendingTenant': null,
+        'listForRentTxHash': txHash,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      if (mounted) {
+        _showSnack('✅ Rental listing confirmed!', color: Colors.green);
+        _loadData();
+      }
+    } else {
+      // Transaction IS on-chain but confirmation timed out — save optimistically
+      await _db.collection('assets').doc(widget.assetId).update({
+        'isForRent': true,
+        'monthlyRent': rentAmount,
+        'securityDeposit': depositAmount,
+        'leaseMonths': leaseMonths,
+        'listForRentTxHash': txHash,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      if (mounted) {
+        _showSnack(
+          '⚠️ Tx submitted — saved optimistically. '
+              'Verify on Polygonscan if listing doesn\'t appear.',
+          color: Colors.orange,
+        );
+        _loadData();
+      }
+    }
+
+    if (mounted) setState(() => _processing = false);
   }
 
   Future<void> _claimRent() async {
@@ -817,10 +907,10 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
   Widget _buildRentalSection() {
     final bool isForRent = _propertyData!['isForRent'] ?? false;
     final BigInt monthlyRent = _propertyData!['monthlyRent'] ?? BigInt.zero;
-    final String currentTenant = _propertyData!['currentTenant'] ?? '0x0000000000000000000000000000000000000000';
-    final String pendingTenant = _propertyData!['pendingTenant'] ?? '0x0000000000000000000000000000000000000000';
-    final bool hasTenant = currentTenant != '0x0000000000000000000000000000000000000000';
-    final bool hasPending = pendingTenant != '0x0000000000000000000000000000000000000000';
+    final String currentTenant = _propertyData!['currentTenant'] ?? _zeroAddress;
+    final String pendingTenant = _propertyData!['pendingTenant'] ?? _zeroAddress;
+    final bool hasTenant = currentTenant != _zeroAddress;
+    final bool hasPending = pendingTenant != _zeroAddress;
     final userAddr = _blockchainService.connectedAddress?.toLowerCase() ?? '';
     final bool isTenant = currentTenant.toLowerCase() == userAddr;
 
@@ -1075,7 +1165,9 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
   void _showProcessingDialog(String message) {
     showDialog(
       context: context,
-      barrierDismissible: false,
+      // CRITICAL FIX: Must be true so the user can tap outside and switch to
+      // MetaMask manually when the deep link fails to bring it to the foreground.
+      barrierDismissible: true,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         content: Column(
@@ -1084,8 +1176,22 @@ class _RentDistributionScreenState extends State<RentDistributionScreen>
             const CircularProgressIndicator(color: AppTheme.primaryStart),
             const SizedBox(height: 20),
             Text(message, textAlign: TextAlign.center, style: AppTheme.heading(14)),
-            const SizedBox(height: 20),
-            TextButton(onPressed: () { Navigator.pop(ctx); setState(() => _processing = false); }, child: const Text('Cancel', style: TextStyle(color: Colors.red))),
+            const SizedBox(height: 12),
+            Text(
+              'A transaction request has been sent to MetaMask.\n'
+                  'If MetaMask didn\'t open automatically, tap outside '
+                  'this dialog to switch to it manually.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                setState(() => _processing = false);
+              },
+              child: const Text('Cancel', style: TextStyle(color: Colors.red)),
+            ),
           ],
         ),
       ),
