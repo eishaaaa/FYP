@@ -759,9 +759,10 @@ class _AssetModerationState extends State<AssetModeration> {
                                   color: Colors.white.withOpacity(0.2),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                          child: Image.asset('assets/logos.png', height: 22),
-                          //      child: const Icon(Icons.apartment_rounded,
-                            //        color: Colors.white, size: 22),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.asset('assets/logos.png', height: 22),
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(

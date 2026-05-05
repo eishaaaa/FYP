@@ -106,8 +106,11 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Icon(Icons.shopping_bag_outlined, color: AppTheme.primaryStart, size: 28),
+          padding: const EdgeInsets.all(8),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.asset('assets/logos.png', fit: BoxFit.cover),
+          ),
         ),
         actions: [
           IconButton(
