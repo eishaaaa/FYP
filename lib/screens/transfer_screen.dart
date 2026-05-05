@@ -63,6 +63,13 @@ class _TransferScreenState extends State<TransferScreen> {
   bool _success = false;
   String? _errorMessage;
 
+  String get _trimmedTransactionId => widget.transactionId.trim();
+
+  Future<DocumentSnapshot<Map<String, dynamic>>?> _transactionSnapshotOrNull() async {
+    if (_trimmedTransactionId.isEmpty) return null;
+    return _db.collection('transactions').doc(_trimmedTransactionId).get();
+  }
+
   // ── Stolen report guard ──────────────────────────────────────
   bool _loadingCheck = true;
   bool _isStolen = false;
@@ -401,12 +408,19 @@ class _TransferScreenState extends State<TransferScreen> {
       }, SetOptions(merge: true));
     }
 
-    final txRef = _db.collection('transactions').doc(widget.transactionId);
-    batch.update(txRef, {
-      'status': 'completed',
-      'completedAt': FieldValue.serverTimestamp(),
-      'blockchainTxHash': _txHash,
-    });
+    final txDoc = await _transactionSnapshotOrNull();
+    if (txDoc != null && txDoc.exists) {
+      final txRef = _db.collection('transactions').doc(_trimmedTransactionId);
+      batch.update(txRef, {
+        'status': 'completed',
+        'completedAt': FieldValue.serverTimestamp(),
+        'blockchainTxHash': _txHash,
+      });
+    } else if (_trimmedTransactionId.isNotEmpty) {
+      debugPrint(
+        'Skipping missing transaction update during transfer: $_trimmedTransactionId',
+      );
+    }
 
     final orderRef = _db.collection('orders').doc();
     batch.set(orderRef, {
@@ -1163,6 +1177,13 @@ class _BuyerOwnershipAcceptScreenState extends State<BuyerOwnershipAcceptScreen>
   String? _connectedAddress;
   String? _error;
 
+  String get _trimmedTransactionId => widget.transactionId.trim();
+
+  Future<DocumentSnapshot<Map<String, dynamic>>?> _transactionSnapshotOrNull() async {
+    if (_trimmedTransactionId.isEmpty) return null;
+    return _db.collection('transactions').doc(_trimmedTransactionId).get();
+  }
+
   static const _accent = AppTheme.primaryStart;
   static const _surface = AppTheme.background;
   static const _cardRadius = 18.0;
@@ -1175,13 +1196,11 @@ class _BuyerOwnershipAcceptScreenState extends State<BuyerOwnershipAcceptScreen>
 
   Future<void> _load() async {
     try {
-      final results = await Future.wait([
-        _db.collection('assets').doc(widget.assetId).get(),
-        _db.collection('transactions').doc(widget.transactionId).get(),
-      ]);
+      final assetDoc = await _db.collection('assets').doc(widget.assetId).get();
+      final txDoc = await _transactionSnapshotOrNull();
       setState(() {
-        _assetData = (results[0] as DocumentSnapshot<Map<String, dynamic>>).data();
-        _txData = (results[1] as DocumentSnapshot<Map<String, dynamic>>).data();
+        _assetData = assetDoc.data();
+        _txData = txDoc?.data();
         _loading = false;
       });
     } catch (e) {
@@ -1203,9 +1222,8 @@ class _BuyerOwnershipAcceptScreenState extends State<BuyerOwnershipAcceptScreen>
 
       await _db.collection('users').doc(uid).update({'walletAddress': addr});
 
-      // Fetch the transaction to get the sellerUid and asset title
-      final txDoc    = await _db.collection('transactions').doc(widget.transactionId).get();
-      final txData   = txDoc.data() ?? {};
+      final txDoc = await _transactionSnapshotOrNull();
+      final txData = txDoc?.data() ?? _txData ?? {};
       final sellerUid = txData['sellerUid'] as String? ?? '';
       final assetTitle = _assetData?['title'] as String? ?? 'Asset';
 

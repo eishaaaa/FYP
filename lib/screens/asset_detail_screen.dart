@@ -21,6 +21,20 @@ import 'rent_distribution_screen.dart';
 final db = FirebaseFirestore.instance;
 final auth = FirebaseAuth.instance;
 
+Future<String?> _existingTransactionId(String transactionId) async {
+  final trimmedId = transactionId.trim();
+  if (trimmedId.isEmpty) return null;
+
+  final txSnap = await db.collection('transactions').doc(trimmedId).get();
+  if (!txSnap.exists) {
+    debugPrint(
+      'Skipping missing transaction update for fraction request: $trimmedId',
+    );
+    return null;
+  }
+  return trimmedId;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // FRACTION REQUESTS PANEL
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,13 +54,14 @@ class FractionRequestsPanel extends StatelessWidget {
     String transactionId,
     String newStatus,
   ) async {
+    final existingTransactionId = await _existingTransactionId(transactionId);
     final batch = db.batch();
     batch.update(db.collection('fraction_requests').doc(requestId), {
       'status': newStatus,
       'respondedAt': FieldValue.serverTimestamp(),
     });
-    if (transactionId.isNotEmpty) {
-      batch.update(db.collection('transactions').doc(transactionId), {
+    if (existingTransactionId != null) {
+      batch.update(db.collection('transactions').doc(existingTransactionId), {
         'status': newStatus == 'approved' ? 'approved' : 'rejected',
       });
     }
@@ -1756,7 +1771,7 @@ class _ApprovedFractionTransferButton extends StatelessWidget {
               final r = doc.data();
               final buyerUid = r['buyerUid'] ?? '';
               final fractionsRequested = r['fractionsRequested'] ?? 0;
-              final transactionId = r['transactionId'] ?? doc.id;
+              final transactionId = (r['transactionId'] ?? '').toString().trim();
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 8),
@@ -1878,6 +1893,7 @@ class _ApprovedFractionTransferButton extends StatelessWidget {
     );
 
     if (result == true) {
+      final existingTransactionId = await _existingTransactionId(transactionId);
       final batch = FirebaseFirestore.instance.batch();
       batch.update(
         FirebaseFirestore.instance
@@ -1885,11 +1901,11 @@ class _ApprovedFractionTransferButton extends StatelessWidget {
             .doc(fractionRequestId),
         {'status': 'completed', 'completedAt': FieldValue.serverTimestamp()},
       );
-      if (transactionId.isNotEmpty) {
+      if (existingTransactionId != null) {
         batch.update(
           FirebaseFirestore.instance
               .collection('transactions')
-              .doc(transactionId),
+              .doc(existingTransactionId),
           {'status': 'completed', 'completedAt': FieldValue.serverTimestamp()},
         );
       }

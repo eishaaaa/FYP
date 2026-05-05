@@ -8,6 +8,7 @@ import '../blockchain/ipfs_service.dart';   // ← your existing service
 import '../blockchain/blockchain_service.dart';
 import 'shared_screens.dart';
 import 'asset_screen.dart';
+import 'asset_detail_screen.dart';
 import 'stolen_report_screen.dart';
 import 'auth_screens.dart';
 
@@ -622,6 +623,324 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FAVORITES SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+class FavoritesScreen extends StatelessWidget {
+  const FavoritesScreen({super.key});
+
+  static const Color _teal = Color(0xFF2D8C8C);
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      return const Scaffold(body: Center(child: Text('Not logged in')));
+    }
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'Favorites',
+          style: TextStyle(
+            color: Color(0xFF1A1A2E),
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        leading: IconButton(
+          icon: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0F4F4),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.chevron_left_rounded,
+              color: Color(0xFF1A1A2E),
+              size: 24,
+            ),
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('favorites')
+            .where('userId', isEqualTo: uid)
+            .snapshots(),
+        builder: (context, favSnap) {
+          if (favSnap.hasError) {
+            return Center(child: Text('Error: ${favSnap.error}'));
+          }
+          if (!favSnap.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final favDocs = favSnap.data!.docs;
+          // Sort newest-first client-side (avoids composite index requirement)
+          favDocs.sort((a, b) {
+            final aTs = (a.data() as Map)['savedAt'];
+            final bTs = (b.data() as Map)['savedAt'];
+            if (aTs == null || bTs == null) return 0;
+            return (bTs as Timestamp).compareTo(aTs as Timestamp);
+          });
+
+          if (favDocs.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.favorite_border_rounded,
+                    size: 72,
+                    color: Colors.grey.shade300,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No favorites yet',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tap ♡ on any listing to save it here',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade400),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          final assetIds = favDocs
+              .map((d) =>
+          (d.data() as Map<String, dynamic>)['assetId'] as String)
+              .toList();
+
+          return FutureBuilder<List<DocumentSnapshot>>(
+            future: Future.wait(
+              assetIds.map(
+                    (id) => FirebaseFirestore.instance
+                    .collection('assets')
+                    .doc(id)
+                    .get(),
+              ),
+            ),
+            builder: (context, assetSnap) {
+              if (!assetSnap.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final assets =
+              assetSnap.data!.where((d) => d.exists).toList();
+
+              if (assets.isEmpty) {
+                return Center(
+                  child: Text(
+                    'Saved assets no longer available',
+                    style: TextStyle(color: Colors.grey.shade500),
+                  ),
+                );
+              }
+
+              return ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: assets.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (_, i) {
+                  final doc = assets[i];
+                  final data = doc.data() as Map<String, dynamic>;
+                  final imgList = data['images'] as List?;
+                  String? firstImg;
+                  if (imgList != null &&
+                      imgList.isNotEmpty &&
+                      imgList[0] is String) {
+                    firstImg = imgList[0] as String;
+                  }
+                  final city =
+                  (data['city'] ?? data['location'] ?? '').toString();
+                  final price = data['price'] ?? 0;
+                  final title = (data['title'] ?? 'Asset').toString();
+
+                  return GestureDetector(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AssetDetailScreen(assetId: doc.id),
+                      ),
+                    ),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.07),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          // ── Image ──────────────────────────────
+                          Stack(
+                            children: [
+                              ClipRRect(
+                                borderRadius: const BorderRadius.horizontal(
+                                  left: Radius.circular(16),
+                                ),
+                                child: buildAssetImage(
+                                  firstImg,
+                                  width: 120,
+                                  height: 110,
+                                ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                left: 8,
+                                child: _UnfavouriteButton(
+                                  assetId: doc.id,
+                                  userId: uid,
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          // ── Info ───────────────────────────────
+                          Expanded(
+                            child: Padding(
+                              padding:
+                              const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                      color: Color(0xFF1A1A2E),
+                                    ),
+                                  ),
+                                  if (city.isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.location_on_outlined,
+                                          size: 13,
+                                          color: Colors.grey,
+                                        ),
+                                        const SizedBox(width: 3),
+                                        Expanded(
+                                          child: Text(
+                                            city,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'PKR $price',
+                                    style: const TextStyle(
+                                      color: Color(0xFF2A7F8F),
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          // ── Arrow ──────────────────────────────
+                          Padding(
+                            padding: const EdgeInsets.only(right: 12),
+                            child: Icon(
+                              Icons.chevron_right_rounded,
+                              color: Colors.grey.shade400,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+// Small stateful widget so the heart button gives instant visual feedback
+// before Firestore confirms the delete.
+class _UnfavouriteButton extends StatefulWidget {
+  final String assetId;
+  final String userId;
+  const _UnfavouriteButton({required this.assetId, required this.userId});
+
+  @override
+  State<_UnfavouriteButton> createState() => _UnfavouriteButtonState();
+}
+
+class _UnfavouriteButtonState extends State<_UnfavouriteButton> {
+  bool _removing = false;
+
+  Future<void> _remove() async {
+    setState(() => _removing = true);
+    await FirebaseFirestore.instance
+        .collection('favorites')
+        .doc('${widget.userId}_${widget.assetId}')
+        .delete();
+    // No need to reset _removing — StreamBuilder removes the card automatically.
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _removing ? null : _remove,
+      child: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.9),
+          shape: BoxShape.circle,
+        ),
+        child: _removing
+            ? const Padding(
+          padding: EdgeInsets.all(5),
+          child: CircularProgressIndicator(
+            strokeWidth: 1.5,
+            color: Colors.red,
+          ),
+        )
+            : const Icon(Icons.favorite_rounded, size: 16, color: Colors.red),
+      ),
     );
   }
 }
