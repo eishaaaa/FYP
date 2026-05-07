@@ -18,20 +18,31 @@ import 'theme.dart';
 
 
 
+const _gradientTop    = Color(0xFF0D7A7A); // ← LOGO SHADE  (tell your designer)
+const _gradientMid    = Color(0xFF0B5E6B);
+const _gradientBottom = Color(0xFF0A4A57);
+
+const kSplashGradient = LinearGradient(
+  begin: Alignment.topCenter,
+  end: Alignment.bottomCenter,
+  colors: [_gradientTop, _gradientMid, _gradientBottom],
+  stops: [0.0, 0.55, 1.0],
+);
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN 2 — TEAL PALETTE (single source of truth for the whole app)
 // ─────────────────────────────────────────────────────────────────────────────
 class AppColors {
-  static const primary      = AppTheme.primaryStart; // Primary Teal
+  static const primary      = AppTheme.primaryStart;     // Primary Teal
   static const primaryDark  = AppTheme.primaryStartDark; // Dark Teal  (AppBar, headers)
-  static const primaryLight = AppTheme.primaryLight; // Teal Light (backgrounds)
-  static const background   = AppTheme.background; // App scaffold BG
-  static const surface      = Colors.white; // Card / sheet BG
-  static const textPrimary  = AppTheme.textPrimary; // Dark navy text
-  static const textSecondary= AppTheme.textSecondary; // Muted grey text
-  static const border       = AppTheme.primaryStart; // Subtle border
-  static const error        = AppTheme.error; // Red
+  static const primaryLight = AppTheme.primaryLight;     // Teal Light (backgrounds)
+  static const background   = AppTheme.background;       // App scaffold BG
+  static const surface      = Colors.white;              // Card / sheet BG
+  static const textPrimary  = AppTheme.textPrimary;      // Dark navy text
+  static const textSecondary= AppTheme.textSecondary;   // Muted grey text
+  static const border       = AppTheme.primaryStart;     // Subtle border
+  static const error        = AppTheme.error;            // Red
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -653,6 +664,9 @@ class _AppEntryState extends State<AppEntry> {
     return _seenOnboarding ? const SplashScreen() : const OnboardingScreen();
   }
 }
+
+// NOTE: OnboardingScreen and SplashScreen are defined in auth_screens.dart.
+// They were removed from here to avoid shadowing the imported versions.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ROLE-BASED ROUTER

@@ -98,6 +98,7 @@ flutter:
     - assets/logo.mp4
     - assets/logo.png
     - assets/logos.png
+    - assets/logoss.png
     - assets/abi/
     # for easy_localization
   #   - images/a_dot_burr.jpeg

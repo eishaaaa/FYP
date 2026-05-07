@@ -257,93 +257,160 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [kTealDark, kTeal, kTealAccent],
-            begin : Alignment.topLeft,
-            end   : Alignment.bottomRight,
-          ),
-        ),
-        child: Center(
-          child: AnimatedBuilder(
-            animation: _ctrl,
-            builder  : (_, __) => Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Glow ring
-                Transform.scale(
-                  scale: _scaleAnim.value,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // Outer glow ring
-                      Opacity(
-                        opacity: _glowAnim.value * 0.3,
-                        child: Container(
-                          width : 160,
-                          height: 160,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.2),
-                          ),
-                        ),
-                      ),
-                      // Logo circle
-                      Container(
-                        width : 110,
-                        height: 110,
-                        decoration: BoxDecoration(
-                          color    : Colors.white,
-                          shape    : BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color     : Colors.black.withOpacity(0.2),
-                              blurRadius: 30,
-                              offset    : const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: Image.asset ('assets/logos.png'),
-                    //    child: const Icon(Icons.apartment_rounded,
-                      //      size: 56, color: AppTheme.primaryStart),
-                      ),
-                    ],
-                  ),
+      body: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (_, __) => Stack(
+          children: [
+            // Background gradient
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Color(0xFF003D38),
+                    Color(0xFF00695C),
+                    Color(0xFF009688),
+                    Color(0xFF26A69A),
+                  ],
+                  begin: Alignment.topLeft,
+                  end  : Alignment.bottomRight,
                 ),
-                const SizedBox(height: 36),
-                FadeTransition(
-                  opacity : _fadeAnim,
-                  child   : SlideTransition(
-                    position: _slideAnim,
-                    child   : Column(
-                      children: [
-                        Text(
-                          'Digital Goods',
-                          style: AppTheme.heading(30, color: Colors.white).copyWith(letterSpacing: 1.2),
+              ),
+            ),
+
+            // Decorative orb top-right
+            Positioned(
+              top  : -size.width * 0.25,
+              right: -size.width * 0.20,
+              child: Container(
+                width : size.width * 0.7,
+                height: size.width * 0.7,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.06),
+                ),
+              ),
+            ),
+
+            // Decorative orb bottom-left
+            Positioned(
+              bottom: -size.width * 0.30,
+              left  : -size.width * 0.20,
+              child: Container(
+                width : size.width * 0.8,
+                height: size.width * 0.8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.05),
+                ),
+              ),
+            ),
+
+            // Main content
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+
+                  // Glassmorphism rounded-square logo card
+                  Transform.scale(
+                    scale: _scaleAnim.value,
+                    child: Container(
+                      width : 160,
+                      height: 160,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(32),
+                        color       : Colors.white.withOpacity(0.12),
+                        border      : Border.all(
+                          color: Colors.white.withOpacity(0.28),
+                          width: 1.5,
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Verify. Secure. Own.',
-                          style: AppTheme.body(15, color: Colors.white.withOpacity(0.85)).copyWith(letterSpacing: 1.1),
-                        ),
-                        const SizedBox(height: 48),
-                        SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: CircularProgressIndicator(
-                            strokeWidth : 2.5,
-                            color       : Colors.white.withOpacity(0.6),
+                        boxShadow: [
+                          BoxShadow(
+                            color     : const Color(0xFF003D38).withOpacity(0.50),
+                            blurRadius: 40,
+                            offset    : const Offset(0, 18),
+                          ),
+                          BoxShadow(
+                            color     : Colors.white.withOpacity(0.07),
+                            blurRadius: 20,
+                            offset    : const Offset(0, -6),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(32),
+                        child: Padding(
+                          padding: const EdgeInsets.all(22),
+                          child  : Image.asset(
+                            'assets/logoss.png',
+                            fit: BoxFit.contain,
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+
+                  const SizedBox(height: 44),
+
+                  // Text + loader
+                  FadeTransition(
+                    opacity : _fadeAnim,
+                    child   : SlideTransition(
+                      position: _slideAnim,
+                      child   : Column(
+                        children: [
+                          Text(
+                            'Digital Goods',
+                            style: AppTheme.heading(34, color: Colors.white).copyWith(
+                              fontWeight   : FontWeight.w800,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(width: 22, height: 1, color: Colors.white.withOpacity(0.4)),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 10),
+                                child  : Text(
+                                  'Verify. Secure. Own.',
+                                  style: AppTheme.body(13, color: Colors.white.withOpacity(0.76))
+                                      .copyWith(letterSpacing: 2.2),
+                                ),
+                              ),
+                              Container(width: 22, height: 1, color: Colors.white.withOpacity(0.4)),
+                            ],
+                          ),
+                          const SizedBox(height: 60),
+                          // Animated bouncing dot loader
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: List.generate(3, (i) {
+                              final delay  = i / 3.0;
+                              final t      = ((_glowAnim.value - delay) % 1.0).clamp(0.0, 1.0);
+                              final bounce = (t < 0.5 ? t : 1.0 - t) * 2.0;
+                              return Container(
+                                margin    : const EdgeInsets.symmetric(horizontal: 5),
+                                width     : 7,
+                                height    : 7 + bounce * 6,
+                                decoration: BoxDecoration(
+                                  color       : Colors.white.withOpacity(0.45 + bounce * 0.55),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              );
+                            }),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -449,8 +516,8 @@ class _LoginScreenState extends State<LoginScreen>
       final snap = await db.collection('users').doc(cred.user!.uid).get();
       if (!snap.exists) {
         if (mounted) {
-           _showSnack(context, 'Account record missing. Please register your role.', color: Colors.orange);
-           Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen()));
+          _showSnack(context, 'Account record missing. Please register your role.', color: Colors.orange);
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen()));
         }
         return;
       }
@@ -469,7 +536,7 @@ class _LoginScreenState extends State<LoginScreen>
     if (user != null) {
       final snap = await db.collection('users').doc(user.uid).get();
       if (!snap.exists) {
-        // 🛑 IMPORTANT: If doc is missing, don't auto-create as 'user'. 
+        // 🛑 IMPORTANT: If doc is missing, don't auto-create as 'user'.
         // Redirect to Register so they can choose 'Supplier' if they want.
         if (mounted) {
           _showSnack(context, 'Account record missing. Please register your role.', color: Colors.orange);
@@ -527,9 +594,9 @@ class _LoginScreenState extends State<LoginScreen>
                           color        : Colors.white.withOpacity(0.2),
                           borderRadius : BorderRadius.circular(14),
                         ),
-                child: Image.asset('assets/logos.png', height: 28),
-                     //   child: const Icon(Icons.apartment_rounded,
-                       //     color: Colors.white, size: 28),
+                        child: Image.asset('assets/logoss.png', height: 28),
+                        //   child: const Icon(Icons.apartment_rounded,
+                        //     color: Colors.white, size: 28),
                       ),
                       const SizedBox(height: 20),
                       Text(
@@ -877,9 +944,9 @@ class _RegisterScreenState extends State<RegisterScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Create Account',
-                                  style: AppTheme.heading(20, color: Colors.white)),
+                              style: AppTheme.heading(20, color: Colors.white)),
                           Text('Join Digital Goods today',
-                                  style: AppTheme.body(12, color: Colors.white.withOpacity(0.8))),
+                              style: AppTheme.body(12, color: Colors.white.withOpacity(0.8))),
                         ],
                       ),
                     ],
@@ -1226,7 +1293,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
               const SizedBox(height: 6),
               Text(
                 'Enter your email and we will send a reset link.',
-              textAlign: TextAlign.center,
+                textAlign: TextAlign.center,
                 style    : AppTheme.body(13, color: AppTheme.textSecondary),
               ),
             ],
