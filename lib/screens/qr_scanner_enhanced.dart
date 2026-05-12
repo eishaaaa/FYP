@@ -89,8 +89,8 @@ class _QRScannerEnhancedState extends State<QRScannerEnhanced> {
               ),
               content: const Text(
                 "This asset has been uploaded but is still waiting for "
-                "blockchain confirmation (Mining).\n\n"
-                "Please try scanning again in a few minutes.",
+                    "blockchain confirmation (Mining).\n\n"
+                    "Please try scanning again in a few minutes.",
               ),
               actions: [
                 TextButton(
@@ -319,8 +319,8 @@ class VerificationResultDialog extends StatelessWidget {
               ),
               child: Text(
                 isVerified ? '✓ OFFICIALLY VERIFIED' : '✓ AUTHENTIC ASSET',
-                style: AppTheme.body(12, 
-                    weight: FontWeight.bold, 
+                style: AppTheme.body(12,
+                    weight: FontWeight.bold,
                     color: isVerified ? Colors.green[900]! : AppTheme.primaryStartDark),
                 textAlign: TextAlign.center,
               ),
@@ -425,18 +425,18 @@ class VerificationResultDialog extends StatelessWidget {
   Widget _buildProvenanceTimeline(int status, int ownerCount) {
     // status: 0 = InTransit, 1 = InStock, 2 = Sold
     List<Widget> steps = [];
-    
+
     // Step 1: Manufacturer
     steps.add(_buildTimelineStep('Manufacturer', 'Minted & Sealed', true));
-    
+
     // Step 2: Logistics / Vendor
     bool isAtVendor = status >= 0; // Always true if minted
     steps.add(_buildTimelineStep('Vendor', 'In Transit (Sealed)', isAtVendor));
-    
+
     // Step 3: Retailer
     bool isAtRetailer = status >= 1;
     steps.add(_buildTimelineStep('Retailer', 'In Stock (Sealed)', isAtRetailer));
-    
+
     // Step 4: Customer
     bool isSold = status == 2;
     String customerLabel = isSold ? (ownerCount <= 1 ? '1st Owner' : 'Owner #$ownerCount') : 'Unsold';

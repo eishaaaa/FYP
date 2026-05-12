@@ -15,6 +15,18 @@ const _kAccent      = AppTheme.accent;
 const _kBg          = AppTheme.background;
 const _kCard        = Colors.white;
 
+String _normalizeReportIdentifier(String value) {
+  return value.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+}
+
+String _compactReportIdentifier(String value) {
+  return value.replaceAll(RegExp(r'[\s-]'), '');
+}
+
+bool _shouldTreatAsImei(String value) {
+  return RegExp(r'^\d{15}$').hasMatch(_compactReportIdentifier(value));
+}
+
 // ─────────────────────────────────────────────────────────────
 //  DATA MODEL  (land removed – electronics only)
 // ─────────────────────────────────────────────────────────────
@@ -1356,19 +1368,18 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
   @override
   bool get wantKeepAlive => true;
 
-  final _formKey         = GlobalKey<FormState>();
-  final _descController  = TextEditingController();
-  final _imeiController  = TextEditingController();
-  final _serialController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final _descController = TextEditingController();
+  final _identifierController = TextEditingController();
 
-  List<Map<String, dynamic>> _userAssets   = [];
-  Map<String, dynamic>?      _selectedAsset;
-  bool   _loadingAssets = true;
+  List<Map<String, dynamic>> _userAssets = [];
+  Map<String, dynamic>? _selectedAsset;
+  bool _loadingAssets = true;
   String _deviceCategory = 'phone';
 
   PlatformFile? _pickedFile;
   bool _uploadingDoc = false;
-  bool _submitting   = false;
+  bool _submitting = false;
 
   @override
   void initState() {
@@ -1379,8 +1390,7 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
   @override
   void dispose() {
     _descController.dispose();
-    _imeiController.dispose();
-    _serialController.dispose();
+    _identifierController.dispose();
     super.dispose();
   }
 
@@ -1389,7 +1399,10 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
     if (uid == null) return;
     try {
       final results = await Future.wait([
-        FirebaseFirestore.instance.collection('assets').where('ownerId',  isEqualTo: uid).get(),
+        FirebaseFirestore.instance
+            .collection('assets')
+            .where('ownerId', isEqualTo: uid)
+            .get(),
         FirebaseFirestore.instance.collection('assets').where('ownerUid', isEqualTo: uid).get(),
       ]);
       final seen   = <String>{};
@@ -1403,15 +1416,26 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
           if (cat == 'land') continue;
           assets.add({
             'id'             : doc.id,
-            'name'           : (data['title'] as String?) ?? 'Asset #${doc.id.substring(0, 6)}',
-            'type'           : cat,
-            'tokenId'        : data['blockchainTokenId']?.toString() ?? '',
-            'deviceCategory' : data['deviceCategory'] ?? 'phone',
-            'imageUrl'       : data['imageUrl'] ?? data['assetImageUrl'],
+            'name': (data['title'] as String?) ??
+                'Asset #${doc.id.substring(0, 6)}',
+            'type': cat,
+            'tokenId': data['blockchainTokenId']?.toString() ?? '',
+            'deviceCategory': data['deviceCategory'] ?? 'phone',
+            'serial': (data['serial'] ??
+                    data['imei'] ??
+                    data['serialNumber'] ??
+                    '')
+                .toString(),
+            'imageUrl': data['imageUrl'] ?? data['assetImageUrl'],
           });
         }
       }
-      if (mounted) setState(() { _userAssets = assets; _loadingAssets = false; });
+      if (mounted) {
+        setState(() {
+          _userAssets = assets;
+          _loadingAssets = false;
+        });
+      }
     } catch (e) {
       debugPrint('Error loading assets: $e');
       if (mounted) setState(() => _loadingAssets = false);
@@ -1439,6 +1463,20 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
       total += d;
     }
     return total % 10 == 0;
+  }
+
+  void _handleAssetChange(Map<String, dynamic>? asset) {
+    final deviceCategory = (asset?['deviceCategory'] ?? 'phone').toString();
+    final normalizedCategory = const {'phone', 'laptop', 'tablet', 'watch', 'other'}
+            .contains(deviceCategory)
+        ? deviceCategory
+        : 'phone';
+
+    setState(() {
+      _selectedAsset = asset;
+      _deviceCategory = normalizedCategory;
+      _identifierController.text = asset?['serial']?.toString().trim() ?? '';
+    });
   }
 
   Future<void> _submitReport() async {
@@ -1482,36 +1520,55 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
         walletAddress = userDoc.data()?['walletAddress'] ?? '';
       } catch (_) {}
 
+      final rawIdentifier = _identifierController.text.trim();
+      final compactIdentifier = _compactReportIdentifier(rawIdentifier);
+      final isImei =
+          _shouldTreatAsImei(rawIdentifier) && _validateImei(compactIdentifier);
+
       await FirebaseFirestore.instance.collection('stolen_reports').add({
-        'userId'        : user.uid,
-        'assetId'       : _selectedAsset!['id'],
-        'assetType'     : 'electronics',
-        'assetName'     : _selectedAsset!['name'],
-        'tokenId'       : _selectedAsset!['tokenId'],
+        'userId': user.uid,
+        'assetId': _selectedAsset!['id'],
+        'assetType': 'electronics',
+        'assetName': _selectedAsset!['name'],
+        'tokenId': _selectedAsset!['tokenId'],
         'deviceCategory': _deviceCategory,
-        'assetImageUrl' : _selectedAsset!['imageUrl'],
-        'description'   : _descController.text.trim(),
-        'imei'          : _imeiController.text.trim().isEmpty ? null : _imeiController.text.trim(),
-        'serialNumber'  : _serialController.text.trim().isEmpty ? null : _serialController.text.trim(),
-        'docIpfsHash'   : docHash,
-        'docFileName'   : docName,
-        'status'        : 'pending',
-        'createdAt'     : FieldValue.serverTimestamp(),
-        'walletAddress' : walletAddress,
+        'assetImageUrl': _selectedAsset!['imageUrl'],
+        'description': _descController.text.trim(),
+        'identifier': rawIdentifier.isEmpty ? null : rawIdentifier,
+        'identifierNormalized': rawIdentifier.isEmpty
+            ? null
+            : _normalizeReportIdentifier(rawIdentifier),
+        'imei': rawIdentifier.isEmpty
+            ? null
+            : (isImei ? compactIdentifier : null),
+        'serialNumber': rawIdentifier.isEmpty
+            ? null
+            : (isImei ? null : rawIdentifier),
+        'docIpfsHash': docHash,
+        'docFileName': docName,
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+        'walletAddress': walletAddress,
       });
 
-      await FirebaseFirestore.instance.collection('assets').doc(_selectedAsset!['id']).update({
-        'isStolenReported' : true,
-        'stolenReportedAt' : FieldValue.serverTimestamp(),
-        'stolenReportedBy' : user.uid,
+      await FirebaseFirestore.instance
+          .collection('assets')
+          .doc(_selectedAsset!['id'])
+          .update({
+        'isStolenReported': true,
+        'stolenReportedAt': FieldValue.serverTimestamp(),
+        'stolenReportedBy': user.uid,
       });
 
       if (mounted) {
         _showSnack('Stolen report submitted successfully!');
-        setState(() { _selectedAsset = null; _pickedFile = null; _deviceCategory = 'phone'; });
+        setState(() {
+          _selectedAsset = null;
+          _pickedFile = null;
+          _deviceCategory = 'phone';
+        });
         _descController.clear();
-        _imeiController.clear();
-        _serialController.clear();
+        _identifierController.clear();
       }
     } catch (e) {
       _showSnack('Error submitting report: $e', isError: true);
@@ -1637,88 +1694,90 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
             const SizedBox(height: 24),
 
             // ── Select Asset ─────────────────────────────────
-            const _SectionLabel(icon: Icons.inventory_2_outlined, text: 'Select Stolen Device'),
+            const _SectionLabel(
+              icon: Icons.inventory_2_outlined,
+              text: 'Select Stolen Device',
+            ),
             const SizedBox(height: 10),
             _loadingAssets
-                ? const Center(child: CircularProgressIndicator(color: _kPrimary))
+                ? const Center(
+                    child: CircularProgressIndicator(color: _kPrimary),
+                  )
                 : _userAssets.isEmpty
                 ? Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color        : Colors.grey[100],
-                borderRadius : BorderRadius.circular(12),
-                border       : Border.all(color: Colors.grey[300]!),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.grey[400]),
-                  const SizedBox(width: 10),
-                  Text('You have no electronics assets to report.',
-                      style: TextStyle(color: Colors.grey[600])),
-                ],
-              ),
-            )
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.grey[400],
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'You have no electronics assets to report.',
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
                 : DropdownButtonFormField<Map<String, dynamic>>(
-              value: _selectedAsset,
-              isExpanded: true,
-              decoration: _inputDecoration('Choose your device'),
-              items: _userAssets.map((asset) {
-                return DropdownMenuItem<Map<String, dynamic>>(
-                  value: asset,
-                  child: Text('📱  ${asset['name']}',
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 14)),
-                );
-              }).toList(),
-              onChanged: (val) => setState(() => _selectedAsset = val),
-              validator: (val) => val == null ? 'Please select an asset' : null,
-            ),
+                    value: _selectedAsset,
+                    isExpanded: true,
+                    decoration: _inputDecoration('Choose your device'),
+                    items: _userAssets.map((asset) {
+                      return DropdownMenuItem<Map<String, dynamic>>(
+                        value: asset,
+                        child: Text(
+                          '📱  ${asset["name"]}',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: _handleAssetChange,
+                    validator: (val) =>
+                        val == null ? 'Please select an asset' : null,
+                  ),
             const SizedBox(height: 24),
 
-            // ── IMEI ─────────────────────────────────────────
+            // ── Serial / IMEI ───────────────────────────────
             const _SectionLabel(
-                icon: Icons.verified_user_outlined, text: 'IMEI Number'),
+                icon: Icons.fingerprint_rounded, text: 'Serial / IMEI'),
             const SizedBox(height: 4),
             Text(
-              'Recommended for smartphones & tablets (15-digit number)',
+              'Use the same identifier that was registered by the supplier for this device.',
               style: TextStyle(fontSize: 12, color: Colors.grey[500]),
             ),
             const SizedBox(height: 10),
             TextFormField(
-              controller  : _imeiController,
-              keyboardType: TextInputType.number,
-              maxLength   : 15,
+              controller  : _identifierController,
               decoration  : _inputDecoration(
-                'Enter 15-digit IMEI (dial *#06# to find it)',
-                prefix: const Icon(Icons.verified_user_outlined,
+                'Enter Serial / IMEI (optional)',
+                prefix: const Icon(Icons.fingerprint_rounded,
                     color: _kPrimary, size: 20),
               ),
               validator: (val) {
-                if (val == null || val.trim().isEmpty) return null; // optional
-                if (!_validateImei(val.trim())) {
-                  return 'Invalid IMEI — must be 15 digits and pass Luhn check';
+                final value = val?.trim() ?? '';
+                if (value.isEmpty) return null;
+                final registeredIdentifier =
+                    _selectedAsset?['serial']?.toString().trim() ?? '';
+                if (registeredIdentifier.isNotEmpty &&
+                    value == registeredIdentifier) {
+                  return null;
+                }
+                if (_shouldTreatAsImei(value) &&
+                    !_validateImei(_compactReportIdentifier(value))) {
+                  return 'Enter a valid 15-digit IMEI or the registered serial number';
                 }
                 return null;
               },
-            ),
-            const SizedBox(height: 16),
-
-            // ── Serial Number ────────────────────────────────
-            const _SectionLabel(
-                icon: Icons.qr_code_scanner, text: 'Serial Number'),
-            const SizedBox(height: 4),
-            Text(
-              'Found on the device box, back panel, or Settings > About',
-              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-            ),
-            const SizedBox(height: 10),
-            TextFormField(
-              controller  : _serialController,
-              decoration  : _inputDecoration(
-                'Enter device serial number (optional)',
-                prefix: const Icon(Icons.qr_code_scanner,
-                    color: _kPrimary, size: 20),
-              ),
             ),
             const SizedBox(height: 24),
 

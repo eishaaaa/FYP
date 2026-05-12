@@ -66,6 +66,38 @@ String _formatFileSize(int bytes) {
   return '${(bytes / 1048576).toStringAsFixed(1)} MB';
 }
 
+String _normalizeDeviceIdentifier(String value) {
+  return value.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+}
+
+String _compactNumericIdentifier(String value) {
+  return value.replaceAll(RegExp(r'[\s-]'), '');
+}
+
+bool _shouldValidateAsImei(String value) {
+  return RegExp(r'^\d{15}$').hasMatch(_compactNumericIdentifier(value));
+}
+
+bool _validateImeiIdentifier(String value) {
+  final imei = _compactNumericIdentifier(value);
+  if (!RegExp(r'^\d{15}$').hasMatch(imei)) return false;
+
+  int total = 0;
+  for (int i = 0; i < 15; i++) {
+    int digit = int.parse(imei[i]);
+    if (i.isOdd) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    total += digit;
+  }
+  return total % 10 == 0;
+}
+
+String _friendlyErrorText(Object error) {
+  return error.toString().replaceFirst('Exception: ', '');
+}
+
 class DocumentStorage {
   static const int smallFileLimit = 100 * 1024;
   static const int mediumFileLimit = 500 * 1024;
@@ -235,7 +267,7 @@ class _SupplierHomeScreenState extends State<SupplierHomeScreen> {
       SupplierHome(type: widget.type, showHelp: () => _showHelp),
       const QRScannerEnhanced(),
       const MyAssetsScreen(),
-      const ProfileScreen(),
+      const ProfileScreen(showFavorites: false),
     ];
   }
 
@@ -1206,9 +1238,13 @@ class _AssetFormState extends State<AssetForm> {
       out['city'] = _cityCtrl.text.trim();
       out['totalFractions'] = fracs; // Store as int
     } else {
+      final identifier = _serialCtrl.text.trim();
       out['brand'] = _brandCtrl.text.trim();
       out['model'] = _modelCtrl.text.trim();
-      out['serial'] = _serialCtrl.text.trim();
+      out['serial'] = identifier;
+      out['serialNormalized'] = _normalizeDeviceIdentifier(identifier);
+      out['identifierType'] =
+          _validateImeiIdentifier(identifier) ? 'imei' : 'serial';
       out['warranty'] = _warrantyCtrl.text.trim();
       out['condition'] = _condition;
     }
@@ -1472,7 +1508,20 @@ class _AssetFormState extends State<AssetForm> {
                   children: [
                     _field(_brandCtrl, 'Brand', Icons.business_rounded),
                     _field(_modelCtrl, 'Model', Icons.smartphone_rounded),
-                    _field(_serialCtrl, 'Serial / IMEI', Icons.fingerprint_rounded),
+                    _field(
+                      _serialCtrl,
+                      'Serial / IMEI',
+                      Icons.fingerprint_rounded,
+                      validator: (v) {
+                        final value = v?.trim() ?? '';
+                        if (value.isEmpty) return 'Serial / IMEI is required';
+                        if (_shouldValidateAsImei(value) &&
+                            !_validateImeiIdentifier(value)) {
+                          return 'Enter a valid 15-digit IMEI or a serial number';
+                        }
+                        return null;
+                      },
+                    ),
                     _field(
                       _warrantyCtrl,
                       'Warranty (Date/Months)',
@@ -1762,13 +1811,98 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
   bool _isLoading = false;
   String _statusMessage = '';
 
+  Future<String?> _reserveElectronicsIdentifier(
+    Map<String, dynamic> data,
+  ) async {
+    if (widget.type != 'electronics') return null;
+
+    final rawIdentifier = (data['serial'] as String? ?? '').trim();
+    final normalizedIdentifier =
+        (data['serialNormalized'] as String? ?? '').trim();
+
+    if (rawIdentifier.isEmpty || normalizedIdentifier.isEmpty) {
+      throw Exception('Serial / IMEI is required for electronics assets.');
+    }
+
+    final existingAssets = await db
+        .collection('assets')
+        .where('category', isEqualTo: 'electronics')
+        .get();
+
+    for (final doc in existingAssets.docs) {
+      final existing = doc.data();
+      final existingNormalizedField =
+          existing['serialNormalized']?.toString().trim() ?? '';
+      final existingNormalized = existingNormalizedField.isNotEmpty
+          ? existingNormalizedField.toUpperCase()
+          : _normalizeDeviceIdentifier(
+              (existing['serial'] ??
+                      existing['imei'] ??
+                      existing['serialNumber'] ??
+                      '')
+                  .toString(),
+            );
+
+      if (existingNormalized != normalizedIdentifier) continue;
+
+      final sameSupplier = existing['supplierId'] == auth.currentUser!.uid;
+      throw Exception(
+        sameSupplier
+            ? 'This Serial / IMEI is already registered in your inventory.'
+            : 'This Serial / IMEI is already registered by another supplier.',
+      );
+    }
+
+    final ref = db.collection('asset_identifiers').doc(normalizedIdentifier);
+    await db.runTransaction((tx) async {
+      final snap = await tx.get(ref);
+      if (snap.exists) {
+        final existing = snap.data() as Map<String, dynamic>? ?? {};
+        final sameSupplier = existing['supplierId'] == auth.currentUser!.uid;
+        final hasAssetId =
+            (existing['assetId']?.toString().trim().isNotEmpty ?? false);
+
+        if (!sameSupplier || hasAssetId) {
+          throw Exception(
+            sameSupplier
+                ? 'This Serial / IMEI is already registered in your inventory.'
+                : 'This Serial / IMEI is already registered by another supplier.',
+          );
+        }
+      }
+
+      tx.set(
+        ref,
+        {
+          'rawValue': rawIdentifier,
+          'normalizedValue': normalizedIdentifier,
+          'identifierType': data['identifierType'],
+          'category': 'electronics',
+          'supplierId': auth.currentUser!.uid,
+          'status': 'reserved',
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    });
+
+    return normalizedIdentifier;
+  }
+
   Future<void> _handleCreate(Map<String, dynamic> data) async {
     setState(() {
       _isLoading = true;
       _statusMessage = 'Initializing...';
     });
 
+    String? reservedIdentifier;
+    bool assetSaved = false;
+    bool identifierConfirmedOnChain = false;
+    String? blockchainTxHash;
+
     try {
+      reservedIdentifier = await _reserveElectronicsIdentifier(data);
+
       final blockchain = BlockchainServiceEnhanced();
       // Initialize services
       await blockchain.init();
@@ -1936,10 +2070,12 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
       // ---------------------------------------------------------
 
       if (txHash == null) throw Exception('Transaction failed or rejected');
+      blockchainTxHash = txHash;
       setState(() => _statusMessage = 'Waiting for blockchain confirmation...');
 
       // Wait for the transaction to be mined (up to ~60 seconds)
       await blockchain.waitForConfirmation(txHash, retries: 30);
+      identifierConfirmedOnChain = true;
 
       // Query the contract to get the newly minted token ID
       setState(() => _statusMessage = 'Retrieving Token ID...');
@@ -1956,7 +2092,8 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
       data.remove('rawImages');
       data.remove('rawDocuments');
 
-      await db.collection('assets').add({
+      final assetRef = db.collection('assets').doc();
+      await assetRef.set({
         ...data,
         'category': widget.type,
         'ownerId': auth.currentUser!.uid,
@@ -1972,6 +2109,16 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         'isListedForResale': false,
         'createdAt': FieldValue.serverTimestamp(),
       });
+      assetSaved = true;
+
+      if (reservedIdentifier != null) {
+        await db.collection('asset_identifiers').doc(reservedIdentifier).set({
+          'assetId': assetRef.id,
+          'blockchainTokenId': newTokenId,
+          'status': 'active',
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
 
       if (!mounted) return;
 
@@ -1989,12 +2136,33 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
       );
       Navigator.pop(context);
     } catch (e) {
+      if (reservedIdentifier != null && !assetSaved) {
+        try {
+          final identifierRef = db
+              .collection('asset_identifiers')
+              .doc(reservedIdentifier);
+
+          if (identifierConfirmedOnChain) {
+            await identifierRef.set({
+              'status': 'pending_asset_sync',
+              'blockchainTx': blockchainTxHash,
+              'lastError': _friendlyErrorText(e),
+              'updatedAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+          } else {
+            await identifierRef.delete();
+          }
+        } catch (cleanupError) {
+          debugPrint('Identifier cleanup failed: $cleanupError');
+        }
+      }
+
       if (mounted) {
         showDialog(
           context: context,
           builder: (_) => AlertDialog(
             title: const Text('Error'),
-            content: Text(e.toString()),
+            content: Text(_friendlyErrorText(e)),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),

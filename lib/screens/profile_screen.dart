@@ -22,7 +22,12 @@ final IPFSService _ipfs = IPFSService();
 class ProfileScreen extends StatefulWidget {
 
   final VoidCallback? onBack;
-  const ProfileScreen({super.key, this.onBack});
+  final bool showFavorites;
+  const ProfileScreen({
+    super.key,
+    this.onBack,
+    this.showFavorites = true,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -492,15 +497,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     children: [
                       // Section 1 — main features
                       _card(children: [
-                        _menuTile(
-                          icon: Icons.favorite_rounded,
-                          label: 'Favorites',
-                          iconColor: const Color(0xFFE57373),
-                          onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const FavoritesScreen())),
-                        ),
+                        if (widget.showFavorites)
+                          _menuTile(
+                            icon: Icons.favorite_rounded,
+                            label: 'Favorites',
+                            iconColor: const Color(0xFFE57373),
+                            onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const FavoritesScreen())),
+                          ),
                         _menuTile(
                           icon: Icons.report_problem_rounded,
                           label: 'Stolen Reports',
