@@ -39,9 +39,9 @@ extension _Cap on String {
 // -----------------------------------------------------------------------------
 
 Future<String> compressImageToBase64(
-    Uint8List bytes, {
-      int quality = 70,
-    }) async {
+  Uint8List bytes, {
+  int quality = 70,
+}) async {
   final image = img.decodeImage(bytes);
   if (image == null) return base64Encode(bytes);
 
@@ -104,10 +104,10 @@ class DocumentStorage {
   static const int maxChunkSize = 900 * 1024;
 
   static Future<Map<String, dynamic>> storeDocument(
-      Uint8List bytes,
-      String fileName,
-      String fileType,
-      ) async {
+    Uint8List bytes,
+    String fileName,
+    String fileType,
+  ) async {
     final originalSize = bytes.length;
 
     if (originalSize <= smallFileLimit) {
@@ -120,11 +120,11 @@ class DocumentStorage {
   }
 
   static Map<String, dynamic> _storeSmallFile(
-      Uint8List bytes,
-      String fileName,
-      String fileType,
-      int originalSize,
-      ) {
+    Uint8List bytes,
+    String fileName,
+    String fileType,
+    int originalSize,
+  ) {
     final base64Str = base64Encode(bytes);
     return {
       'name': fileName,
@@ -139,11 +139,11 @@ class DocumentStorage {
   }
 
   static Future<Map<String, dynamic>> _storeMediumFile(
-      Uint8List bytes,
-      String fileName,
-      String fileType,
-      int originalSize,
-      ) async {
+    Uint8List bytes,
+    String fileName,
+    String fileType,
+    int originalSize,
+  ) async {
     final isImage = ['jpg', 'jpeg', 'png'].contains(fileType.toLowerCase());
 
     if (isImage) {
@@ -182,11 +182,11 @@ class DocumentStorage {
   }
 
   static Future<Map<String, dynamic>> _storeLargeFile(
-      Uint8List bytes,
-      String fileName,
-      String fileType,
-      int originalSize,
-      ) async {
+    Uint8List bytes,
+    String fileName,
+    String fileType,
+    int originalSize,
+  ) async {
     final isImage = ['jpg', 'jpeg', 'png'].contains(fileType.toLowerCase());
 
     if (isImage) {
@@ -213,11 +213,11 @@ class DocumentStorage {
   }
 
   static Future<Map<String, dynamic>> _splitIntoChunks(
-      Uint8List bytes,
-      String fileName,
-      String fileType,
-      int originalSize,
-      ) async {
+    Uint8List bytes,
+    String fileName,
+    String fileType,
+    int originalSize,
+  ) async {
     final base64Str = base64Encode(bytes);
     final chunks = <String>[];
     final chunkSize = (maxChunkSize * 0.8).toInt();
@@ -256,19 +256,13 @@ class SupplierHomeScreen extends StatefulWidget {
 
 class _SupplierHomeScreenState extends State<SupplierHomeScreen> {
   int _selectedIndex = 0;
-  late final List<Widget> _pages;
   bool _showHelp = false;
+  final Set<int> _loadedTabs = {0};
 
   @override
   void initState() {
     super.initState();
     _checkHelpStatus();
-    _pages = <Widget>[
-      SupplierHome(type: widget.type, showHelp: () => _showHelp),
-      const QRScannerEnhanced(),
-      const MyAssetsScreen(),
-      const ProfileScreen(showFavorites: false),
-    ];
   }
 
   Future<void> _checkHelpStatus() async {
@@ -280,13 +274,37 @@ class _SupplierHomeScreenState extends State<SupplierHomeScreen> {
     }
   }
 
-  void _onTap(int idx) => setState(() => _selectedIndex = idx);
+  void _onTap(int idx) {
+    if (idx == 1) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const QRScannerEnhanced()),
+      );
+      return;
+    }
+    setState(() {
+      _loadedTabs.add(idx);
+      _selectedIndex = idx;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       //  appBar: AppBar(title: Text('${widget.type.capitalize()} Supplier')),
-      body: IndexedStack(index: _selectedIndex, children: _pages),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          SupplierHome(type: widget.type, showHelp: () => _showHelp),
+          const SizedBox(),
+          _loadedTabs.contains(2)
+              ? const MyAssetsScreen()
+              : const SizedBox.shrink(),
+          _loadedTabs.contains(3)
+              ? const ProfileScreen(showFavorites: false)
+              : const SizedBox.shrink(),
+        ],
+      ),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         currentIndex: _selectedIndex,
@@ -317,7 +335,7 @@ class SupplierHome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: context.appScaffold,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -341,17 +359,17 @@ class SupplierHome extends StatelessWidget {
               children: [
                 Text(
                   '${type.capitalize()} Supplier',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: Colors.black87,
+                    color: context.appTextPrimary,
                   ),
                 ),
-                const Text(
+                Text(
                   'My Assets',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.black45,
+                    color: context.appTextSecondary,
                     fontWeight: FontWeight.w400,
                   ),
                 ),
@@ -361,8 +379,10 @@ class SupplierHome extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.account_balance_wallet_outlined),
-            color: Colors.black54,
+            icon: Icon(
+              Icons.account_balance_wallet_outlined,
+              color: context.appTextPrimary,
+            ),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const WalletScreen()),
@@ -372,9 +392,9 @@ class SupplierHome extends StatelessWidget {
             stream: FirebaseFirestore.instance
                 .collection('notifications')
                 .where(
-              'receiverId',
-              isEqualTo: FirebaseAuth.instance.currentUser?.uid,
-            )
+                  'receiverId',
+                  isEqualTo: FirebaseAuth.instance.currentUser?.uid,
+                )
                 .where('isRead', isEqualTo: false)
                 .snapshots(),
             builder: (context, snapshot) {
@@ -384,8 +404,10 @@ class SupplierHome extends StatelessWidget {
                 isLabelVisible: unreadCount > 0,
                 offset: const Offset(-4, 4),
                 child: IconButton(
-                  icon: const Icon(Icons.notifications_outlined),
-                  color: Colors.black54,
+                  icon: Icon(
+                    Icons.notifications_outlined,
+                    color: context.appTextPrimary,
+                  ),
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -406,7 +428,7 @@ class SupplierHome extends StatelessWidget {
         children: [
           FloatingActionButton.small(
             heroTag: 'chat_fab',
-            backgroundColor: Colors.white,
+            backgroundColor: context.appSurface,
             foregroundColor: AppTheme.primaryStart,
             elevation: 2,
             child: const Icon(Icons.chat_bubble_outline_rounded),
@@ -447,10 +469,10 @@ class AssetManagementScreen extends StatelessWidget {
   const AssetManagementScreen({super.key, required this.type});
 
   void _showDistributeRentDialog(
-      BuildContext context,
-      String docId,
-      int propertyId,
-      ) {
+    BuildContext context,
+    String docId,
+    int propertyId,
+  ) {
     final TextEditingController _rentCtrl = TextEditingController();
     showDialog(
       context: context,
@@ -638,8 +660,8 @@ class AssetManagementScreen extends StatelessWidget {
             final rawTokenId = data['blockchainTokenId'];
             final tokenId = rawTokenId != null
                 ? (rawTokenId is int
-                ? rawTokenId
-                : int.tryParse(rawTokenId.toString()))
+                      ? rawTokenId
+                      : int.tryParse(rawTokenId.toString()))
                 : null;
             final isMinted = tokenId != null;
             final title = data['title'] ?? 'Untitled';
@@ -672,12 +694,12 @@ class AssetManagementScreen extends StatelessWidget {
                     ),
                     child: hasImage
                         ? Image.memory(
-                      base64Decode(images.first as String),
-                      width: double.infinity,
-                      height: 160,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _imageFallback(type),
-                    )
+                            base64Decode(images.first as String),
+                            width: double.infinity,
+                            height: 160,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _imageFallback(type),
+                          )
                         : _imageFallback(type),
                   ),
 
@@ -785,109 +807,111 @@ class AssetManagementScreen extends StatelessWidget {
                     padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                     child: type == 'land' && isMinted
                         ? Column(
-                      children: [
-                        // Row 1: Distribute Rent (full width)
-                        _actionButton(
-                          icon: Icons.monetization_on_rounded,
-                          label: 'Distribute Rent',
-                          color: Colors.amber[700]!,
-                          bgColor: Colors.amber[50]!,
-                          onTap: () => _showDistributeRentDialog(
-                            context,
-                            doc.id,
-                            tokenId,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        // Row 2: QR Code + Edit
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _actionButton(
-                                icon: Icons.qr_code_rounded,
-                                label: 'QR Code',
-                                color: AppTheme.primaryStart,
-                                bgColor: AppTheme.primaryStart.withOpacity(0.08),
-                                onTap: () => Navigator.push(
+                            children: [
+                              // Row 1: Distribute Rent (full width)
+                              _actionButton(
+                                icon: Icons.monetization_on_rounded,
+                                label: 'Distribute Rent',
+                                color: Colors.amber[700]!,
+                                bgColor: Colors.amber[50]!,
+                                onTap: () => _showDistributeRentDialog(
                                   context,
-                                  MaterialPageRoute(
-                                    builder: (_) => QRGeneratorScreen(
-                                      assetId: doc.id,
-                                      category: type,
-                                      blockchainTokenId: tokenId,
-                                      title: data['title'] ?? 'Asset',
-                                    ),
-                                  ),
+                                  doc.id,
+                                  tokenId,
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _actionButton(
-                                icon: Icons.edit_rounded,
-                                label: 'Edit',
-                                color: Colors.indigo[600]!,
-                                bgColor: Colors.indigo[50]!,
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => EditAssetScreen(
-                                      assetId: doc.id,
-                                      type: type,
+                              const SizedBox(height: 8),
+                              // Row 2: QR Code + Edit
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _actionButton(
+                                      icon: Icons.qr_code_rounded,
+                                      label: 'QR Code',
+                                      color: AppTheme.primaryStart,
+                                      bgColor: AppTheme.primaryStart
+                                          .withOpacity(0.08),
+                                      onTap: () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => QRGeneratorScreen(
+                                            assetId: doc.id,
+                                            category: type,
+                                            blockchainTokenId: tokenId,
+                                            title: data['title'] ?? 'Asset',
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _actionButton(
+                                      icon: Icons.edit_rounded,
+                                      label: 'Edit',
+                                      color: Colors.indigo[600]!,
+                                      bgColor: Colors.indigo[50]!,
+                                      onTap: () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => EditAssetScreen(
+                                            assetId: doc.id,
+                                            type: type,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    )
+                            ],
+                          )
                         : Column(
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _actionButton(
-                                icon: Icons.qr_code_rounded,
-                                label: 'QR Code',
-                                color: AppTheme.primaryStart,
-                                bgColor: AppTheme.primaryStart.withOpacity(0.08),
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => QRGeneratorScreen(
-                                      assetId: doc.id,
-                                      category: type,
-                                      blockchainTokenId: tokenId,
-                                      title: data['title'] ?? 'Asset',
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _actionButton(
+                                      icon: Icons.qr_code_rounded,
+                                      label: 'QR Code',
+                                      color: AppTheme.primaryStart,
+                                      bgColor: AppTheme.primaryStart
+                                          .withOpacity(0.08),
+                                      onTap: () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => QRGeneratorScreen(
+                                            assetId: doc.id,
+                                            category: type,
+                                            blockchainTokenId: tokenId,
+                                            title: data['title'] ?? 'Asset',
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _actionButton(
-                                icon: Icons.edit_rounded,
-                                label: 'Edit',
-                                color: Colors.indigo[600]!,
-                                bgColor: Colors.indigo[50]!,
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => EditAssetScreen(
-                                      assetId: doc.id,
-                                      type: type,
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _actionButton(
+                                      icon: Icons.edit_rounded,
+                                      label: 'Edit',
+                                      color: Colors.indigo[600]!,
+                                      bgColor: Colors.indigo[50]!,
+                                      onTap: () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => EditAssetScreen(
+                                            assetId: doc.id,
+                                            type: type,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
+                                ],
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                            ],
+                          ),
                   ),
                 ],
               ),
@@ -948,7 +972,6 @@ class AssetManagementScreen extends StatelessWidget {
       ),
     );
   }
-
 }
 
 // -----------------------------------------------------------------------------
@@ -982,8 +1005,8 @@ class _AssetFormState extends State<AssetForm> {
   bool _uploadingDocuments = false;
 
   // PKR → POL live conversion
-  double? _polRateInPkr;    // price of 1 POL in PKR
-  String _polDisplay = '';   // e.g. "≈ 0.23 POL"
+  double? _polRateInPkr; // price of 1 POL in PKR
+  String _polDisplay = ''; // e.g. "≈ 0.23 POL"
   bool _isFetchingRate = true; // false once fetch succeeds or fails
 
   // ✅ SAFE INITIALIZATION: Using .toString() to handle numeric or null values from Firestore
@@ -1037,23 +1060,22 @@ class _AssetFormState extends State<AssetForm> {
     try {
       // Step 1: get POL price in USDT from Binance (no key needed)
       final polRes = await http
-          .get(Uri.parse(
-        'https://api.binance.com/api/v3/ticker/price?symbol=POLUSDT',
-      ))
+          .get(
+            Uri.parse(
+              'https://api.binance.com/api/v3/ticker/price?symbol=POLUSDT',
+            ),
+          )
           .timeout(const Duration(seconds: 8));
 
       // Step 2: get USD → PKR rate from ExchangeRate-API (free, no key)
       final fxRes = await http
-          .get(Uri.parse(
-        'https://open.er-api.com/v6/latest/USD',
-      ))
+          .get(Uri.parse('https://open.er-api.com/v6/latest/USD'))
           .timeout(const Duration(seconds: 8));
 
       if (polRes.statusCode == 200 && fxRes.statusCode == 200) {
-        final polUsd =
-        double.parse(jsonDecode(polRes.body)['price'] as String);
-        final pkrPerUsd =
-        (jsonDecode(fxRes.body)['rates']['PKR'] as num).toDouble();
+        final polUsd = double.parse(jsonDecode(polRes.body)['price'] as String);
+        final pkrPerUsd = (jsonDecode(fxRes.body)['rates']['PKR'] as num)
+            .toDouble();
         final rate = polUsd * pkrPerUsd; // 1 POL in PKR
         if (mounted) {
           setState(() {
@@ -1071,9 +1093,11 @@ class _AssetFormState extends State<AssetForm> {
     // Fallback: CoinGecko free endpoint
     try {
       final res = await http
-          .get(Uri.parse(
-        'https://api.coingecko.com/api/v3/simple/price?ids=matic-network&vs_currencies=pkr',
-      ))
+          .get(
+            Uri.parse(
+              'https://api.coingecko.com/api/v3/simple/price?ids=matic-network&vs_currencies=pkr',
+            ),
+          )
           .timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -1243,8 +1267,9 @@ class _AssetFormState extends State<AssetForm> {
       out['model'] = _modelCtrl.text.trim();
       out['serial'] = identifier;
       out['serialNormalized'] = _normalizeDeviceIdentifier(identifier);
-      out['identifierType'] =
-          _validateImeiIdentifier(identifier) ? 'imei' : 'serial';
+      out['identifierType'] = _validateImeiIdentifier(identifier)
+          ? 'imei'
+          : 'serial';
       out['warranty'] = _warrantyCtrl.text.trim();
       out['condition'] = _condition;
     }
@@ -1293,13 +1318,13 @@ class _AssetFormState extends State<AssetForm> {
   }
 
   Widget _field(
-      TextEditingController ctrl,
-      String label,
-      IconData icon, {
-        TextInputType keyboardType = TextInputType.text,
-        int maxLines = 1,
-        String? Function(String?)? validator,
-      }) {
+    TextEditingController ctrl,
+    String label,
+    IconData icon, {
+    TextInputType keyboardType = TextInputType.text,
+    int maxLines = 1,
+    String? Function(String?)? validator,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
@@ -1324,7 +1349,10 @@ class _AssetFormState extends State<AssetForm> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: AppTheme.primaryStart, width: 1.5),
+            borderSide: const BorderSide(
+              color: AppTheme.primaryStart,
+              width: 1.5,
+            ),
           ),
           errorBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
@@ -1394,47 +1422,67 @@ class _AssetFormState extends State<AssetForm> {
                     padding: const EdgeInsets.only(bottom: 12),
                     child: TextFormField(
                       controller: _priceCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      style: const TextStyle(fontSize: 14, color: Colors.black87),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                      ),
                       validator: (v) =>
-                      double.tryParse(v?.replaceAll(',', '') ?? '') == null
+                          double.tryParse(v?.replaceAll(',', '') ?? '') == null
                           ? 'Enter a valid price'
                           : null,
                       decoration: InputDecoration(
                         labelText: 'Price (PKR)',
-                        labelStyle: TextStyle(fontSize: 13, color: Colors.grey[500]),
-                        prefixIcon: const Icon(Icons.sell_outlined, size: 18, color: AppTheme.primaryStart),
+                        labelStyle: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[500],
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.sell_outlined,
+                          size: 18,
+                          color: AppTheme.primaryStart,
+                        ),
                         // Live POL conversion badge on the right
                         suffix: _polDisplay.isNotEmpty
                             ? Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryStart.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: AppTheme.primaryStart.withOpacity(0.25),
-                            ),
-                          ),
-                          child: Text(
-                            _polDisplay,
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.primaryStart,
-                            ),
-                          ),
-                        )
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryStart.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: AppTheme.primaryStart.withOpacity(
+                                      0.25,
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  _polDisplay,
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.primaryStart,
+                                  ),
+                                ),
+                              )
                             : _isFetchingRate
                             ? const SizedBox(
-                          width: 10,
-                          height: 10,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1.5,
-                            color: AppTheme.primaryStart,
-                          ),
-                        )
+                                width: 10,
+                                height: 10,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.5,
+                                  color: AppTheme.primaryStart,
+                                ),
+                              )
                             : null,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 14,
+                        ),
                         filled: true,
                         fillColor: AppTheme.primaryLight,
                         enabledBorder: OutlineInputBorder(
@@ -1443,7 +1491,10 @@ class _AssetFormState extends State<AssetForm> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: AppTheme.primaryStart, width: 1.5),
+                          borderSide: const BorderSide(
+                            color: AppTheme.primaryStart,
+                            width: 1.5,
+                          ),
                         ),
                         errorBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
@@ -1451,7 +1502,10 @@ class _AssetFormState extends State<AssetForm> {
                         ),
                         focusedErrorBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: Colors.red, width: 1.5),
+                          borderSide: const BorderSide(
+                            color: Colors.red,
+                            width: 1.5,
+                          ),
                         ),
                       ),
                     ),
@@ -1473,11 +1527,20 @@ class _AssetFormState extends State<AssetForm> {
                       child: DropdownButtonFormField<String>(
                         value: _plotUnit,
                         items: const [
-                          DropdownMenuItem(value: 'marla', child: Text('Marla')),
-                          DropdownMenuItem(value: 'kanal', child: Text('Kanal')),
+                          DropdownMenuItem(
+                            value: 'marla',
+                            child: Text('Marla'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'kanal',
+                            child: Text('Kanal'),
+                          ),
                         ],
                         onChanged: (v) => setState(() => _plotUnit = v!),
-                        decoration: _dropdownDecoration('Plot Unit', Icons.straighten_rounded),
+                        decoration: _dropdownDecoration(
+                          'Plot Unit',
+                          Icons.straighten_rounded,
+                        ),
                       ),
                     ),
                     _field(
@@ -1536,7 +1599,10 @@ class _AssetFormState extends State<AssetForm> {
                           DropdownMenuItem(value: 'used', child: Text('Used')),
                         ],
                         onChanged: (v) => setState(() => _condition = v!),
-                        decoration: _dropdownDecoration('Condition', Icons.star_outline_rounded),
+                        decoration: _dropdownDecoration(
+                          'Condition',
+                          Icons.star_outline_rounded,
+                        ),
                       ),
                     ),
                   ],
@@ -1575,7 +1641,8 @@ class _AssetFormState extends State<AssetForm> {
                                 top: 4,
                                 right: 4,
                                 child: GestureDetector(
-                                  onTap: () => setState(() => _images.removeAt(i)),
+                                  onTap: () =>
+                                      setState(() => _images.removeAt(i)),
                                   child: Container(
                                     decoration: const BoxDecoration(
                                       color: Colors.black54,
@@ -1602,11 +1669,16 @@ class _AssetFormState extends State<AssetForm> {
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: _pickImages,
-                          icon: const Icon(Icons.photo_library_outlined, size: 18),
+                          icon: const Icon(
+                            Icons.photo_library_outlined,
+                            size: 18,
+                          ),
                           label: const Text('Gallery'),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppTheme.primaryStart,
-                            side: const BorderSide(color: AppTheme.primaryStart),
+                            side: const BorderSide(
+                              color: AppTheme.primaryStart,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -1622,7 +1694,9 @@ class _AssetFormState extends State<AssetForm> {
                           label: const Text('Camera'),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppTheme.primaryStart,
-                            side: const BorderSide(color: AppTheme.primaryStart),
+                            side: const BorderSide(
+                              color: AppTheme.primaryStart,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -1650,7 +1724,7 @@ class _AssetFormState extends State<AssetForm> {
                       style: TextStyle(fontSize: 13, color: Colors.grey[500]),
                     ),
                   ..._documents.map(
-                        (d) => Container(
+                    (d) => Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
@@ -1709,16 +1783,18 @@ class _AssetFormState extends State<AssetForm> {
                       onPressed: _uploadingDocuments ? null : _pickDocuments,
                       icon: _uploadingDocuments
                           ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppTheme.primaryStart,
-                        ),
-                      )
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppTheme.primaryStart,
+                              ),
+                            )
                           : const Icon(Icons.attach_file, size: 18),
                       label: Text(
-                        _uploadingDocuments ? 'Uploading...' : 'Attach Documents',
+                        _uploadingDocuments
+                            ? 'Uploading...'
+                            : 'Attach Documents',
                       ),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppTheme.primaryStart,
@@ -1817,8 +1893,8 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
     if (widget.type != 'electronics') return null;
 
     final rawIdentifier = (data['serial'] as String? ?? '').trim();
-    final normalizedIdentifier =
-        (data['serialNormalized'] as String? ?? '').trim();
+    final normalizedIdentifier = (data['serialNormalized'] as String? ?? '')
+        .trim();
 
     if (rawIdentifier.isEmpty || normalizedIdentifier.isEmpty) {
       throw Exception('Serial / IMEI is required for electronics assets.');
@@ -1871,19 +1947,15 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         }
       }
 
-      tx.set(
-        ref,
-        {
-          'rawValue': rawIdentifier,
-          'normalizedValue': normalizedIdentifier,
-          'identifierType': data['identifierType'],
-          'category': 'electronics',
-          'supplierId': auth.currentUser!.uid,
-          'status': 'reserved',
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      tx.set(ref, {
+        'rawValue': rawIdentifier,
+        'normalizedValue': normalizedIdentifier,
+        'identifierType': data['identifierType'],
+        'category': 'electronics',
+        'supplierId': auth.currentUser!.uid,
+        'status': 'reserved',
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
     });
 
     return normalizedIdentifier;
@@ -1971,7 +2043,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
             // Update the firestore data structure with IPFS links
             final fsDocs = data['documents'] as List<Map<String, dynamic>>;
             final match = fsDocs.firstWhere(
-                  (d) => d['name'] == doc['name'],
+              (d) => d['name'] == doc['name'],
               orElse: () => {},
             );
             if (match.isNotEmpty) {
@@ -2037,7 +2109,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
       // STEP 6: MINT ON BLOCKCHAIN
       // ---------------------------------------------------------
       setState(
-            () => _statusMessage = 'Please Confirm Transaction in Wallet...',
+        () => _statusMessage = 'Please Confirm Transaction in Wallet...',
       );
       String? txHash;
 
@@ -2104,7 +2176,8 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         'blockchainTokenId': newTokenId, // ← now correctly saved
         'ipfsMetadataHash': metadataHash,
         'isMinted': true,
-        'isForSale': false, // ← supplier must explicitly list for sale from inventory
+        'isForSale':
+            false, // ← supplier must explicitly list for sale from inventory
         'verified': false, // ← pending admin approval
         'isListedForResale': false,
         'createdAt': FieldValue.serverTimestamp(),
@@ -2181,7 +2254,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        backgroundColor: AppTheme.background,
+        backgroundColor: context.appScaffold,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -2189,8 +2262,8 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
           leading: const SizedBox(),
           title: Text(
             'Add ${widget.type.capitalize()}',
-            style: const TextStyle(
-              color: Colors.black87,
+            style: TextStyle(
+              color: context.appTextPrimary,
               fontSize: 17,
               fontWeight: FontWeight.w600,
             ),
@@ -2217,10 +2290,10 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
                 const SizedBox(height: 28),
                 Text(
                   _statusMessage,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
-                    color: Colors.black87,
+                    color: context.appTextPrimary,
                     height: 1.5,
                   ),
                   textAlign: TextAlign.center,
@@ -2228,7 +2301,10 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
                 const SizedBox(height: 10),
                 Text(
                   'Please do not close this screen',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: context.appTextSecondary,
+                  ),
                 ),
               ],
             ),
@@ -2238,7 +2314,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: context.appScaffold,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -2692,55 +2768,55 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                     child: Column(
                       children: widget.type == 'electronics'
                           ? [
-                        _lockedField(
-                          'Brand',
-                          d['brand']?.toString(),
-                          Icons.business_outlined,
-                        ),
-                        _lockedField(
-                          'Model',
-                          d['model']?.toString(),
-                          Icons.phone_android_outlined,
-                        ),
-                        _lockedField(
-                          'Serial / IMEI',
-                          d['serial']?.toString(),
-                          Icons.tag_outlined,
-                        ),
-                        _lockedField(
-                          'Warranty',
-                          d['warranty']?.toString(),
-                          Icons.shield_outlined,
-                        ),
-                        _lockedField(
-                          'Condition',
-                          d['condition']?.toString(),
-                          Icons.star_outline,
-                        ),
-                      ]
+                              _lockedField(
+                                'Brand',
+                                d['brand']?.toString(),
+                                Icons.business_outlined,
+                              ),
+                              _lockedField(
+                                'Model',
+                                d['model']?.toString(),
+                                Icons.phone_android_outlined,
+                              ),
+                              _lockedField(
+                                'Serial / IMEI',
+                                d['serial']?.toString(),
+                                Icons.tag_outlined,
+                              ),
+                              _lockedField(
+                                'Warranty',
+                                d['warranty']?.toString(),
+                                Icons.shield_outlined,
+                              ),
+                              _lockedField(
+                                'Condition',
+                                d['condition']?.toString(),
+                                Icons.star_outline,
+                              ),
+                            ]
                           : [
-                        _lockedField(
-                          'Location / Title',
-                          d['title']?.toString(),
-                          Icons.location_on_outlined,
-                        ),
-                        _lockedField(
-                          'City',
-                          d['city']?.toString(),
-                          Icons.location_city_outlined,
-                        ),
-                        _lockedField(
-                          'Plot Area',
-                          '${d['plotArea']} ${d['plotUnit'] ?? ''}'
-                              .trim(),
-                          Icons.square_foot_outlined,
-                        ),
-                        _lockedField(
-                          'Total Fractions',
-                          d['totalFractions']?.toString(),
-                          Icons.pie_chart_outline,
-                        ),
-                      ],
+                              _lockedField(
+                                'Location / Title',
+                                d['title']?.toString(),
+                                Icons.location_on_outlined,
+                              ),
+                              _lockedField(
+                                'City',
+                                d['city']?.toString(),
+                                Icons.location_city_outlined,
+                              ),
+                              _lockedField(
+                                'Plot Area',
+                                '${d['plotArea']} ${d['plotUnit'] ?? ''}'
+                                    .trim(),
+                                Icons.square_foot_outlined,
+                              ),
+                              _lockedField(
+                                'Total Fractions',
+                                d['totalFractions']?.toString(),
+                                Icons.pie_chart_outline,
+                              ),
+                            ],
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -2860,7 +2936,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                                     right: 4,
                                     child: GestureDetector(
                                       onTap: () => setState(
-                                            () => _newImages.removeAt(i),
+                                        () => _newImages.removeAt(i),
                                       ),
                                       child: Container(
                                         decoration: const BoxDecoration(
@@ -2889,9 +2965,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                         label: const Text('Add Images'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppTheme.primaryStart,
-                          side: const BorderSide(
-                            color: AppTheme.primaryStart,
-                          ),
+                          side: const BorderSide(color: AppTheme.primaryStart),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
@@ -2918,7 +2992,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                           ),
                         ),
                       ..._documents.map(
-                            (doc) => Container(
+                        (doc) => Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -2963,9 +3037,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                         label: const Text('Attach Documents'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppTheme.primaryStart,
-                          side: const BorderSide(
-                            color: AppTheme.primaryStart,
-                          ),
+                          side: const BorderSide(color: AppTheme.primaryStart),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
@@ -2989,12 +3061,12 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                     boxShadow: _saving
                         ? []
                         : [
-                      BoxShadow(
-                        color: AppTheme.primaryStart.withOpacity(0.35),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                            BoxShadow(
+                              color: AppTheme.primaryStart.withOpacity(0.35),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                   ),
                   child: Material(
                     color: Colors.transparent,
@@ -3004,32 +3076,32 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                       child: Center(
                         child: _saving
                             ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Colors.white,
-                          ),
-                        )
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: Colors.white,
+                                ),
+                              )
                             : const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.save_outlined,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                            SizedBox(width: 10),
-                            Text(
-                              'Save Changes',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.save_outlined,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'Save Changes',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        ),
                       ),
                     ),
                   ),

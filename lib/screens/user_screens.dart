@@ -38,6 +38,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   String _landMode = "sale"; // 'sale' or 'rent'
   String _search = "";
   Map<String, dynamic> _filters = {};
+  final Set<int> _loadedTabs = {0};
 
   final GlobalKey _chatKey = GlobalKey();
   final GlobalKey _searchKey = GlobalKey();
@@ -84,93 +85,107 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       );
       return;
     }
-    setState(() => _index = i);
+    setState(() {
+      _loadedTabs.add(i);
+      _index = i;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final surfaceColor = context.appSurface;
+    final textPrimary = context.appTextPrimary;
+    final textSecondary = context.appTextSecondary;
+
     return Scaffold(
       appBar: _index == 3
           ? null
           : _index == 2
           ? AppBar(
-        backgroundColor: AppTheme.primaryStart,
-        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
-        leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: Colors.white),
-          onPressed: () => setState(() => _index = 0),
-        ),
-        title: Text("My Assets", style: AppTheme.heading(20, color: Colors.white)),
-      )
-          : AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.asset('assets/logos.png', fit: BoxFit.cover),
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(
-              Icons.account_balance_wallet_outlined,
-              color: AppTheme.textPrimary,
-            ),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const WalletScreen()),
-            ),
-          ),
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('notifications')
-                .where(
-              'receiverId',
-              isEqualTo: FirebaseAuth.instance.currentUser?.uid,
+              backgroundColor: AppTheme.primaryStart,
+              flexibleSpace: Container(
+                decoration: const BoxDecoration(
+                  gradient: AppTheme.primaryGradient,
+                ),
+              ),
+              leading: IconButton(
+                icon: const Icon(Icons.chevron_left, color: Colors.white),
+                onPressed: () => setState(() => _index = 0),
+              ),
+              title: Text(
+                "My Assets",
+                style: AppTheme.heading(20, color: Colors.white),
+              ),
             )
-                .where('isRead', isEqualTo: false)
-                .snapshots(),
-            builder: (context, snapshot) {
-              final unreadCount = snapshot.data?.docs.length ?? 0;
-              return Badge(
-                label: Text(unreadCount.toString()),
-                isLabelVisible: unreadCount > 0,
-                offset: const Offset(-4, 4),
-                child: IconButton(
-                  icon: const Icon(
-                    Icons.notifications_none_rounded,
-                    color: AppTheme.textPrimary,
+          : AppBar(
+              backgroundColor: surfaceColor,
+              elevation: 0,
+              leading: Padding(
+                padding: const EdgeInsets.all(8),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset('assets/logos.png', fit: BoxFit.cover),
+                ),
+              ),
+              actions: [
+                IconButton(
+                  icon: Icon(
+                    Icons.account_balance_wallet_outlined,
+                    color: textPrimary,
                   ),
                   onPressed: () => Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => const NotificationsScreen(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const WalletScreen()),
                   ),
                 ),
-              );
-            },
-          ),
-        ],
-      ),
+                StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('notifications')
+                      .where(
+                        'receiverId',
+                        isEqualTo: FirebaseAuth.instance.currentUser?.uid,
+                      )
+                      .where('isRead', isEqualTo: false)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    final unreadCount = snapshot.data?.docs.length ?? 0;
+                    return Badge(
+                      label: Text(unreadCount.toString()),
+                      isLabelVisible: unreadCount > 0,
+                      offset: const Offset(-4, 4),
+                      child: IconButton(
+                        icon: Icon(
+                          Icons.notifications_none_rounded,
+                          color: textPrimary,
+                        ),
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const NotificationsScreen(),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
       floatingActionButton: _index == 0
           ? FloatingActionButton(
-        heroTag: 'chat_fab',
-        child: const Icon(Icons.chat),
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ChatListScreen()),
-        ),
-      )
+              heroTag: 'chat_fab',
+              child: const Icon(Icons.chat),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ChatListScreen()),
+              ),
+            )
           : null,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
         onTap: _nav,
         type: BottomNavigationBarType.fixed,
         selectedItemColor: AppTheme.primaryStart,
-        unselectedItemColor: Colors.grey,
+        unselectedItemColor: textSecondary,
         selectedLabelStyle: AppTheme.body(12, weight: FontWeight.w700),
         unselectedLabelStyle: AppTheme.body(12),
         items: [
@@ -183,7 +198,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             icon: Icon(Icons.inventory),
             label: "My Assets",
           ),
-          const BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: "Profile",
+          ),
         ],
       ),
       body: IndexedStack(
@@ -191,8 +209,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         children: [
           _mainMarketplaceBody(),
           const SizedBox(), // Placeholder for Scan (handled by nav)
-          const MyAssetsScreen(),
-          ProfileScreen(),
+          _loadedTabs.contains(2)
+              ? const MyAssetsScreen()
+              : const SizedBox.shrink(),
+          _loadedTabs.contains(3)
+              ? const ProfileScreen()
+              : const SizedBox.shrink(),
         ],
       ),
     );
@@ -214,7 +236,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
             child: Text(
               headline,
-              style: AppTheme.heading(28, color: AppTheme.textPrimary).copyWith(height: 1.25),
+              style: AppTheme.heading(
+                28,
+                color: context.appTextPrimary,
+              ).copyWith(height: 1.25),
             ),
           ),
 
@@ -227,22 +252,28 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   child: Container(
                     height: 50,
                     decoration: BoxDecoration(
-                      color: AppTheme.background,
+                      color: context.appSurface,
                       borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: context.appBorder),
                     ),
                     child: TextField(
                       onChanged: (v) =>
                           setState(() => _search = v.trim().toLowerCase()),
                       decoration: InputDecoration(
                         hintText: 'Search your home...',
-                        hintStyle: AppTheme.body(14, color: AppTheme.textMid),
+                        hintStyle: AppTheme.body(
+                          14,
+                          color: context.appTextMuted,
+                        ),
                         prefixIcon: Icon(
                           Icons.search,
-                          color: AppTheme.textMid,
+                          color: context.appTextMuted,
                           size: 20,
                         ),
                         border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 15),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 15,
+                        ),
                       ),
                     ),
                   ),
@@ -303,7 +334,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               children: [
                 Text(
                   latestLabel,
-                  style: AppTheme.heading(18, color: AppTheme.textPrimary),
+                  style: AppTheme.heading(18, color: context.appTextPrimary),
                 ),
                 TextButton(
                   onPressed: () {},
@@ -334,19 +365,19 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
-              children: const [
-                Icon(
+              children: [
+                const Icon(
                   Icons.list_alt_rounded,
                   size: 20,
                   color: Color(0xFF1A4F5C),
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Text(
                   'Listing',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
+                    color: context.appTextPrimary,
                   ),
                 ),
               ],
@@ -370,12 +401,15 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       height: 48,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppTheme.surface,
+        color: context.appSurface,
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: context.appBorder),
       ),
       child: Row(
         children: [
-          Expanded(child: _landModeBtn('sale', 'For Sale', Icons.sell_outlined)),
+          Expanded(
+            child: _landModeBtn('sale', 'For Sale', Icons.sell_outlined),
+          ),
           Expanded(child: _landModeBtn('rent', 'For Rent', Icons.key_outlined)),
         ],
       ),
@@ -384,22 +418,25 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   Widget _landModeBtn(String value, String label, IconData icon) {
     final selected = _landMode == value;
+    final selectedColor = context.isDarkMode
+        ? Colors.white
+        : AppTheme.primaryStart;
     return GestureDetector(
       onTap: () => setState(() => _landMode = value),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
         curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
-          color: selected ? Colors.white : Colors.transparent,
+          color: selected ? context.appSurfaceAlt : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
           boxShadow: selected
               ? [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            )
-          ]
+                  BoxShadow(
+                    color: context.appShadow,
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
               : null,
         ),
         child: Center(
@@ -409,14 +446,14 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               Icon(
                 icon,
                 size: 16,
-                color: selected ? AppTheme.primaryStart : AppTheme.textSecondary,
+                color: selected ? selectedColor : context.appTextSecondary,
               ),
               const SizedBox(width: 8),
               Text(
                 label,
                 style: AppTheme.heading(
                   14,
-                  color: selected ? AppTheme.primaryStart : AppTheme.textSecondary,
+                  color: selected ? selectedColor : context.appTextSecondary,
                 ),
               ),
             ],
@@ -437,8 +474,11 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? AppTheme.primaryStart : AppTheme.background,
+          color: selected ? AppTheme.primaryStart : context.appSurfaceMuted,
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? AppTheme.primaryStart : context.appBorder,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -446,12 +486,15 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             Icon(
               icon,
               size: 15,
-              color: selected ? Colors.white : Colors.grey[600],
+              color: selected ? Colors.white : context.appTextSecondary,
             ),
             const SizedBox(width: 6),
             Text(
               label,
-              style: AppTheme.heading(13, color: selected ? Colors.white : AppTheme.textPrimary),
+              style: AppTheme.heading(
+                13,
+                color: selected ? Colors.white : context.appTextPrimary,
+              ),
             ),
           ],
         ),
@@ -506,18 +549,18 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
         .snapshots()
         .listen(
           (snap) {
-        _snap1 = snap;
-        _mergeAndSetState();
-      },
-      onError: (e) {
-        if (mounted) {
-          setState(() {
-            _assetsError = e.toString();
-            _assetsLoading = false;
-          });
-        }
-      },
-    );
+            _snap1 = snap;
+            _mergeAndSetState();
+          },
+          onError: (e) {
+            if (mounted) {
+              setState(() {
+                _assetsError = e.toString();
+                _assetsLoading = false;
+              });
+            }
+          },
+        );
 
     // Query 3 — fractional holdings (for bought land)
     _sub3 = db
@@ -525,12 +568,10 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
         .where('userId', isEqualTo: uid)
         .where('fractionsOwned', isGreaterThan: 0)
         .snapshots()
-        .listen(
-          (snap) async {
-        _snap3 = snap;
-        _mergeAndSetState();
-      },
-    );
+        .listen((snap) async {
+          _snap3 = snap;
+          _mergeAndSetState();
+        });
   }
 
   void _mergeAndSetState() async {
@@ -591,7 +632,6 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
       // or we scan a range if possible.
       // But based on Problem 7, we'll just implement a manual "Restore by ID" for now.
       _showRestoreDialog();
-
     } catch (e) {
       _showSnack('Sync error: $e');
     } finally {
@@ -627,19 +667,26 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Enter the Blockchain Token ID or Property ID to restore from chain.'),
+            const Text(
+              'Enter the Blockchain Token ID or Property ID to restore from chain.',
+            ),
             TextField(
               controller: idCtrl,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(labelText: 'Token/Property ID'),
             ),
             const SizedBox(height: 10),
-            const Text('Note: This will recreate the record if you deleted it from the app.',
-                style: TextStyle(fontSize: 11, color: Colors.grey)),
+            const Text(
+              'Note: This will recreate the record if you deleted it from the app.',
+              style: TextStyle(fontSize: 11, color: Colors.grey),
+            ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
           ElevatedButton(
             onPressed: () async {
               final id = int.tryParse(idCtrl.text);
@@ -648,8 +695,16 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
 
               setState(() => _loading = true);
               // Try restoring as electronics first, then land
-              await _blockchain.restoreAssetFromBlockchain(type: 'electronics', tokenId: id, firestore: db);
-              await _blockchain.restoreAssetFromBlockchain(type: 'land', tokenId: id, firestore: db);
+              await _blockchain.restoreAssetFromBlockchain(
+                type: 'electronics',
+                tokenId: id,
+                firestore: db,
+              );
+              await _blockchain.restoreAssetFromBlockchain(
+                type: 'land',
+                tokenId: id,
+                firestore: db,
+              );
               setState(() => _loading = false);
 
               _showSnack('Restoration process complete. Check your list.');
@@ -726,9 +781,9 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
 
   // FIX #3 — double-tap guard + FIX #4 — removed redundant inner const Color
   Future<void> _listForResale(
-      String assetId,
-      Map<String, dynamic> asset,
-      ) async {
+    String assetId,
+    Map<String, dynamic> asset,
+  ) async {
     if (_listingInProgress) return;
     if (mounted) setState(() => _listingInProgress = true);
     try {
@@ -766,7 +821,10 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Remove', style: AppTheme.button(14, color: Colors.white)),
+            child: Text(
+              'Remove',
+              style: AppTheme.button(14, color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -876,11 +934,12 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
           margin: const EdgeInsets.symmetric(horizontal: 24),
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: context.appSurface,
             borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: context.appBorder),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: context.appShadow,
                 blurRadius: 18,
                 offset: const Offset(0, 8),
               ),
@@ -893,7 +952,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                 width: 72,
                 height: 72,
                 decoration: BoxDecoration(
-                  color: AppTheme.surface,
+                  color: context.appSurfaceMuted,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Icon(
@@ -905,13 +964,13 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
               const SizedBox(height: 16),
               Text(
                 "No assets owned yet",
-                style: AppTheme.heading(16, color: AppTheme.textPrimary),
+                style: AppTheme.heading(16, color: context.appTextPrimary),
               ),
               const SizedBox(height: 6),
               Text(
                 "Assets you buy or receive will appear here.",
                 textAlign: TextAlign.center,
-                style: AppTheme.body(13, color: AppTheme.textMid),
+                style: AppTheme.body(13, color: context.appTextSecondary),
               ),
               const SizedBox(height: 12),
               TextButton(
@@ -927,7 +986,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: context.appScaffold,
       appBar: AppBar(
         title: const Text('My Digital Goods'),
         actions: [
@@ -970,11 +1029,12 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
             child: Container(
               margin: const EdgeInsets.only(bottom: 18),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: context.appSurface,
                 borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: context.appBorder),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
+                    color: context.appShadow,
                     blurRadius: 18,
                     offset: const Offset(0, 8),
                   ),
@@ -1016,10 +1076,10 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                 children: [
                                   Text(
                                     title,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w700,
-                                      color: AppTheme.textPrimary,
+                                      color: context.appTextPrimary,
                                     ),
                                   ),
                                   const SizedBox(height: 6),
@@ -1028,7 +1088,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                         ? 'Fractional Land Ownership'
                                         : 'Electronic Device',
                                     style: TextStyle(
-                                      color: Colors.grey[600],
+                                      color: context.appTextMuted,
                                       fontSize: 13,
                                       fontWeight: FontWeight.w500,
                                     ),
@@ -1053,13 +1113,16 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                 borderRadius: BorderRadius.circular(18),
                                 boxShadow: isSyncing || tokenId != null
                                     ? [
-                                  BoxShadow(
-                                    color: (isSyncing ? Colors.orange.shade600 : AppTheme.primaryStart)
-                                        .withOpacity(0.18),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ]
+                                        BoxShadow(
+                                          color:
+                                              (isSyncing
+                                                      ? Colors.orange.shade600
+                                                      : AppTheme.primaryStart)
+                                                  .withOpacity(0.18),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ]
                                     : null,
                               ),
                               child: Row(
@@ -1067,8 +1130,12 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                 children: [
                                   if (isSyncing)
                                     const SizedBox(
-                                      width: 14, height: 14,
-                                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ),
                                     )
                                   else
                                     Icon(
@@ -1086,9 +1153,14 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                         ? 'Syncing...'
                                         : (asset['verified'] == true)
                                         ? 'Verified'
-                                        : (tokenId != null ? 'Minted' : 'Pending'),
+                                        : (tokenId != null
+                                              ? 'Minted'
+                                              : 'Pending'),
                                     style: TextStyle(
-                                      color: (isSyncing || tokenId != null || asset['verified'] == true)
+                                      color:
+                                          (isSyncing ||
+                                              tokenId != null ||
+                                              asset['verified'] == true)
                                           ? Colors.white
                                           : Colors.grey.shade700,
                                       fontSize: 11,
@@ -1177,17 +1249,17 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                 ElevatedButton.icon(
                                   icon: _loading
                                       ? const SizedBox(
-                                    width: 14,
-                                    height: 14,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
                                       : const Icon(
-                                    Icons.monetization_on,
-                                    size: 15,
-                                  ),
+                                          Icons.monetization_on,
+                                          size: 15,
+                                        ),
                                   label: const Text(
                                     'Claim Rent',
                                     style: TextStyle(fontSize: 12),
@@ -1201,7 +1273,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                     ),
                                     minimumSize: const Size(0, 38),
                                     tapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
+                                        MaterialTapTargetSize.shrinkWrap,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(14),
                                     ),
@@ -1240,7 +1312,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                          CrossAxisAlignment.start,
                                       children: [
                                         const Text(
                                           'Warranty Activated',
@@ -1288,10 +1360,10 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
   // ── Resale action row ─────────────────────────────────────────────────────
   // FIX #1 — added tokenId parameter; shows "Pending NFT" when not minted
   Widget _buildResaleRow(
-      String assetId,
-      Map<String, dynamic> asset,
-      int? tokenId, // ← NEW parameter
-      ) {
+    String assetId,
+    Map<String, dynamic> asset,
+    int? tokenId, // ← NEW parameter
+  ) {
     final isListed = asset['isListedForResale'] == true;
     final resalePrice = asset['resalePrice'];
     // NFT must be minted before the asset can be listed for resale
@@ -1333,7 +1405,7 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
 
           // FIX #1 — three-branch decision tree
           if (!canList)
-          // NFT not yet minted — disable resale quietly
+            // NFT not yet minted — disable resale quietly
             Tooltip(
               message: 'NFT must be minted before listing',
               child: Row(
@@ -1494,7 +1566,7 @@ class _LatestAssetsRow extends StatelessWidget {
             final price = data['price'] ?? 0;
             final isResale =
                 data['isListedForResale'] == true &&
-                    data['previousOwnerId'] != null;
+                data['previousOwnerId'] != null;
 
             return GestureDetector(
               onTap: () => Navigator.push(
@@ -1538,10 +1610,7 @@ class _LatestAssetsRow extends StatelessWidget {
                           Positioned(
                             top: 8,
                             right: 8,
-                            child: FavoriteButton(
-                              assetId: doc.id,
-                              size: 14,
-                            ),
+                            child: FavoriteButton(assetId: doc.id, size: 14),
                           ),
                         ],
                       ),
@@ -1726,9 +1795,9 @@ class AssetListView extends StatelessWidget {
         final filtered = docs
             .where(
               (e) =>
-          _matchesFilters(e.data() as Map<String, dynamic>) &&
-              _matchesSearch(e.data() as Map<String, dynamic>),
-        )
+                  _matchesFilters(e.data() as Map<String, dynamic>) &&
+                  _matchesSearch(e.data() as Map<String, dynamic>),
+            )
             .toList();
 
         final currentUid = FirebaseAuth.instance.currentUser?.uid;
@@ -1787,11 +1856,7 @@ class FavoriteButton extends StatefulWidget {
   final String assetId;
   final double size;
 
-  const FavoriteButton({
-    super.key,
-    required this.assetId,
-    this.size = 16,
-  });
+  const FavoriteButton({super.key, required this.assetId, this.size = 16});
 
   @override
   State<FavoriteButton> createState() => _FavoriteButtonState();
@@ -1850,17 +1915,17 @@ class _FavoriteButtonState extends State<FavoriteButton> {
         ),
         child: _loading
             ? Padding(
-          padding: const EdgeInsets.all(4),
-          child: CircularProgressIndicator(
-            strokeWidth: 1.5,
-            color: Color(0xFF1A4F5C),
-          ),
-        )
+                padding: const EdgeInsets.all(4),
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: Color(0xFF1A4F5C),
+                ),
+              )
             : Icon(
-          _isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-          size: widget.size,
-          color: _isFav ? Colors.red : const Color(0xFF1A4F5C),
-        ),
+                _isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                size: widget.size,
+                color: _isFav ? Colors.red : const Color(0xFF1A4F5C),
+              ),
       ),
     );
   }
@@ -1967,10 +2032,7 @@ class AssetGridCard extends StatelessWidget {
                   Positioned(
                     top: 8,
                     right: 8,
-                    child: FavoriteButton(
-                      assetId: id,
-                      size: 16,
-                    ),
+                    child: FavoriteButton(assetId: id, size: 16),
                   ),
                 ],
               ),
@@ -2216,13 +2278,13 @@ class _FilterSheetState extends State<FilterSheet> {
                   children: _cities
                       .map(
                         (c) => _selectChip(
-                      label: c,
-                      selected: _selectedCity == c,
-                      onTap: () => setState(
+                          label: c,
+                          selected: _selectedCity == c,
+                          onTap: () => setState(
                             () => _selectedCity = _selectedCity == c ? null : c,
-                      ),
-                    ),
-                  )
+                          ),
+                        ),
+                      )
                       .toList(),
                 ),
                 const SizedBox(height: 20),
@@ -2236,14 +2298,14 @@ class _FilterSheetState extends State<FilterSheet> {
                     children: _areas
                         .map(
                           (a) => _selectChip(
-                        label: a,
-                        selected: _selectedArea == a,
-                        onTap: () => setState(
+                            label: a,
+                            selected: _selectedArea == a,
+                            onTap: () => setState(
                               () =>
-                          _selectedArea = _selectedArea == a ? null : a,
-                        ),
-                      ),
-                    )
+                                  _selectedArea = _selectedArea == a ? null : a,
+                            ),
+                          ),
+                        )
                         .toList(),
                   ),
                   const SizedBox(height: 20),

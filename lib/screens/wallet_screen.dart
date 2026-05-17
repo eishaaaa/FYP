@@ -12,6 +12,7 @@ import '../blockchain/contract_config.dart';
 import '../blockchain/explorer_service.dart';
 import '../screens/transaction_model.dart';
 import '../services/push_notification_service.dart';
+import '../theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 // ─── Design Tokens ──────────────────────────────────────────
@@ -21,13 +22,25 @@ const kTealLight = Color(0xFFE8F4F4);
 const kTealAccent = Color(0xFF3AAFA9);
 
 // ─── Card decoration helper ─────────────────────────────────
-BoxDecoration _card({double radius = 20, Color? border}) => BoxDecoration(
-  color: Colors.white,
+BoxDecoration _card(
+  BuildContext context, {
+  double radius = 20,
+  Color? border,
+}) => BoxDecoration(
+  color: context.appSurface,
   borderRadius: BorderRadius.circular(radius),
-  border: Border.all(color: border ?? const Color(0xFFCAE8E8), width: 1),
+  border: Border.all(color: border ?? context.appBorder, width: 1),
   boxShadow: [
-    BoxShadow(color: kTeal.withOpacity(0.06), blurRadius: 20, offset: const Offset(0, 4)),
-    BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 1)),
+    BoxShadow(
+      color: kTeal.withOpacity(0.06),
+      blurRadius: 20,
+      offset: const Offset(0, 4),
+    ),
+    BoxShadow(
+      color: context.appShadow,
+      blurRadius: 4,
+      offset: const Offset(0, 1),
+    ),
   ],
 );
 
@@ -39,7 +52,8 @@ class _PolygonIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: size, height: size,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: const LinearGradient(
@@ -76,18 +90,18 @@ class _WalletScreenState extends State<WalletScreen>
     with SingleTickerProviderStateMixin {
   // ─── Services ───────────────────────────────────────────
   final SimpleWalletService _walletService = SimpleWalletService();
-  final FirebaseAuth        _auth          = FirebaseAuth.instance;
-  final FirebaseFirestore   _firestore     = FirebaseFirestore.instance;
-  final ExplorerService     _explorer      = ExplorerService();
-  late  Web3Client          _client;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final ExplorerService _explorer = ExplorerService();
+  late Web3Client _client;
 
   // ─── State ──────────────────────────────────────────────
   String? _address;
   String? _userName;
-  double  _balance     = 0.0;
-  bool    _connecting  = false;
-  bool    _loading     = false;
-  bool    _hideBalance = false;
+  double _balance = 0.0;
+  bool _connecting = false;
+  bool _loading = false;
+  bool _hideBalance = false;
 
   // Tracks hashes already notified so we don't re-fire on every refresh
   final Set<String> _seenTxHashes = {};
@@ -107,19 +121,19 @@ class _WalletScreenState extends State<WalletScreen>
   Map<String, Map<String, dynamic>> _assetById = {};
 
   // Counts shown in the stats cards
-  int _txCount  = 0; // send/receive transactions
+  int _txCount = 0; // send/receive transactions
   int _nftCount = 0; // currently owned NFTs (from assets collection)
 
   late AnimationController _pulseCtrl;
-  late Animation<double>   _pulseAnim;
+  late Animation<double> _pulseAnim;
 
   // ─── Polygon Amoy network ────────────────────────────────
   static final _amoyNetwork = ReownAppKitModalNetworkInfo(
-    name:          'Polygon Amoy',
-    chainId:       '80002',
-    currency:      'POL',
-    rpcUrl:        ContractConfig.rpcUrl,
-    explorerUrl:   'https://amoy.polygonscan.com',
+    name: 'Polygon Amoy',
+    chainId: '80002',
+    currency: 'POL',
+    rpcUrl: ContractConfig.rpcUrl,
+    explorerUrl: 'https://amoy.polygonscan.com',
     isTestNetwork: true,
   );
 
@@ -133,10 +147,13 @@ class _WalletScreenState extends State<WalletScreen>
     _checkExistingConnection();
 
     _pulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(seconds: 2))
-      ..repeat(reverse: true);
-    _pulseAnim = Tween<double>(begin: 0.7, end: 1.0).animate(
-        CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(
+      begin: 0.7,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!_walletService.isInitialized) await _walletService.init(context);
@@ -178,8 +195,10 @@ class _WalletScreenState extends State<WalletScreen>
   // ════════════════════════════════════════════════════════
   Future<void> _enforceAmoyNetwork() async {
     try {
-      await _walletService.appKitModal
-          .selectChain(_amoyNetwork, switchChain: true);
+      await _walletService.appKitModal.selectChain(
+        _amoyNetwork,
+        switchChain: true,
+      );
     } catch (e) {
       debugPrint("⚠️ Could not switch to Amoy: $e");
     }
@@ -195,7 +214,7 @@ class _WalletScreenState extends State<WalletScreen>
     if (!mounted) return;
     if (!doc.exists) return;
     final data = doc.data();
-    _address  = data?["walletAddress"];
+    _address = data?["walletAddress"];
     _userName = data?["name"];
     if (_address != null) await _loadAllData();
     if (mounted) setState(() {});
@@ -222,7 +241,8 @@ class _WalletScreenState extends State<WalletScreen>
         await _notif.notify(
           receiverUid: user.uid,
           title: '🔗 Wallet Connected',
-          body: 'Your wallet ${_shorten(address)} is now linked to your account.',
+          body:
+              'Your wallet ${_shorten(address)} is now linked to your account.',
           type: NotificationType.general,
         );
       }
@@ -232,13 +252,16 @@ class _WalletScreenState extends State<WalletScreen>
     } catch (e) {
       debugPrint("Connect error: $e");
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text("Wallet connection failed or timed out"),
-          backgroundColor: kTealDark,
-          behavior: SnackBarBehavior.floating,
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("Wallet connection failed or timed out"),
+            backgroundColor: kTealDark,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _connecting = false);
@@ -289,10 +312,11 @@ class _WalletScreenState extends State<WalletScreen>
     } catch (e) {
       debugPrint("Switch error: $e");
     } finally {
-      if (mounted) setState(() {
-        _connecting = false;
-        _loading = false;
-      });
+      if (mounted)
+        setState(() {
+          _connecting = false;
+          _loading = false;
+        });
     }
   }
 
@@ -303,15 +327,15 @@ class _WalletScreenState extends State<WalletScreen>
       final user = _auth.currentUser;
       if (user == null) return;
       await _walletService.disconnect();
-      await _firestore
-          .collection("users")
-          .doc(user.uid)
-          .update({"walletAddress": FieldValue.delete()});
+      await _firestore.collection("users").doc(user.uid).update({
+        "walletAddress": FieldValue.delete(),
+      });
 
       await _notif.notify(
         receiverUid: user.uid,
         title: '🔓 Wallet Removed',
-        body: 'Your wallet has been unlinked from your account. You can reconnect anytime.',
+        body:
+            'Your wallet has been unlinked from your account. You can reconnect anytime.',
         type: NotificationType.general,
       );
 
@@ -336,8 +360,8 @@ class _WalletScreenState extends State<WalletScreen>
   // ════════════════════════════════════════════════════════
   bool get _isWalletReady =>
       _walletService.isConnected &&
-          _walletService.appKitModal.isConnected &&
-          _address != null;
+      _walletService.appKitModal.isConnected &&
+      _address != null;
 
   Future<void> _loadAllData() async {
     if (_address == null) return;
@@ -351,7 +375,7 @@ class _WalletScreenState extends State<WalletScreen>
         _explorer.getNFTTransactions(_address!),
       ]);
       final normalTxs = results[0];
-      final nftTxs    = results[1];
+      final nftTxs = results[1];
 
       List<TransactionModel> firestoreTxs = [];
       List<Map<String, dynamic>> fetchedAssets = [];
@@ -374,17 +398,18 @@ class _WalletScreenState extends State<WalletScreen>
             txType = "nft";
           }
           // Use assetName / assetTitle fields if present, falling back to title
-          final title = (d["assetName"] ?? d["assetTitle"] ?? d["title"] ?? "Transaction")
-              .toString();
+          final title =
+              (d["assetName"] ?? d["assetTitle"] ?? d["title"] ?? "Transaction")
+                  .toString();
           return TransactionModel(
-            type:    txType,
-            title:   title,
-            to:      d["to"]    ?? "",
-            value:   d["value"]?.toString()  ?? "0",
-            gas:     d["gas"]?.toString()    ?? "0",
-            time:    d["time"]?.toString()   ?? "0",
+            type: txType,
+            title: title,
+            to: d["to"] ?? "",
+            value: d["value"]?.toString() ?? "0",
+            gas: d["gas"]?.toString() ?? "0",
+            time: d["time"]?.toString() ?? "0",
             success: true,
-            hash:    d["hash"]  ?? "",
+            hash: d["hash"] ?? "",
           );
         }).toList();
 
@@ -403,8 +428,7 @@ class _WalletScreenState extends State<WalletScreen>
       // ── Build asset lookups ────────────────────────────────
       final assetByName = <String, Map<String, dynamic>>{
         for (final a in fetchedAssets)
-          if (a["name"] != null)
-            (a["name"] as String).trim().toLowerCase(): a,
+          if (a["name"] != null) (a["name"] as String).trim().toLowerCase(): a,
         // also index by "title" field if present (some docs use "title" not "name")
         for (final a in fetchedAssets)
           if (a["title"] != null)
@@ -413,8 +437,8 @@ class _WalletScreenState extends State<WalletScreen>
 
       final assetById = <String, Map<String, dynamic>>{
         for (final a in fetchedAssets) ...{
-          if (a["assetId"]        != null) (a["assetId"]        as String).trim(): a,
-          if (a["_docId"]         != null) (a["_docId"]         as String).trim(): a,
+          if (a["assetId"] != null) (a["assetId"] as String).trim(): a,
+          if (a["_docId"] != null) (a["_docId"] as String).trim(): a,
           if (a["blockchainTokenId"] != null)
             a["blockchainTokenId"].toString().trim(): a,
         },
@@ -432,23 +456,28 @@ class _WalletScreenState extends State<WalletScreen>
       // ── Merge + re-classify transactions ──────────────────
       // Combine all sources, then for any "sent" tx whose hash matches an asset
       // purchase, upgrade it to type="nft" with the correct asset name.
-      final List<TransactionModel> mergedRaw =
-      [...normalTxs, ...nftTxs, ...firestoreTxs];
+      final List<TransactionModel> mergedRaw = [
+        ...normalTxs,
+        ...nftTxs,
+        ...firestoreTxs,
+      ];
 
       final List<TransactionModel> reclassified = mergedRaw.map((tx) {
         if (tx.type == "sent" || tx.type == "contract") {
           final asset = assetByTxHash[tx.hash.trim().toLowerCase()];
           if (asset != null) {
-            final assetName = (asset["name"] ?? asset["title"] ?? "").toString().trim();
+            final assetName = (asset["name"] ?? asset["title"] ?? "")
+                .toString()
+                .trim();
             return TransactionModel(
-              type:    "nft",
-              title:   assetName.isNotEmpty ? assetName : tx.title,
-              to:      tx.to,
-              value:   tx.value,
-              gas:     tx.gas,
-              time:    tx.time,
+              type: "nft",
+              title: assetName.isNotEmpty ? assetName : tx.title,
+              to: tx.to,
+              value: tx.value,
+              gas: tx.gas,
+              time: tx.time,
               success: tx.success,
-              hash:    tx.hash,
+              hash: tx.hash,
             );
           }
         }
@@ -456,34 +485,36 @@ class _WalletScreenState extends State<WalletScreen>
       }).toList();
 
       // ── Deduplicate by hash, newest first ──────────────────
-      final seen   = <String>{};
-      final allTxs = reclassified
-          .where((tx) => tx.hash.isNotEmpty && seen.add(tx.hash))
-          .toList()
-        ..sort((a, b) => int.parse(b.time).compareTo(int.parse(a.time)));
+      final seen = <String>{};
+      final allTxs =
+          reclassified
+              .where((tx) => tx.hash.isNotEmpty && seen.add(tx.hash))
+              .toList()
+            ..sort((a, b) => int.parse(b.time).compareTo(int.parse(a.time)));
 
       final txCount = allTxs.length;
 
       _assetByName = assetByName;
-      _assetById   = assetById;
+      _assetById = assetById;
 
       if (!mounted) return;
       setState(() {
         _transactions = allTxs.take(15).toList();
-        _assets       = fetchedAssets;
-        _txCount      = txCount;
+        _assets = fetchedAssets;
+        _txCount = txCount;
         _nftCount = fetchedAssets.isNotEmpty
             ? fetchedAssets.length
             : allTxs.where((tx) => tx.type == "nft").length;
       });
     } catch (e) {
       debugPrint("Load data error: $e");
-      if (mounted) setState(() {
-        _transactions = [];
-        _assets       = [];
-        _txCount      = 0;
-        _nftCount     = 0;
-      });
+      if (mounted)
+        setState(() {
+          _transactions = [];
+          _assets = [];
+          _txCount = 0;
+          _nftCount = 0;
+        });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -518,8 +549,8 @@ class _WalletScreenState extends State<WalletScreen>
   // FIRESTORE HELPERS
   // ════════════════════════════════════════════════════════
   Future<void> _saveWalletToFirestore(String uid, String newAddress) async {
-    final userRef    = _firestore.collection("users").doc(uid);
-    final doc        = await userRef.get();
+    final userRef = _firestore.collection("users").doc(uid);
+    final doc = await userRef.get();
     final oldAddress = doc.data()?["walletAddress"];
     await userRef.set({"walletAddress": newAddress}, SetOptions(merge: true));
     if (oldAddress != null && oldAddress != newAddress) {
@@ -552,10 +583,10 @@ class _WalletScreenState extends State<WalletScreen>
     final diff = DateTime.now().difference(time);
     if (diff.isNegative || diff.inSeconds < 60) return "Just now";
     if (diff.inMinutes < 60) return "${diff.inMinutes}m ago";
-    if (diff.inHours   < 24) return "${diff.inHours}h ago";
-    if (diff.inDays    <  7) return "${diff.inDays}d ago";
-    if (diff.inDays    < 30) return "${(diff.inDays / 7).floor()}w ago";
-    if (diff.inDays    < 365) return "${(diff.inDays / 30).floor()}mo ago";
+    if (diff.inHours < 24) return "${diff.inHours}h ago";
+    if (diff.inDays < 7) return "${diff.inDays}d ago";
+    if (diff.inDays < 30) return "${(diff.inDays / 7).floor()}w ago";
+    if (diff.inDays < 365) return "${(diff.inDays / 30).floor()}mo ago";
     return "${(diff.inDays / 365).floor()}y ago";
   }
 
@@ -585,24 +616,33 @@ class _WalletScreenState extends State<WalletScreen>
     return null;
   }
 
-  void _confirmAction(
-      {required String title,
-        required Future<void> Function() onConfirm}) {
+  void _confirmAction({
+    required String title,
+    required Future<void> Function() onConfirm,
+  }) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: context.appSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(title,
-            style: const TextStyle(
-                color: Colors.black, fontWeight: FontWeight.w700)),
-        content: const Text("Are you sure you want to continue?",
-            style: TextStyle(color: Color(0xFF555555))),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: context.appTextPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
+          "Are you sure you want to continue?",
+          style: TextStyle(color: context.appTextSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancel",
-                style: TextStyle(color: Color(0xFF555555))),
+            child: Text(
+              "Cancel",
+              style: TextStyle(color: context.appTextSecondary),
+            ),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -613,7 +653,8 @@ class _WalletScreenState extends State<WalletScreen>
               backgroundColor: kTeal,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             child: const Text("Confirm"),
           ),
@@ -628,7 +669,7 @@ class _WalletScreenState extends State<WalletScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kTealLight,
+      backgroundColor: context.appScaffold,
       appBar: _buildAppBar(),
       body: _loading
           ? _buildSkeleton()
@@ -641,23 +682,28 @@ class _WalletScreenState extends State<WalletScreen>
   // ─── AppBar ──────────────────────────────────────────────
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: Colors.white,
+      backgroundColor: context.appSurface,
       elevation: 0,
       centerTitle: true,
-      systemOverlayStyle: SystemUiOverlayStyle.dark,
+      systemOverlayStyle: context.isDarkMode
+          ? SystemUiOverlayStyle.light
+          : SystemUiOverlayStyle.dark,
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 9, height: 9,
+            width: 9,
+            height: 9,
             decoration: const BoxDecoration(
-                color: kTeal, shape: BoxShape.circle),
+              color: kTeal,
+              shape: BoxShape.circle,
+            ),
           ),
           const SizedBox(width: 8),
-          const Text(
+          Text(
             "Wallet",
             style: TextStyle(
-              color: Colors.black,
+              color: context.appTextPrimary,
               fontWeight: FontWeight.w800,
               fontSize: 18,
               letterSpacing: -0.4,
@@ -667,12 +713,12 @@ class _WalletScreenState extends State<WalletScreen>
       ),
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(1),
-        child: Container(color: const Color(0xFFCAE8E8), height: 1),
+        child: Container(color: context.appBorder, height: 1),
       ),
       actions: [
         if (_address != null)
           IconButton(
-            icon: const Icon(Icons.more_vert, color: Colors.black),
+            icon: Icon(Icons.more_vert, color: context.appTextPrimary),
             onPressed: _showWalletOptions,
           ),
       ],
@@ -686,11 +732,13 @@ class _WalletScreenState extends State<WalletScreen>
       children: [
         _shimmerBox(height: 200, radius: 24),
         const SizedBox(height: 16),
-        Row(children: [
-          Expanded(child: _shimmerBox(height: 90)),
-          const SizedBox(width: 12),
-          Expanded(child: _shimmerBox(height: 90)),
-        ]),
+        Row(
+          children: [
+            Expanded(child: _shimmerBox(height: 90)),
+            const SizedBox(width: 12),
+            Expanded(child: _shimmerBox(height: 90)),
+          ],
+        ),
         const SizedBox(height: 16),
         _shimmerBox(height: 22, radius: 6),
         const SizedBox(height: 12),
@@ -711,7 +759,7 @@ class _WalletScreenState extends State<WalletScreen>
         child: Container(
           height: height,
           decoration: BoxDecoration(
-            color: kTealLight,
+            color: context.appSurfaceMuted,
             borderRadius: BorderRadius.circular(radius),
           ),
         ),
@@ -728,28 +776,34 @@ class _WalletScreenState extends State<WalletScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 100, height: 100,
-              decoration: BoxDecoration(
-                color: kTeal,
-                shape: BoxShape.circle,
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(color: kTeal, shape: BoxShape.circle),
+              child: const Icon(
+                Icons.account_balance_wallet_outlined,
+                size: 48,
+                color: Colors.white,
               ),
-              child: const Icon(Icons.account_balance_wallet_outlined,
-                  size: 48, color: Colors.white),
             ),
             const SizedBox(height: 28),
-            const Text(
+            Text(
               "Connect your wallet",
               style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.black,
-                  letterSpacing: -0.5),
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: context.appTextPrimary,
+                letterSpacing: -0.5,
+              ),
             ),
             const SizedBox(height: 10),
-            const Text(
+            Text(
               "Link a Web3 wallet to view your balance, NFTs and transactions.",
               textAlign: TextAlign.center,
-              style: TextStyle(color: Color(0xFF555555), fontSize: 14, height: 1.5),
+              style: TextStyle(
+                color: context.appTextSecondary,
+                fontSize: 14,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 36),
             SizedBox(
@@ -763,19 +817,25 @@ class _WalletScreenState extends State<WalletScreen>
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
                 icon: _connecting
                     ? const SizedBox(
-                  width: 18, height: 18,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
-                )
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
                     : const Icon(Icons.account_balance_wallet, size: 20),
                 label: Text(
                   _connecting ? "Opening wallet…" : "Connect Wallet",
                   style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w600),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
@@ -818,13 +878,15 @@ class _WalletScreenState extends State<WalletScreen>
         ),
         boxShadow: [
           BoxShadow(
-              color: kTeal.withOpacity(0.40),
-              blurRadius: 32,
-              offset: const Offset(0, 12)),
+            color: kTeal.withOpacity(0.40),
+            blurRadius: 32,
+            offset: const Offset(0, 12),
+          ),
           BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 8,
-              offset: const Offset(0, 2)),
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
       child: Column(
@@ -834,7 +896,8 @@ class _WalletScreenState extends State<WalletScreen>
           Row(
             children: [
               Container(
-                width: 44, height: 44,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.22),
                   shape: BoxShape.circle,
@@ -849,36 +912,42 @@ class _WalletScreenState extends State<WalletScreen>
                     Text(
                       _userName ?? "User",
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
                     ),
                     const SizedBox(height: 3),
                     GestureDetector(
                       onTap: () {
-                        Clipboard.setData(
-                            ClipboardData(text: _address ?? ""));
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: const Text("Address copied"),
-                          backgroundColor: Colors.black87,
-                          behavior: SnackBarBehavior.floating,
-                          duration: const Duration(seconds: 1),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                        ));
+                        Clipboard.setData(ClipboardData(text: _address ?? ""));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: const Text("Address copied"),
+                            backgroundColor: Colors.black87,
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 1),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        );
                       },
                       child: Row(
                         children: [
                           Text(
                             _shorten(_address ?? ""),
                             style: TextStyle(
-                                color: Colors.white.withOpacity(0.82),
-                                fontSize: 12),
+                              color: Colors.white.withOpacity(0.82),
+                              fontSize: 12,
+                            ),
                           ),
                           const SizedBox(width: 4),
-                          Icon(Icons.copy,
-                              size: 12,
-                              color: Colors.white.withOpacity(0.7)),
+                          Icon(
+                            Icons.copy,
+                            size: 12,
+                            color: Colors.white.withOpacity(0.7),
+                          ),
                         ],
                       ),
                     ),
@@ -887,23 +956,30 @@ class _WalletScreenState extends State<WalletScreen>
               ),
               // Verified badge
               Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.18),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                      color: Colors.white.withOpacity(0.4), width: 1),
+                    color: Colors.white.withOpacity(0.4),
+                    width: 1,
+                  ),
                 ),
                 child: const Row(
                   children: [
                     Icon(Icons.verified, size: 12, color: Colors.white),
                     SizedBox(width: 4),
-                    Text("Verified",
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600)),
+                    Text(
+                      "Verified",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -915,10 +991,11 @@ class _WalletScreenState extends State<WalletScreen>
           const Text(
             "TOTAL BALANCE",
             style: TextStyle(
-                color: Colors.white60,
-                fontSize: 11,
-                letterSpacing: 1.5,
-                fontWeight: FontWeight.w600),
+              color: Colors.white60,
+              fontSize: 11,
+              letterSpacing: 1.5,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 6),
 
@@ -931,19 +1008,17 @@ class _WalletScreenState extends State<WalletScreen>
                       ? "••••••• POL"
                       : "${_balance.toStringAsFixed(4)} POL",
                   style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 30,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -1.0),
+                    color: Colors.white,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1.0,
+                  ),
                 ),
               ),
               GestureDetector(
-                onTap: () =>
-                    setState(() => _hideBalance = !_hideBalance),
+                onTap: () => setState(() => _hideBalance = !_hideBalance),
                 child: Icon(
-                  _hideBalance
-                      ? Icons.visibility_off
-                      : Icons.visibility,
+                  _hideBalance ? Icons.visibility_off : Icons.visibility,
                   color: Colors.white70,
                   size: 20,
                 ),
@@ -965,23 +1040,30 @@ class _WalletScreenState extends State<WalletScreen>
               // Network chip
               Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 6),
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                      color: Colors.white.withOpacity(0.3), width: 1),
+                    color: Colors.white.withOpacity(0.3),
+                    width: 1,
+                  ),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.circle, size: 7, color: Colors.white),
                     SizedBox(width: 6),
-                    Text("Polygon Amoy",
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500)),
+                    Text(
+                      "Polygon Amoy",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -989,36 +1071,47 @@ class _WalletScreenState extends State<WalletScreen>
               // POL asset mini-pill
               Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 6),
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                      color: Colors.white.withOpacity(0.3), width: 1),
+                    color: Colors.white.withOpacity(0.3),
+                    width: 1,
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      width: 18, height: 18,
+                      width: 18,
+                      height: 18,
                       decoration: const BoxDecoration(
                         shape: BoxShape.circle,
                         color: kTeal,
                       ),
                       child: const Center(
-                        child: Text("⬡",
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold)),
+                        child: Text(
+                          "⬡",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 6),
-                    const Text("POL",
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600)),
+                    const Text(
+                      "POL",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1027,13 +1120,17 @@ class _WalletScreenState extends State<WalletScreen>
               GestureDetector(
                 onTap: _loadAllData,
                 child: Container(
-                  width: 34, height: 34,
+                  width: 34,
+                  height: 34,
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.18),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.refresh_rounded,
-                      color: Colors.white, size: 18),
+                  child: const Icon(
+                    Icons.refresh_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
                 ),
               ),
             ],
@@ -1075,30 +1172,40 @@ class _WalletScreenState extends State<WalletScreen>
   }
 
   Widget _buildStatCard({
-    required String   label,
-    required String   value,
+    required String label,
+    required String value,
     required IconData icon,
-    required Color    iconColor,
-    required Color    iconBg,
+    required Color iconColor,
+    required Color iconBg,
   }) {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.appSurface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFCAE8E8), width: 1),
+        border: Border.all(color: context.appBorder, width: 1),
         boxShadow: [
-          BoxShadow(color: kTeal.withOpacity(0.07), blurRadius: 20, offset: const Offset(0, 4)),
-          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 1)),
+          BoxShadow(
+            color: kTeal.withOpacity(0.07),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: context.appShadow,
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
         ],
       ),
       child: Row(
         children: [
           Container(
-            width: 46, height: 46,
+            width: 46,
+            height: 46,
             decoration: BoxDecoration(
-                color: iconBg,
-                borderRadius: BorderRadius.circular(13)),
+              color: iconBg,
+              borderRadius: BorderRadius.circular(13),
+            ),
             child: Icon(icon, color: iconColor, size: 22),
           ),
           const SizedBox(width: 12),
@@ -1106,17 +1213,23 @@ class _WalletScreenState extends State<WalletScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(value,
-                    style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.black,
-                        letterSpacing: -0.5)),
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF909090),
-                        fontWeight: FontWeight.w500)),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: context.appTextPrimary,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: context.appTextSecondary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
           ),
@@ -1131,30 +1244,41 @@ class _WalletScreenState extends State<WalletScreen>
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Recent Activity",
-              style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black)),
+          Text(
+            "Recent Activity",
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: context.appTextPrimary,
+            ),
+          ),
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(32),
-            decoration: _card(),
+            decoration: _card(context),
             child: Column(
               children: [
                 Container(
-                  width: 64, height: 64,
+                  width: 64,
+                  height: 64,
                   decoration: BoxDecoration(
-                      color: kTealLight,
-                      borderRadius: BorderRadius.circular(16)),
-                  child: const Icon(Icons.receipt_long_outlined,
-                      color: Color(0xFF909090), size: 32),
+                    color: context.appSurfaceMuted,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(
+                    Icons.receipt_long_outlined,
+                    color: kTeal,
+                    size: 32,
+                  ),
                 ),
                 const SizedBox(height: 12),
-                const Text("No transactions yet",
-                    style: TextStyle(
-                        color: Color(0xFF555555),
-                        fontWeight: FontWeight.w500)),
+                Text(
+                  "No transactions yet",
+                  style: TextStyle(
+                    color: context.appTextSecondary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
           ),
@@ -1171,16 +1295,22 @@ class _WalletScreenState extends State<WalletScreen>
             Row(
               children: [
                 Container(
-                  width: 8, height: 8,
+                  width: 8,
+                  height: 8,
                   decoration: const BoxDecoration(
-                      color: kTeal, shape: BoxShape.circle),
+                    color: kTeal,
+                    shape: BoxShape.circle,
+                  ),
                 ),
                 const SizedBox(width: 8),
-                const Text("Recent Activity",
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black)),
+                Text(
+                  "Recent Activity",
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: context.appTextPrimary,
+                  ),
+                ),
               ],
             ),
             Container(
@@ -1189,24 +1319,26 @@ class _WalletScreenState extends State<WalletScreen>
                 color: kTeal,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Text("${_transactions.length} items",
-                  style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white
-                  )),
+              child: Text(
+                "${_transactions.length} items",
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
             ),
           ],
         ),
         const SizedBox(height: 12),
         Container(
-          decoration: _card(),
+          decoration: _card(context),
           child: ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: _transactions.length,
             separatorBuilder: (_, __) =>
-                Divider(height: 1, color: const Color(0xFFCAE8E8), indent: 72),
+                Divider(height: 1, color: context.appBorder, indent: 72),
             itemBuilder: (_, i) => _buildTxTile(_transactions[i]),
           ),
         ),
@@ -1219,14 +1351,15 @@ class _WalletScreenState extends State<WalletScreen>
     //    asset name (not a generic label), treat it as an NFT purchase.
     final bool titleLooksLikeAsset =
         tx.title.isNotEmpty &&
-            tx.title != "Transaction" &&
-            tx.title != "Sent POL" &&
-            tx.title != "Received POL" &&
-            tx.title != "Contract Interaction" &&
-            !tx.title.startsWith("0x");   // raw address → not an asset name
+        tx.title != "Transaction" &&
+        tx.title != "Sent POL" &&
+        tx.title != "Received POL" &&
+        tx.title != "Contract Interaction" &&
+        !tx.title.startsWith("0x"); // raw address → not an asset name
 
-    final bool isSent     = tx.type == "sent"     && !titleLooksLikeAsset;
-    final bool isNft      = tx.type == "nft"      || (tx.type == "sent" && titleLooksLikeAsset);
+    final bool isSent = tx.type == "sent" && !titleLooksLikeAsset;
+    final bool isNft =
+        tx.type == "nft" || (tx.type == "sent" && titleLooksLikeAsset);
     final bool isContract = tx.type == "contract" && !titleLooksLikeAsset;
 
     // ── Colour + icon per type ─────────────────────────────
@@ -1249,8 +1382,8 @@ class _WalletScreenState extends State<WalletScreen>
     // ── Asset name: prefer tx.title when it is meaningful ──
     final bool hasMeaningfulTitle =
         tx.title.isNotEmpty &&
-            tx.title != "Transaction" &&
-            tx.title != "Contract Interaction";
+        tx.title != "Transaction" &&
+        tx.title != "Contract Interaction";
 
     // If tx.title looks like a raw asset ID, resolve it to the human-readable name
     String resolvedNftTitle = tx.title;
@@ -1275,9 +1408,10 @@ class _WalletScreenState extends State<WalletScreen>
     String subtitle;
     if (isNft) {
       // ── FIX: use trim() on lookup key ──
-      final asset = _assetByName[mainLabel.trim().toLowerCase()]
-          ?? _assetById[tx.title.trim()]
-          ?? _assetById[resolvedNftTitle.trim()];
+      final asset =
+          _assetByName[mainLabel.trim().toLowerCase()] ??
+          _assetById[tx.title.trim()] ??
+          _assetById[resolvedNftTitle.trim()];
       final category = asset?["category"] as String?;
       subtitle = category?.isNotEmpty == true ? category! : "NFT Asset";
     } else if (isContract) {
@@ -1288,7 +1422,7 @@ class _WalletScreenState extends State<WalletScreen>
 
     // ── Amount / price display ─────────────────────────────
     final double? polValue = double.tryParse(tx.value);
-    final bool hasPrice    = polValue != null && polValue > 0;
+    final bool hasPrice = polValue != null && polValue > 0;
 
     Widget amountWidget;
     if (isNft || isContract) {
@@ -1296,9 +1430,10 @@ class _WalletScreenState extends State<WalletScreen>
         amountWidget = Text(
           "${polValue!.toStringAsFixed(4)} POL",
           style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-              color: iconColor),
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
+            color: iconColor,
+          ),
         );
       } else {
         amountWidget = Container(
@@ -1310,9 +1445,10 @@ class _WalletScreenState extends State<WalletScreen>
           child: Text(
             isNft ? "NFT" : "Contract",
             style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: iconColor),
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: iconColor,
+            ),
           ),
         );
       }
@@ -1320,9 +1456,10 @@ class _WalletScreenState extends State<WalletScreen>
       amountWidget = Text(
         "${isSent ? '−' : '+'}${polValue?.toStringAsFixed(4) ?? tx.value} POL",
         style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 13,
-            color: iconColor),
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+          color: iconColor,
+        ),
       );
     }
 
@@ -1339,84 +1476,105 @@ class _WalletScreenState extends State<WalletScreen>
         child: Row(
           children: [
             // ── FIX: Icon / Asset Image with expanded field name resolution ──
-            Builder(builder: (_) {
-              if (isNft) {
-                // ── FIX: trim() the lookup key and also try resolvedNftTitle ──
-                final asset = _assetByName[mainLabel.trim().toLowerCase()]
-                    ?? _assetById[tx.title.trim()]
-                    ?? _assetById[resolvedNftTitle.trim()];
+            Builder(
+              builder: (_) {
+                if (isNft) {
+                  // ── FIX: trim() the lookup key and also try resolvedNftTitle ──
+                  final asset =
+                      _assetByName[mainLabel.trim().toLowerCase()] ??
+                      _assetById[tx.title.trim()] ??
+                      _assetById[resolvedNftTitle.trim()];
 
-                // ── FIX: use _resolveImageUrl() which checks 15+ field names ──
-                final imgUrl = _resolveImageUrl(asset);
+                  // ── FIX: use _resolveImageUrl() which checks 15+ field names ──
+                  final imgUrl = _resolveImageUrl(asset);
 
-                if (imgUrl != null) {
-                  return ClipRRect(
-                    borderRadius: BorderRadius.circular(13),
-                    child: CachedNetworkImage(
-                      imageUrl: imgUrl,
-                      width: 46, height: 46,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(
-                        width: 46, height: 46,
-                        decoration: BoxDecoration(
-                          color: iconColor.withOpacity(0.10),
-                          borderRadius: BorderRadius.circular(13),
-                        ),
-                        child: const Center(
-                          child: SizedBox(
-                            width: 20, height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2, color: kTeal,
-                            ),
-                          ),
-                        ),
-                      ),
-                      errorWidget: (_, url, err) {
-                        debugPrint("❌ Image load failed for $url: $err");
-                        return Container(
-                          width: 46, height: 46,
+                  if (imgUrl != null) {
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(13),
+                      child: CachedNetworkImage(
+                        imageUrl: imgUrl,
+                        width: 46,
+                        height: 46,
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) => Container(
+                          width: 46,
+                          height: 46,
                           decoration: BoxDecoration(
                             color: iconColor.withOpacity(0.10),
                             borderRadius: BorderRadius.circular(13),
                           ),
-                          child: Icon(Icons.broken_image_rounded,
-                              color: iconColor, size: 20),
-                        );
-                      },
-                    ),
-                  );
-                }
-              }
-
-              // Fallback: coloured icon box
-              return Container(
-                width: 46, height: 46,
-                decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: isNft || isContract
-                    ? Icon(iconData, color: iconColor, size: 22)
-                    : Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    const _PolygonIcon(size: 28),
-                    Positioned(
-                      bottom: 0, right: 0,
-                      child: Container(
-                        width: 16, height: 16,
-                        decoration: BoxDecoration(
-                          color: iconColor,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 1.5),
+                          child: const Center(
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: kTeal,
+                              ),
+                            ),
+                          ),
                         ),
-                        child: Icon(iconData, color: Colors.white, size: 9),
+                        errorWidget: (_, url, err) {
+                          debugPrint("❌ Image load failed for $url: $err");
+                          return Container(
+                            width: 46,
+                            height: 46,
+                            decoration: BoxDecoration(
+                              color: iconColor.withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(13),
+                            ),
+                            child: Icon(
+                              Icons.broken_image_rounded,
+                              color: iconColor,
+                              size: 20,
+                            ),
+                          );
+                        },
                       ),
-                    ),
-                  ],
-                ),
-              );
-            }),
+                    );
+                  }
+                }
+
+                // Fallback: coloured icon box
+                return Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: iconColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: isNft || isContract
+                      ? Icon(iconData, color: iconColor, size: 22)
+                      : Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            const _PolygonIcon(size: 28),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Container(
+                                width: 16,
+                                height: 16,
+                                decoration: BoxDecoration(
+                                  color: iconColor,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: Icon(
+                                  iconData,
+                                  color: Colors.white,
+                                  size: 9,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                );
+              },
+            ),
             const SizedBox(width: 12),
 
             // ── Labels (asset name + subtitle) ────────────
@@ -1430,26 +1588,32 @@ class _WalletScreenState extends State<WalletScreen>
                         child: Text(
                           mainLabel,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: Colors.black),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            color: context.appTextPrimary,
+                          ),
                         ),
                       ),
                       if (!isNft && !isContract) ...[
                         const SizedBox(width: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 5, vertical: 1),
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
                           decoration: BoxDecoration(
                             color: kTealLight,
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text("POL",
-                              style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700,
-                                  color: kTeal)),
+                          child: const Text(
+                            "POL",
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: kTeal,
+                            ),
+                          ),
                         ),
                       ],
                     ],
@@ -1458,7 +1622,10 @@ class _WalletScreenState extends State<WalletScreen>
                   Text(
                     subtitle,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF909090)),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.appTextSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -1472,15 +1639,29 @@ class _WalletScreenState extends State<WalletScreen>
               children: [
                 amountWidget,
                 const SizedBox(height: 3),
-                Text(_formatTime(tx.time),
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF909090))),
+                Text(
+                  _formatTime(tx.time),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: context.appTextSecondary,
+                  ),
+                ),
                 const SizedBox(height: 2),
                 Row(
                   children: [
-                    const Icon(Icons.open_in_new, size: 10, color: Color(0xFF909090)),
+                    Icon(
+                      Icons.open_in_new,
+                      size: 10,
+                      color: context.appTextSecondary,
+                    ),
                     const SizedBox(width: 2),
-                    const Text("Explorer",
-                        style: TextStyle(fontSize: 10, color: Color(0xFF909090))),
+                    Text(
+                      "Explorer",
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: context.appTextSecondary,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -1495,59 +1676,66 @@ class _WalletScreenState extends State<WalletScreen>
   void _showWalletOptions() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: context.appSurface,
       shape: const RoundedRectangleBorder(
-          borderRadius:
-          BorderRadius.vertical(top: Radius.circular(24))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-
               // Address row
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: _card(radius: 16),
+                decoration: _card(context, radius: 16),
                 child: Row(
                   children: [
                     Container(
-                      width: 40, height: 40,
+                      width: 40,
+                      height: 40,
                       decoration: BoxDecoration(
-                          color: kTeal,
-                          borderRadius: BorderRadius.circular(10)),
+                        color: kTeal,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                       child: const Icon(
-                          Icons.account_balance_wallet,
-                          color: Colors.white,
-                          size: 20),
+                        Icons.account_balance_wallet,
+                        color: Colors.white,
+                        size: 20,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         _shorten(_address!),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: context.appTextPrimary,
+                        ),
                       ),
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: kTeal,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Row(
                         children: [
-                          Icon(Icons.verified,
-                              size: 12, color: Colors.white),
+                          Icon(Icons.verified, size: 12, color: Colors.white),
                           SizedBox(width: 4),
-                          Text("Verified",
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600)),
+                          Text(
+                            "Verified",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1563,8 +1751,9 @@ class _WalletScreenState extends State<WalletScreen>
                 onTap: () {
                   Navigator.pop(ctx);
                   _confirmAction(
-                      title: "Switch Account?",
-                      onConfirm: _switchAccount);
+                    title: "Switch Account?",
+                    onConfirm: _switchAccount,
+                  );
                 },
               ),
               const SizedBox(height: 10),
@@ -1575,8 +1764,9 @@ class _WalletScreenState extends State<WalletScreen>
                 onTap: () {
                   Navigator.pop(ctx);
                   _confirmAction(
-                      title: "Disconnect Wallet?",
-                      onConfirm: _disconnect);
+                    title: "Disconnect Wallet?",
+                    onConfirm: _disconnect,
+                  );
                 },
               ),
               const SizedBox(height: 10),
@@ -1587,8 +1777,9 @@ class _WalletScreenState extends State<WalletScreen>
                 onTap: () {
                   Navigator.pop(ctx);
                   _confirmAction(
-                      title: "Remove Wallet permanently?",
-                      onConfirm: _removeWallet);
+                    title: "Remove Wallet permanently?",
+                    onConfirm: _removeWallet,
+                  );
                 },
               ),
             ],
@@ -1599,9 +1790,9 @@ class _WalletScreenState extends State<WalletScreen>
   }
 
   Widget _buildActionButton({
-    required String    text,
-    required IconData  icon,
-    required Color     color,
+    required String text,
+    required IconData icon,
+    required Color color,
     required VoidCallback onTap,
   }) {
     return SizedBox(
@@ -1619,9 +1810,10 @@ class _WalletScreenState extends State<WalletScreen>
           ),
         ),
         icon: Icon(icon, size: 18),
-        label: Text(text,
-            style: const TextStyle(
-                fontWeight: FontWeight.w600, fontSize: 14)),
+        label: Text(
+          text,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        ),
       ),
     );
   }

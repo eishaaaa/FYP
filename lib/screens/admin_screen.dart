@@ -39,15 +39,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: context.appScaffold,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: context.appSurface,
         elevation: 0,
         centerTitle: true,
         automaticallyImplyLeading: false,
         title: Text(
           _titles[_selectedIndex],
-          style: AppTheme.heading(17, color: AppTheme.textPrimary),
+          style: AppTheme.heading(17, color: context.appTextPrimary),
         ),
         actions: [
           Container(
@@ -57,10 +57,14 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF0F4F4),
+                  color: context.appSurfaceMuted,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.logout_rounded, color: AppTheme.textPrimary, size: 20),
+                child: Icon(
+                  Icons.logout_rounded,
+                  color: context.appTextPrimary,
+                  size: 20,
+                ),
               ),
               onPressed: () async {
                 await auth.signOut();
@@ -68,7 +72,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                   Navigator.pushAndRemoveUntil(
                     context,
                     MaterialPageRoute(builder: (_) => const LoginScreen()),
-                        (_) => false,
+                    (_) => false,
                   );
                 }
               },
@@ -81,7 +85,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         decoration: BoxDecoration(
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.08),
+              color: context.appShadow,
               blurRadius: 20,
               offset: const Offset(0, -4),
             ),
@@ -156,7 +160,10 @@ class AdminDashboard extends StatelessWidget {
                       const SizedBox(height: 8),
                       Text(
                         'System Overview',
-                        style: AppTheme.body(13, color: Colors.white.withOpacity(0.8)),
+                        style: AppTheme.body(
+                          13,
+                          color: Colors.white.withOpacity(0.8),
+                        ),
                       ),
                     ],
                   ),
@@ -181,7 +188,7 @@ class AdminDashboard extends StatelessWidget {
 
           Text(
             'Statistics',
-            style: AppTheme.heading(16, color: AppTheme.textPrimary),
+            style: AppTheme.heading(16, color: context.appTextPrimary),
           ),
           const SizedBox(height: 12),
 
@@ -215,7 +222,9 @@ class AdminDashboard extends StatelessWidget {
               _StatCard(
                 title: 'Active Disputes',
                 collection: 'assets',
-                query: db.collection('assets').where('disputeActive', isEqualTo: true),
+                query: db
+                    .collection('assets')
+                    .where('disputeActive', isEqualTo: true),
                 icon: Icons.gavel_rounded,
                 gradientColors: [Colors.redAccent, Colors.orangeAccent],
               ),
@@ -229,7 +238,7 @@ class AdminDashboard extends StatelessWidget {
             children: [
               Text(
                 'Recent Properties',
-                style: AppTheme.heading(16, color: AppTheme.textPrimary),
+                style: AppTheme.heading(16, color: context.appTextPrimary),
               ),
               TextButton(
                 onPressed: () {},
@@ -253,7 +262,9 @@ class AdminDashboard extends StatelessWidget {
                 return const Center(
                   child: Padding(
                     padding: EdgeInsets.all(24),
-                    child: CircularProgressIndicator(color: AppTheme.primaryStart),
+                    child: CircularProgressIndicator(
+                      color: AppTheme.primaryStart,
+                    ),
                   ),
                 );
               }
@@ -300,14 +311,20 @@ class AdminDashboard extends StatelessWidget {
                             children: [
                               Text(
                                 data['title'] ?? 'New Property',
-                                style: AppTheme.heading(14, color: AppTheme.textPrimary),
+                                style: AppTheme.heading(
+                                  14,
+                                  color: AppTheme.textPrimary,
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 3),
                               Text(
                                 '${data['category'] ?? ''} • PKR ${data['price'] ?? 0}',
-                                style: AppTheme.body(12, color: AppTheme.textMid),
+                                style: AppTheme.body(
+                                  12,
+                                  color: AppTheme.textMid,
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -331,7 +348,9 @@ class AdminDashboard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: verified ? Colors.green.shade700 : Colors.orange.shade700,
+                              color: verified
+                                  ? Colors.green.shade700
+                                  : Colors.orange.shade700,
                             ),
                           ),
                         ),
@@ -412,7 +431,11 @@ class _StatCard extends StatelessWidget {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTheme.body(12, color: Colors.white.withOpacity(0.85), weight: FontWeight.w500),
+                    style: AppTheme.body(
+                      12,
+                      color: Colors.white.withOpacity(0.85),
+                      weight: FontWeight.w500,
+                    ),
                   ),
                 ],
               ),
@@ -464,7 +487,11 @@ class UserManagement extends StatelessWidget {
                 return Center(child: Text('Error: ${snapshot.error}'));
               }
               if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator(color: AppTheme.primaryStart));
+                return const Center(
+                  child: CircularProgressIndicator(
+                    color: AppTheme.primaryStart,
+                  ),
+                );
               }
 
               final users = snapshot.data!.docs;
@@ -511,34 +538,48 @@ class UserManagement extends StatelessWidget {
                           Expanded(
                             child: Text(
                               name,
-                              style: AppTheme.heading(14, color: AppTheme.textPrimary),
+                              style: AppTheme.heading(
+                                14,
+                                color: AppTheme.textPrimary,
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: AppTheme.primaryLight,
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
                               role.toUpperCase(),
-                              style: AppTheme.heading(9, color: AppTheme.primaryStart),
+                              style: AppTheme.heading(
+                                9,
+                                color: AppTheme.primaryStart,
+                              ),
                             ),
                           ),
                           if (verified)
                             Padding(
                               padding: const EdgeInsets.only(left: 6),
-                              child: const Icon(Icons.verified_rounded,
-                                  color: AppTheme.primaryStart, size: 16),
+                              child: const Icon(
+                                Icons.verified_rounded,
+                                color: AppTheme.primaryStart,
+                                size: 16,
+                              ),
                             ),
                           if (suspended)
                             Padding(
                               padding: const EdgeInsets.only(left: 6),
-                              child: const Icon(Icons.block_rounded,
-                                  color: Colors.red, size: 16),
+                              child: const Icon(
+                                Icons.block_rounded,
+                                color: Colors.red,
+                                size: 16,
+                              ),
                             ),
                         ],
                       ),
@@ -553,28 +594,35 @@ class UserManagement extends StatelessWidget {
                         ],
                       ),
                       trailing: PopupMenuButton<String>(
-                        icon: const Icon(Icons.more_vert_rounded,
-                            color: Colors.grey),
+                        icon: const Icon(
+                          Icons.more_vert_rounded,
+                          color: Colors.grey,
+                        ),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         onSelected: (value) async {
                           if (value == 'verify') {
-                            await db
-                                .collection('users')
-                                .doc(userId)
-                                .update({'verified': true});
+                            await db.collection('users').doc(userId).update({
+                              'verified': true,
+                            });
                             if (context.mounted) {
-                              _showSnack(context, 'User verified ✓',
-                                  color: Colors.green);
+                              _showSnack(
+                                context,
+                                'User verified ✓',
+                                color: Colors.green,
+                              );
                             }
                           } else if (value == 'suspend') {
-                            await db
-                                .collection('users')
-                                .doc(userId)
-                                .update({'suspended': true});
+                            await db.collection('users').doc(userId).update({
+                              'suspended': true,
+                            });
                             if (context.mounted) {
-                              _showSnack(context, 'User suspended',
-                                  color: Colors.red);
+                              _showSnack(
+                                context,
+                                'User suspended',
+                                color: Colors.red,
+                              );
                             }
                           }
                         },
@@ -583,8 +631,11 @@ class UserManagement extends StatelessWidget {
                             value: 'verify',
                             child: Row(
                               children: [
-                                Icon(Icons.verified_rounded,
-                                    color: AppTheme.primaryStart, size: 18),
+                                Icon(
+                                  Icons.verified_rounded,
+                                  color: AppTheme.primaryStart,
+                                  size: 18,
+                                ),
                                 SizedBox(width: 10),
                                 Text('Verify User'),
                               ],
@@ -594,8 +645,11 @@ class UserManagement extends StatelessWidget {
                             value: 'suspend',
                             child: Row(
                               children: [
-                                Icon(Icons.block_rounded,
-                                    color: Colors.red, size: 18),
+                                Icon(
+                                  Icons.block_rounded,
+                                  color: Colors.red,
+                                  size: 18,
+                                ),
                                 SizedBox(width: 10),
                                 Text('Suspend User'),
                               ],
@@ -677,7 +731,10 @@ class _AssetModerationState extends State<AssetModeration> {
               }
               if (!snapshot.hasData) {
                 return const Center(
-                    child: CircularProgressIndicator(color: AppTheme.primaryStart));
+                  child: CircularProgressIndicator(
+                    color: AppTheme.primaryStart,
+                  ),
+                );
               }
 
               final assets = snapshot.data!.docs;
@@ -693,13 +750,19 @@ class _AssetModerationState extends State<AssetModeration> {
                           color: AppTheme.primaryLight,
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.check_circle_rounded,
-                            size: 48, color: AppTheme.primaryStart),
+                        child: const Icon(
+                          Icons.check_circle_rounded,
+                          size: 48,
+                          color: AppTheme.primaryStart,
+                        ),
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'All caught up!',
-                        style: AppTheme.heading(16, color: AppTheme.textPrimary),
+                        style: AppTheme.heading(
+                          16,
+                          color: AppTheme.textPrimary,
+                        ),
                       ),
                       const SizedBox(height: 6),
                       Text(
@@ -741,8 +804,14 @@ class _AssetModerationState extends State<AssetModeration> {
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: isVerified
-                                  ? [AppTheme.primaryStartDark, AppTheme.primaryStart]
-                                  : [const Color(0xFF2C3E50), const Color(0xFF4B79A1)],
+                                  ? [
+                                      AppTheme.primaryStartDark,
+                                      AppTheme.primaryStart,
+                                    ]
+                                  : [
+                                      const Color(0xFF2C3E50),
+                                      const Color(0xFF4B79A1),
+                                    ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
@@ -761,29 +830,41 @@ class _AssetModerationState extends State<AssetModeration> {
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
-                                  child: Image.asset('assets/logos.png', height: 22),
+                                  child: Image.asset(
+                                    'assets/logos.png',
+                                    height: 22,
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
                                   asset['title'] ?? 'Untitled',
-                                  style: AppTheme.heading(16, color: Colors.white),
+                                  style: AppTheme.heading(
+                                    16,
+                                    color: Colors.white,
+                                  ),
                                 ),
                               ),
                               if (isVerified)
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 4),
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: Colors.green.withOpacity(0.3),
                                     borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
-                                        color: Colors.green.shade300),
+                                      color: Colors.green.shade300,
+                                    ),
                                   ),
                                   child: Text(
                                     '✓ Verified',
-                                    style: AppTheme.heading(11, color: Colors.white),
+                                    style: AppTheme.heading(
+                                      11,
+                                      color: Colors.white,
+                                    ),
                                   ),
                                 ),
                             ],
@@ -811,7 +892,10 @@ class _AssetModerationState extends State<AssetModeration> {
                               _InfoRow(
                                 icon: Icons.person_rounded,
                                 label: 'Owner',
-                                value: asset['ownerName'] ?? asset['ownerId'] ?? '—',
+                                value:
+                                    asset['ownerName'] ??
+                                    asset['ownerId'] ??
+                                    '—',
                               ),
                               if (asset['blockchainTokenId'] != null) ...[
                                 const SizedBox(height: 8),
@@ -829,19 +913,24 @@ class _AssetModerationState extends State<AssetModeration> {
                                   children: [
                                     Expanded(
                                       child: ElevatedButton.icon(
-                                        onPressed: () =>
-                                            _approveAsset(assetId),
-                                        icon: const Icon(Icons.check_rounded,
-                                            size: 18),
+                                        onPressed: () => _approveAsset(assetId),
+                                        icon: const Icon(
+                                          Icons.check_rounded,
+                                          size: 18,
+                                        ),
                                         label: const Text('Approve'),
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: AppTheme.primaryStart,
+                                          backgroundColor:
+                                              AppTheme.primaryStart,
                                           foregroundColor: Colors.white,
                                           shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                              BorderRadius.circular(12)),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
                                           padding: const EdgeInsets.symmetric(
-                                              vertical: 12),
+                                            vertical: 12,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -849,18 +938,24 @@ class _AssetModerationState extends State<AssetModeration> {
                                     Expanded(
                                       child: OutlinedButton.icon(
                                         onPressed: () => _rejectAsset(assetId),
-                                        icon: const Icon(Icons.close_rounded,
-                                            size: 18),
+                                        icon: const Icon(
+                                          Icons.close_rounded,
+                                          size: 18,
+                                        ),
                                         label: const Text('Reject'),
                                         style: OutlinedButton.styleFrom(
                                           foregroundColor: Colors.red,
                                           side: const BorderSide(
-                                              color: Colors.red),
+                                            color: Colors.red,
+                                          ),
                                           shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                              BorderRadius.circular(12)),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
                                           padding: const EdgeInsets.symmetric(
-                                              vertical: 12),
+                                            vertical: 12,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -870,14 +965,24 @@ class _AssetModerationState extends State<AssetModeration> {
                                 SizedBox(
                                   width: double.infinity,
                                   child: OutlinedButton.icon(
-                                    onPressed: () => _revokeVerification(assetId),
-                                    icon: const Icon(Icons.remove_circle_outline_rounded, size: 18),
+                                    onPressed: () =>
+                                        _revokeVerification(assetId),
+                                    icon: const Icon(
+                                      Icons.remove_circle_outline_rounded,
+                                      size: 18,
+                                    ),
                                     label: const Text('Revoke Verification'),
                                     style: OutlinedButton.styleFrom(
                                       foregroundColor: Colors.orange,
-                                      side: const BorderSide(color: Colors.orange),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      side: const BorderSide(
+                                        color: Colors.orange,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -923,19 +1028,23 @@ class _AssetModerationState extends State<AssetModeration> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('Reject Property', style: AppTheme.heading(20)),
         content: const Text(
-            'Are you sure you want to reject this property listing?'),
+          'Are you sure you want to reject this property listing?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel',
-                style: AppTheme.body(14, color: AppTheme.textMid)),
+            child: Text(
+              'Cancel',
+              style: AppTheme.body(14, color: AppTheme.textMid),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             child: const Text('Reject'),
           ),
@@ -986,7 +1095,9 @@ class TransactionMonitor extends StatelessWidget {
           return Center(child: Text('Error: ${snapshot.error}'));
         }
         if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator(color: AppTheme.primaryStart));
+          return const Center(
+            child: CircularProgressIndicator(color: AppTheme.primaryStart),
+          );
         }
 
         final transactions = snapshot.data!.docs;
@@ -1002,8 +1113,11 @@ class TransactionMonitor extends StatelessWidget {
                     color: AppTheme.primaryLight,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.receipt_long_rounded,
-                      size: 48, color: AppTheme.primaryStart),
+                  child: const Icon(
+                    Icons.receipt_long_rounded,
+                    size: 48,
+                    color: AppTheme.primaryStart,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -1082,19 +1196,25 @@ class TransactionMonitor extends StatelessWidget {
                         children: [
                           Text(
                             'Property: ${tx['assetId'] ?? 'Unknown'}',
-                            style: AppTheme.heading(14, color: AppTheme.textPrimary),
+                            style: AppTheme.heading(
+                              14,
+                              color: AppTheme.textPrimary,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 6),
+                          _TxInfo(label: 'Buyer', value: tx['buyerUid'] ?? '—'),
                           _TxInfo(
-                              label: 'Buyer', value: tx['buyerUid'] ?? '—'),
-                          _TxInfo(
-                              label: 'Seller', value: tx['sellerUid'] ?? '—'),
+                            label: 'Seller',
+                            value: tx['sellerUid'] ?? '—',
+                          ),
                           const SizedBox(height: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
                               color: statusColor.withOpacity(0.12),
                               borderRadius: BorderRadius.circular(20),
@@ -1147,9 +1267,16 @@ class DisputeManagement extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error_outline_rounded, color: Colors.red, size: 48),
+                  const Icon(
+                    Icons.error_outline_rounded,
+                    color: Colors.red,
+                    size: 48,
+                  ),
                   const SizedBox(height: 12),
-                  Text('Firestore Error', style: AppTheme.heading(16, color: Colors.red)),
+                  Text(
+                    'Firestore Error',
+                    style: AppTheme.heading(16, color: Colors.red),
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     snapshot.error.toString(),
@@ -1161,7 +1288,8 @@ class DisputeManagement extends StatelessWidget {
             ),
           );
         }
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData)
+          return const Center(child: CircularProgressIndicator());
         final disputes = snapshot.data!.docs;
 
         if (disputes.isEmpty) {
@@ -1169,9 +1297,16 @@ class DisputeManagement extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.verified_user_rounded, size: 64, color: Colors.green.withOpacity(0.3)),
+                Icon(
+                  Icons.verified_user_rounded,
+                  size: 64,
+                  color: Colors.green.withOpacity(0.3),
+                ),
                 const SizedBox(height: 16),
-                Text('No active disputes!', style: AppTheme.heading(16, color: AppTheme.textMid)),
+                Text(
+                  'No active disputes!',
+                  style: AppTheme.heading(16, color: AppTheme.textMid),
+                ),
                 const SizedBox(height: 8),
                 Text(
                   'Querying assets where disputeActive == true',
@@ -1206,32 +1341,48 @@ class DisputeManagement extends StatelessWidget {
                       const Icon(Icons.gavel_rounded, color: Colors.red),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(asset['title'] ?? 'Asset Dispute',
-                            style: AppTheme.heading(14, color: AppTheme.textPrimary)),
+                        child: Text(
+                          asset['title'] ?? 'Asset Dispute',
+                          style: AppTheme.heading(
+                            14,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
                       ),
                     ],
                   ),
                   const Divider(height: 24),
-                  Text('Reason:', style: AppTheme.body(12, color: AppTheme.textMid)),
-                  Text(asset['disputeReason'] ?? 'Unknown',
-                      style: AppTheme.body(13, weight: FontWeight.w600)),
+                  Text(
+                    'Reason:',
+                    style: AppTheme.body(12, color: AppTheme.textMid),
+                  ),
+                  Text(
+                    asset['disputeReason'] ?? 'Unknown',
+                    style: AppTheme.body(13, weight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 12),
-                  Text('Tenant Wallet: ${asset['currentTenantAddress'] ?? 'N/A'}',
-                      style: AppTheme.body(11, color: AppTheme.textMid)),
+                  Text(
+                    'Tenant Wallet: ${asset['currentTenantAddress'] ?? 'N/A'}',
+                    style: AppTheme.body(11, color: AppTheme.textMid),
+                  ),
                   const SizedBox(height: 16),
                   Row(
                     children: [
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: () => _resolveDispute(context, assetId, 'owner'),
-                          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryStart),
+                          onPressed: () =>
+                              _resolveDispute(context, assetId, 'owner'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryStart,
+                          ),
                           child: const Text('Rule for Owner'),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: () => _resolveDispute(context, assetId, 'tenant'),
+                          onPressed: () =>
+                              _resolveDispute(context, assetId, 'tenant'),
                           child: const Text('Rule for Tenant'),
                         ),
                       ),
@@ -1246,9 +1397,15 @@ class DisputeManagement extends StatelessWidget {
     );
   }
 
-  Future<void> _resolveDispute(BuildContext context, String assetId, String winner) async {
+  Future<void> _resolveDispute(
+    BuildContext context,
+    String assetId,
+    String winner,
+  ) async {
     final batch = FirebaseFirestore.instance.batch();
-    final assetRef = FirebaseFirestore.instance.collection('assets').doc(assetId);
+    final assetRef = FirebaseFirestore.instance
+        .collection('assets')
+        .doc(assetId);
 
     if (winner == 'tenant') {
       batch.update(assetRef, {
@@ -1302,7 +1459,10 @@ class _FilterChip extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: AppTheme.heading(13, color: selected ? Colors.white : AppTheme.primaryStart),
+          style: AppTheme.heading(
+            13,
+            color: selected ? Colors.white : AppTheme.primaryStart,
+          ),
         ),
       ),
     );
@@ -1314,8 +1474,11 @@ class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
 
-  const _InfoRow(
-      {required this.icon, required this.label, required this.value});
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1323,10 +1486,7 @@ class _InfoRow extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: AppTheme.primaryStart),
         const SizedBox(width: 8),
-        Text(
-          '$label: ',
-          style: AppTheme.body(13, color: AppTheme.textMid),
-        ),
+        Text('$label: ', style: AppTheme.body(13, color: AppTheme.textMid)),
         Expanded(
           child: Text(
             value,

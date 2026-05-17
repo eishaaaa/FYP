@@ -2198,13 +2198,23 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
     final isElectronics = category == 'electronics';
 
     return Scaffold(
+      backgroundColor: context.appScaffold,
       appBar: AppBar(
-        title: Text('NFT Certificate', style: AppTheme.heading(20, color: Colors.white)),
-        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.primaryGradient)),
+        title: Text(
+          'NFT Certificate',
+          style: AppTheme.heading(20, color: Colors.white),
+        ),
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(gradient: AppTheme.primaryGradient),
+        ),
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Colors.white,
+            size: 18,
+          ),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
       ),
@@ -2212,51 +2222,52 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
           ? Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.error_outline,
-                size: 64,
-                color: AppTheme.error,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      size: 64,
+                      color: AppTheme.error,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Failed to load certificate: $_error',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: context.appTextPrimary),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          _loading = true;
+                          _error = null;
+                        });
+                        _loadCertificateData();
+                      },
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Failed to load certificate: $_error',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    _loading = true;
-                    _error = null;
-                  });
-                  _loadCertificateData();
-                },
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-      )
+            )
           : SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _buildCertificateHeader(),
-            const SizedBox(height: 16),
-            _buildModelDetailsCard(isElectronics),
-            const SizedBox(height: 12),
-            _buildVerificationChecksCard(),
-            const SizedBox(height: 12),
-            _buildBuyerConfirmationBanner(),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  _buildCertificateHeader(),
+                  const SizedBox(height: 16),
+                  _buildModelDetailsCard(isElectronics),
+                  const SizedBox(height: 12),
+                  _buildVerificationChecksCard(),
+                  const SizedBox(height: 12),
+                  _buildBuyerConfirmationBanner(),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
     );
   }
 
@@ -2302,6 +2313,7 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
 
   Widget _buildModelDetailsCard(bool isElectronics) {
     return Card(
+      color: context.appSurface,
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
@@ -2313,7 +2325,7 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
               icon: Icons.info_outline,
               label: isElectronics ? 'Device Details' : 'Property Details',
             ),
-            const Divider(height: 20),
+            Divider(height: 20, color: context.appBorder),
             if (isElectronics) ...[
               _certRow(
                 'Brand',
@@ -2373,6 +2385,7 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
     final isVerified = _chainData?['isVerified'] == true;
 
     return Card(
+      color: context.appSurface,
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
@@ -2384,7 +2397,7 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
               icon: Icons.checklist,
               label: 'Authenticity Checks',
             ),
-            const Divider(height: 20),
+            Divider(height: 20, color: context.appBorder),
             _checkRow(
               label: 'Blockchain Verified',
               passed: isVerified,
@@ -2417,7 +2430,13 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: allClear ? AppTheme.primaryStart.withOpacity(0.05) : AppTheme.error.withOpacity(0.05),
+        color: allClear
+            ? (context.isDarkMode
+                ? AppTheme.primaryStart.withOpacity(0.12)
+                : AppTheme.primaryStart.withOpacity(0.05))
+            : (context.isDarkMode
+                ? AppTheme.error.withOpacity(0.14)
+                : AppTheme.error.withOpacity(0.05)),
         border: Border.all(
           color: allClear ? AppTheme.accent : AppTheme.error,
         ),
@@ -2440,14 +2459,26 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
                   allClear
                       ? 'This unit is safe to purchase'
                       : 'Caution before purchasing',
-                  style: AppTheme.heading(15, color: allClear ? AppTheme.primaryStart : AppTheme.error),
+                  style: AppTheme.heading(
+                    15,
+                    color: allClear
+                        ? (context.isDarkMode
+                            ? AppTheme.primaryEnd
+                            : AppTheme.primaryStart)
+                        : AppTheme.error,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   allClear
                       ? 'This asset has not been previously resold and has no stolen reports. The certificate above is recorded immutably on the blockchain.'
                       : 'One or more checks above did not pass. Please review the details carefully before proceeding with any purchase.',
-                  style: AppTheme.body(13, color: allClear ? AppTheme.textPrimary : AppTheme.error),
+                  style: AppTheme.body(
+                    13,
+                    color: allClear
+                        ? context.appTextPrimary
+                        : AppTheme.error,
+                  ),
                 ),
               ],
             ),
@@ -2458,13 +2489,16 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
   }
 
   Widget _certSectionTitle({required IconData icon, required String label}) {
+    final sectionColor = context.isDarkMode
+        ? AppTheme.primaryEnd
+        : AppTheme.primaryStart;
     return Row(
       children: [
-        Icon(icon, size: 20, color: AppTheme.primaryStart),
+        Icon(icon, size: 20, color: sectionColor),
         const SizedBox(width: 8),
         Text(
           label,
-          style: AppTheme.heading(15, color: AppTheme.primaryStart),
+          style: AppTheme.heading(15, color: sectionColor),
         ),
       ],
     );
@@ -2480,13 +2514,13 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
             width: 140,
             child: Text(
               '$label:',
-              style: AppTheme.body(13),
+              style: AppTheme.body(13, color: context.appTextSecondary),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: AppTheme.heading(13),
+              style: AppTheme.heading(13, color: context.appTextPrimary),
             ),
           ),
         ],
@@ -2523,12 +2557,15 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
             children: [
               Text(
                 label,
-                style: AppTheme.heading(14),
+                style: AppTheme.heading(14, color: context.appTextPrimary),
               ),
               const SizedBox(height: 2),
               Text(
                 passed ? passText : failText,
-                style: AppTheme.body(12),
+                style: AppTheme.body(
+                  12,
+                  color: passed ? context.appTextSecondary : AppTheme.error,
+                ),
               ),
             ],
           ),

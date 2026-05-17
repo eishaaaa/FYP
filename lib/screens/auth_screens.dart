@@ -20,50 +20,58 @@ import '../theme.dart';
 
 // ─── Brand Colors ─────────────────────────────────────────────────────────────
 // Migration to AppTheme: The constants below are now derived from AppTheme
-const kTeal        = AppTheme.primaryStart;
-const kTealDark    = AppTheme.primaryStartDark;
-const kTealLight   = Color(0xFFE8F4F4); // Kept for light background variations
-const kTealAccent  = AppTheme.accent;
-const kScaffoldBg  = AppTheme.background;
+const kTeal = AppTheme.primaryStart;
+const kTealDark = AppTheme.primaryStartDark;
+const kTealLight = Color(0xFFE8F4F4); // Kept for light background variations
+const kTealAccent = AppTheme.accent;
+const kScaffoldBg = AppTheme.background;
 const kTextPrimary = AppTheme.textPrimary;
 const kTextSecondary = AppTheme.textSecondary;
 
-final FirebaseAuth      auth = FirebaseAuth.instance;
-final FirebaseFirestore db   = FirebaseFirestore.instance;
+final FirebaseAuth auth = FirebaseAuth.instance;
+final FirebaseFirestore db = FirebaseFirestore.instance;
 
 // ─── Shared Input Decoration ──────────────────────────────────────────────────
-InputDecoration _inputDecoration(String label, {Widget? prefix, Widget? suffix}) {
+InputDecoration _inputDecoration(
+  BuildContext context,
+  String label, {
+  Widget? prefix,
+  Widget? suffix,
+}) {
   return InputDecoration(
-    labelText      : label,
-    labelStyle     : AppTheme.body(14, color: kTextSecondary),
-    prefixIcon     : prefix,
-    suffixIcon     : suffix,
-    filled         : true,
-    fillColor      : Colors.white,
+    labelText: label,
+    labelStyle: AppTheme.body(14, color: context.appTextSecondary),
+    prefixIcon: prefix,
+    suffixIcon: suffix,
+    filled: true,
+    fillColor: context.appInputFill,
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
-      borderSide  : BorderSide.none,
+      borderSide: BorderSide.none,
     ),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
-      borderSide  : BorderSide(color: kTeal.withOpacity(0.15)),
+      borderSide: BorderSide(color: context.appBorder),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
-      borderSide  : const BorderSide(color: kTeal, width: 2),
+      borderSide: const BorderSide(color: kTeal, width: 2),
     ),
     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
   );
 }
 
 // ─── Image Compression ───────────────────────────────────────────────────────
-Future<String> compressImageToBase64(Uint8List bytes, {int quality = 70}) async {
+Future<String> compressImageToBase64(
+  Uint8List bytes, {
+  int quality = 70,
+}) async {
   final image = img.decodeImage(bytes);
   if (image == null) return base64Encode(bytes);
   img.Image resized = image;
   if (image.width > 800) resized = img.copyResize(image, width: 800);
   final compressed = img.encodeJpg(resized, quality: quality);
-  final base64Str  = base64Encode(compressed);
+  final base64Str = base64Encode(compressed);
   if (base64Str.length > 900000) {
     return compressImageToBase64(bytes, quality: quality - 10);
   }
@@ -79,45 +87,53 @@ class OnboardingScreen extends StatelessWidget {
     await prefs.setBool('onboarding', true);
     if (!ctx.mounted) return;
     Navigator.pushReplacement(
-        ctx, MaterialPageRoute(builder: (_) => const SplashScreen()));
+      ctx,
+      MaterialPageRoute(builder: (_) => const SplashScreen()),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final pages = [
       _buildPage(
-        icon : Icons.security_rounded,
+        context: context,
+        icon: Icons.security_rounded,
         title: 'Secure Ownership',
-        body : 'Digital verification for land & electronic assets.',
+        body: 'Digital verification for land & electronic assets.',
       ),
       _buildPage(
-        icon : Icons.qr_code_scanner_rounded,
+        context: context,
+        icon: Icons.qr_code_scanner_rounded,
         title: 'QR Verification',
-        body : 'Instant verification using QR codes.',
+        body: 'Instant verification using QR codes.',
       ),
       _buildPage(
-        icon : Icons.token_rounded,
+        context: context,
+        icon: Icons.token_rounded,
         title: 'Future Tokenization',
-        body : 'Invest in tokenized assets in Phase 2.',
+        body: 'Invest in tokenized assets in Phase 2.',
       ),
     ];
 
     return IntroductionScreen(
-      globalBackgroundColor: kScaffoldBg,
-      pages              : pages,
-      done               : Text('Get Started',
-          style: AppTheme.heading(14, color: AppTheme.primaryStart)),
-      onDone             : () => _complete(context),
-      next               : const Icon(Icons.arrow_forward_ios_rounded,
-          color: kTeal, size: 18),
-      showSkipButton     : true,
-      skip               : Text('Skip',
-          style: AppTheme.body(14, color: AppTheme.textSecondary)),
-      dotsDecorator      : const DotsDecorator(
+      globalBackgroundColor: context.appScaffold,
+      pages: pages,
+      done: Text(
+        'Get Started',
+        style: AppTheme.heading(14, color: AppTheme.primaryStart),
+      ),
+      onDone: () => _complete(context),
+      next: const Icon(Icons.arrow_forward_ios_rounded, color: kTeal, size: 18),
+      showSkipButton: true,
+      skip: Text(
+        'Skip',
+        style: AppTheme.body(14, color: AppTheme.textSecondary),
+      ),
+      dotsDecorator: const DotsDecorator(
         activeColor: AppTheme.primaryStart,
-        color      : Color(0xFFB2CFCF),
-        size       : Size(8, 8),
-        activeSize : Size(20, 8),
+        color: Color(0xFFB2CFCF),
+        size: Size(8, 8),
+        activeSize: Size(20, 8),
         activeShape: RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(4)),
         ),
@@ -125,30 +141,32 @@ class OnboardingScreen extends StatelessWidget {
     );
   }
 
-  PageViewModel _buildPage(
-      {required IconData icon,
-        required String title,
-        required String body}) {
+  PageViewModel _buildPage({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String body,
+  }) {
     return PageViewModel(
       titleWidget: Text(
         title,
-        style: AppTheme.heading(24, color: kTextPrimary),
+        style: AppTheme.heading(24, color: context.appTextPrimary),
       ),
       bodyWidget: Text(
         body,
         textAlign: TextAlign.center,
-        style: AppTheme.body(15, color: kTextSecondary),
+        style: AppTheme.body(15, color: context.appTextSecondary),
       ),
       image: Container(
-        padding   : const EdgeInsets.all(28),
+        padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
           gradient: AppTheme.primaryGradient,
-          shape    : BoxShape.circle,
+          shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color     : kTeal.withOpacity(0.3),
+              color: kTeal.withOpacity(0.3),
               blurRadius: 30,
-              offset    : const Offset(0, 10),
+              offset: const Offset(0, 10),
             ),
           ],
         ),
@@ -177,28 +195,34 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 2600))
-      ..forward();
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    )..forward();
 
     _scaleAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
-          parent: _ctrl,
-          curve : const Interval(0.0, 0.5, curve: Curves.elasticOut)),
+        parent: _ctrl,
+        curve: const Interval(0.0, 0.5, curve: Curves.elasticOut),
+      ),
     );
     _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
-          parent: _ctrl,
-          curve : const Interval(0.4, 0.8, curve: Curves.easeIn)),
-    );
-    _slideAnim = Tween<Offset>(
-        begin: const Offset(0, 0.4), end: Offset.zero)
-        .animate(CurvedAnimation(
         parent: _ctrl,
-        curve : const Interval(0.4, 0.8, curve: Curves.easeOut)));
+        curve: const Interval(0.4, 0.8, curve: Curves.easeIn),
+      ),
+    );
+    _slideAnim = Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _ctrl,
+            curve: const Interval(0.4, 0.8, curve: Curves.easeOut),
+          ),
+        );
     _glowAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
-          parent: _ctrl,
-          curve : const Interval(0.3, 0.7, curve: Curves.easeOut)),
+        parent: _ctrl,
+        curve: const Interval(0.3, 0.7, curve: Curves.easeOut),
+      ),
     );
 
     _ctrl.addStatusListener((s) {
@@ -212,14 +236,18 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
     if (user == null) {
       Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
       return;
     }
     try {
       final snap = await db.collection('users').doc(user.uid).get();
       if (!snap.exists) {
-        Navigator.pushReplacement(context,
-            MaterialPageRoute(builder: (_) => const LoginScreen()));
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
         return;
       }
       final role = ((snap.data()?['role'] as String?) ?? 'user')
@@ -229,23 +257,31 @@ class _SplashScreenState extends State<SplashScreen>
       _navigateByRole(role);
     } catch (_) {
       if (mounted) {
-        Navigator.pushReplacement(context,
-            MaterialPageRoute(builder: (_) => const LoginScreen()));
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
       }
     }
   }
 
   void _navigateByRole(String role) {
     if (role.contains('admin')) {
-      Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (_) => const AdminHomeScreen()));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const AdminHomeScreen()),
+      );
     } else if (role.contains('supplier')) {
       final type = role.contains('land') ? 'land' : 'electronics';
-      Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)),
+      );
     } else {
-      Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (_) => const UserHomeScreen()));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const UserHomeScreen()),
+      );
     }
   }
 
@@ -274,17 +310,17 @@ class _SplashScreenState extends State<SplashScreen>
                     Color(0xFF26A69A),
                   ],
                   begin: Alignment.topLeft,
-                  end  : Alignment.bottomRight,
+                  end: Alignment.bottomRight,
                 ),
               ),
             ),
 
             // Decorative orb top-right
             Positioned(
-              top  : -size.width * 0.25,
+              top: -size.width * 0.25,
               right: -size.width * 0.20,
               child: Container(
-                width : size.width * 0.7,
+                width: size.width * 0.7,
                 height: size.width * 0.7,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
@@ -296,9 +332,9 @@ class _SplashScreenState extends State<SplashScreen>
             // Decorative orb bottom-left
             Positioned(
               bottom: -size.width * 0.30,
-              left  : -size.width * 0.20,
+              left: -size.width * 0.20,
               child: Container(
-                width : size.width * 0.8,
+                width: size.width * 0.8,
                 height: size.width * 0.8,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
@@ -312,30 +348,29 @@ class _SplashScreenState extends State<SplashScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-
                   // Glassmorphism rounded-square logo card
                   Transform.scale(
                     scale: _scaleAnim.value,
                     child: Container(
-                      width : 160,
+                      width: 160,
                       height: 160,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(32),
-                        color       : Colors.white.withOpacity(0.12),
-                        border      : Border.all(
+                        color: Colors.white.withOpacity(0.12),
+                        border: Border.all(
                           color: Colors.white.withOpacity(0.28),
                           width: 1.5,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color     : const Color(0xFF003D38).withOpacity(0.50),
+                            color: const Color(0xFF003D38).withOpacity(0.50),
                             blurRadius: 40,
-                            offset    : const Offset(0, 18),
+                            offset: const Offset(0, 18),
                           ),
                           BoxShadow(
-                            color     : Colors.white.withOpacity(0.07),
+                            color: Colors.white.withOpacity(0.07),
                             blurRadius: 20,
-                            offset    : const Offset(0, -6),
+                            offset: const Offset(0, -6),
                           ),
                         ],
                       ),
@@ -343,7 +378,7 @@ class _SplashScreenState extends State<SplashScreen>
                         borderRadius: BorderRadius.circular(32),
                         child: Padding(
                           padding: const EdgeInsets.all(22),
-                          child  : Image.asset(
+                          child: Image.asset(
                             'assets/logoss.png',
                             fit: BoxFit.contain,
                           ),
@@ -356,32 +391,45 @@ class _SplashScreenState extends State<SplashScreen>
 
                   // Text + loader
                   FadeTransition(
-                    opacity : _fadeAnim,
-                    child   : SlideTransition(
+                    opacity: _fadeAnim,
+                    child: SlideTransition(
                       position: _slideAnim,
-                      child   : Column(
+                      child: Column(
                         children: [
                           Text(
                             'Digital Goods',
-                            style: AppTheme.heading(34, color: Colors.white).copyWith(
-                              fontWeight   : FontWeight.w800,
-                              letterSpacing: 0.8,
-                            ),
+                            style: AppTheme.heading(34, color: Colors.white)
+                                .copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.8,
+                                ),
                           ),
                           const SizedBox(height: 12),
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Container(width: 22, height: 1, color: Colors.white.withOpacity(0.4)),
+                              Container(
+                                width: 22,
+                                height: 1,
+                                color: Colors.white.withOpacity(0.4),
+                              ),
                               Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 10),
-                                child  : Text(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                                child: Text(
                                   'Verify. Secure. Own.',
-                                  style: AppTheme.body(13, color: Colors.white.withOpacity(0.76))
-                                      .copyWith(letterSpacing: 2.2),
+                                  style: AppTheme.body(
+                                    13,
+                                    color: Colors.white.withOpacity(0.76),
+                                  ).copyWith(letterSpacing: 2.2),
                                 ),
                               ),
-                              Container(width: 22, height: 1, color: Colors.white.withOpacity(0.4)),
+                              Container(
+                                width: 22,
+                                height: 1,
+                                color: Colors.white.withOpacity(0.4),
+                              ),
                             ],
                           ),
                           const SizedBox(height: 60),
@@ -389,15 +437,22 @@ class _SplashScreenState extends State<SplashScreen>
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: List.generate(3, (i) {
-                              final delay  = i / 3.0;
-                              final t      = ((_glowAnim.value - delay) % 1.0).clamp(0.0, 1.0);
+                              final delay = i / 3.0;
+                              final t = ((_glowAnim.value - delay) % 1.0).clamp(
+                                0.0,
+                                1.0,
+                              );
                               final bounce = (t < 0.5 ? t : 1.0 - t) * 2.0;
                               return Container(
-                                margin    : const EdgeInsets.symmetric(horizontal: 5),
-                                width     : 7,
-                                height    : 7 + bounce * 6,
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                ),
+                                width: 7,
+                                height: 7 + bounce * 6,
                                 decoration: BoxDecoration(
-                                  color       : Colors.white.withOpacity(0.45 + bounce * 0.55),
+                                  color: Colors.white.withOpacity(
+                                    0.45 + bounce * 0.55,
+                                  ),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                               );
@@ -418,19 +473,22 @@ class _SplashScreenState extends State<SplashScreen>
 }
 
 // ─── User doc helper ──────────────────────────────────────────────────────────
-Future<void> createUserDocIfNotExists(User user,
-    {String role = 'user', String? photoBase64}) async {
+Future<void> createUserDocIfNotExists(
+  User user, {
+  String role = 'user',
+  String? photoBase64,
+}) async {
   final docRef = db.collection('users').doc(user.uid);
-  final snap   = await docRef.get();
+  final snap = await docRef.get();
   if (!snap.exists) {
     await docRef.set({
-      'uid'        : user.uid,
-      'name'       : user.displayName ?? '',
-      'email'      : user.email ?? '',
-      'phone'      : user.phoneNumber ?? '',
+      'uid': user.uid,
+      'name': user.displayName ?? '',
+      'email': user.email ?? '',
+      'phone': user.phoneNumber ?? '',
       'photoBase64': photoBase64 ?? '',
-      'role'       : role,
-      'createdAt'  : FieldValue.serverTimestamp(),
+      'role': role,
+      'createdAt': FieldValue.serverTimestamp(),
     });
   }
 }
@@ -441,9 +499,9 @@ Future<User?> signInWithGoogle(BuildContext ctx) async {
     final gUser = await GoogleSignIn().signIn();
     if (gUser == null) return null;
     final gAuth = await gUser.authentication;
-    final cred  = GoogleAuthProvider.credential(
+    final cred = GoogleAuthProvider.credential(
       accessToken: gAuth.accessToken,
-      idToken    : gAuth.idToken,
+      idToken: gAuth.idToken,
     );
     final userCred = await auth.signInWithCredential(cred);
     return userCred.user;
@@ -456,13 +514,14 @@ Future<User?> signInWithGoogle(BuildContext ctx) async {
 }
 
 void _showSnack(BuildContext ctx, String msg, {Color? color}) {
-  ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-    content        : Text(msg),
-    backgroundColor: color ?? AppTheme.primaryStart,
-    behavior       : SnackBarBehavior.floating,
-    shape          : RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10)),
-  ));
+  ScaffoldMessenger.of(ctx).showSnackBar(
+    SnackBar(
+      content: Text(msg),
+      backgroundColor: color ?? AppTheme.primaryStart,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ),
+  );
 }
 
 // ─── Login Screen ─────────────────────────────────────────────────────────────
@@ -475,25 +534,26 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
   final _emailCtrl = TextEditingController();
-  final _passCtrl  = TextEditingController();
+  final _passCtrl = TextEditingController();
   bool _loading = false;
   bool _obscure = true;
 
   late AnimationController _animCtrl;
-  late Animation<double>   _fadeAnim;
-  late Animation<Offset>   _slideAnim;
+  late Animation<double> _fadeAnim;
+  late Animation<Offset> _slideAnim;
 
   @override
   void initState() {
     super.initState();
     _animCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 600))
-      ..forward();
-    _fadeAnim  = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..forward();
+    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
     _slideAnim = Tween<Offset>(
-        begin: const Offset(0, 0.12), end: Offset.zero)
-        .animate(
-        CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut));
+      begin: const Offset(0, 0.12),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut));
   }
 
   @override
@@ -512,16 +572,27 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _loading = true);
     try {
       final cred = await auth.signInWithEmailAndPassword(
-          email: _emailCtrl.text.trim(), password: _passCtrl.text.trim());
+        email: _emailCtrl.text.trim(),
+        password: _passCtrl.text.trim(),
+      );
       final snap = await db.collection('users').doc(cred.user!.uid).get();
       if (!snap.exists) {
         if (mounted) {
-          _showSnack(context, 'Account record missing. Please register your role.', color: Colors.orange);
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen()));
+          _showSnack(
+            context,
+            'Account record missing. Please register your role.',
+            color: Colors.orange,
+          );
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const RegisterScreen()),
+          );
         }
         return;
       }
-      final role = (snap.data()?['role'] as String? ?? 'user').toLowerCase().trim();
+      final role = (snap.data()?['role'] as String? ?? 'user')
+          .toLowerCase()
+          .trim();
       if (!mounted) return;
       _navigateByRole(role);
     } catch (e) {
@@ -539,13 +610,22 @@ class _LoginScreenState extends State<LoginScreen>
         // 🛑 IMPORTANT: If doc is missing, don't auto-create as 'user'.
         // Redirect to Register so they can choose 'Supplier' if they want.
         if (mounted) {
-          _showSnack(context, 'Account record missing. Please register your role.', color: Colors.orange);
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen()));
+          _showSnack(
+            context,
+            'Account record missing. Please register your role.',
+            color: Colors.orange,
+          );
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const RegisterScreen()),
+          );
         }
         if (mounted) setState(() => _loading = false);
         return;
       }
-      final role = ((snap.data()?['role'] as String?) ?? 'user').toLowerCase().trim();
+      final role = ((snap.data()?['role'] as String?) ?? 'user')
+          .toLowerCase()
+          .trim();
       if (mounted) _navigateByRole(role);
     }
     if (mounted) setState(() => _loading = false);
@@ -553,28 +633,34 @@ class _LoginScreenState extends State<LoginScreen>
 
   void _navigateByRole(String role) {
     if (role.contains('admin')) {
-      Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (_) => const AdminHomeScreen()));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const AdminHomeScreen()),
+      );
     } else if (role.contains('supplier')) {
       final type = role.contains('land') ? 'land' : 'electronics';
-      Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)),
+      );
     } else {
-      Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (_) => const UserHomeScreen()));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const UserHomeScreen()),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kScaffoldBg,
+      backgroundColor: context.appScaffold,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [kTealDark, kTeal],
-            begin : Alignment.topLeft,
-            end   : Alignment(0.4, 0.5),
+            begin: Alignment.topLeft,
+            end: Alignment(0.4, 0.5),
           ),
         ),
         child: SafeArea(
@@ -589,10 +675,10 @@ class _LoginScreenState extends State<LoginScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
-                        padding   : const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color        : Colors.white.withOpacity(0.2),
-                          borderRadius : BorderRadius.circular(14),
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(14),
                         ),
                         child: Image.asset('assets/logoss.png', height: 28),
                         //   child: const Icon(Icons.apartment_rounded,
@@ -606,7 +692,10 @@ class _LoginScreenState extends State<LoginScreen>
                       const SizedBox(height: 6),
                       Text(
                         'Sign in to continue',
-                        style: AppTheme.body(14, color: Colors.white.withOpacity(0.8)),
+                        style: AppTheme.body(
+                          14,
+                          color: Colors.white.withOpacity(0.8),
+                        ),
                       ),
                     ],
                   ),
@@ -617,50 +706,64 @@ class _LoginScreenState extends State<LoginScreen>
               Expanded(
                 child: SlideTransition(
                   position: _slideAnim,
-                  child   : FadeTransition(
+                  child: FadeTransition(
                     opacity: _fadeAnim,
-                    child  : Container(
-                      decoration: const BoxDecoration(
-                        color       : AppTheme.background,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: context.appSurface,
                         borderRadius: BorderRadius.only(
-                          topLeft : Radius.circular(32),
+                          topLeft: Radius.circular(32),
                           topRight: Radius.circular(32),
                         ),
                       ),
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(24, 30, 24, 24),
-                        child  : Column(
+                        child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             // Email
                             TextField(
-                              controller  : _emailCtrl,
+                              controller: _emailCtrl,
                               keyboardType: TextInputType.emailAddress,
-                              style       : AppTheme.body(14, color: AppTheme.textPrimary),
-                              decoration  : _inputDecoration(
+                              style: AppTheme.body(
+                                14,
+                                color: context.appTextPrimary,
+                              ),
+                              decoration: _inputDecoration(
+                                context,
                                 'Email Address',
-                                prefix: const Icon(Icons.email_outlined,
-                                    color: AppTheme.primaryStart, size: 20),
+                                prefix: const Icon(
+                                  Icons.email_outlined,
+                                  color: AppTheme.primaryStart,
+                                  size: 20,
+                                ),
                               ),
                             ),
                             const SizedBox(height: 14),
 
                             // Password
                             TextField(
-                              controller : _passCtrl,
+                              controller: _passCtrl,
                               obscureText: _obscure,
-                              style      : AppTheme.body(14, color: AppTheme.textPrimary),
-                              decoration : _inputDecoration(
+                              style: AppTheme.body(
+                                14,
+                                color: context.appTextPrimary,
+                              ),
+                              decoration: _inputDecoration(
+                                context,
                                 'Password',
-                                prefix: const Icon(Icons.lock_outline_rounded,
-                                    color: AppTheme.primaryStart, size: 20),
+                                prefix: const Icon(
+                                  Icons.lock_outline_rounded,
+                                  color: AppTheme.primaryStart,
+                                  size: 20,
+                                ),
                                 suffix: IconButton(
                                   icon: Icon(
                                     _obscure
                                         ? Icons.visibility_outlined
                                         : Icons.visibility_off_outlined,
-                                    color: AppTheme.textSecondary,
-                                    size : 20,
+                                    color: context.appTextSecondary,
+                                    size: 20,
                                   ),
                                   onPressed: () =>
                                       setState(() => _obscure = !_obscure),
@@ -672,16 +775,20 @@ class _LoginScreenState extends State<LoginScreen>
                             // Forgot password
                             Align(
                               alignment: Alignment.centerRight,
-                              child    : TextButton(
+                              child: TextButton(
                                 onPressed: () => Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                      builder: (_) =>
-                                      const ForgotPasswordScreen()),
+                                    builder: (_) =>
+                                        const ForgotPasswordScreen(),
+                                  ),
                                 ),
                                 child: Text(
                                   'Forgot Password?',
-                                  style: AppTheme.heading(13, color: AppTheme.primaryStart),
+                                  style: AppTheme.heading(
+                                    13,
+                                    color: AppTheme.primaryStart,
+                                  ),
                                 ),
                               ),
                             ),
@@ -689,27 +796,35 @@ class _LoginScreenState extends State<LoginScreen>
 
                             // Login button
                             _GradientButton(
-                              label    : 'Sign In',
-                              loading  : _loading,
+                              label: 'Sign In',
+                              loading: _loading,
                               onPressed: _login,
                             ),
                             const SizedBox(height: 20),
 
                             // Divider
-                            Row(children: [
-                              Expanded(
-                                  child: Divider(
-                                      color: kTeal.withOpacity(0.2))),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12),
-                                child: Text('or',
-                                    style: AppTheme.body(13, color: AppTheme.textSecondary)),
-                              ),
-                              Expanded(
-                                  child: Divider(
-                                      color: kTeal.withOpacity(0.2))),
-                            ]),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Divider(color: kTeal.withOpacity(0.2)),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  child: Text(
+                                    'or',
+                                    style: AppTheme.body(
+                                      13,
+                                      color: AppTheme.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Divider(color: kTeal.withOpacity(0.2)),
+                                ),
+                              ],
+                            ),
                             const SizedBox(height: 16),
 
                             // Google button
@@ -722,18 +837,26 @@ class _LoginScreenState extends State<LoginScreen>
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text("Don't have an account? ",
-                                    style: AppTheme.body(13, color: AppTheme.textSecondary)),
+                                Text(
+                                  "Don't have an account? ",
+                                  style: AppTheme.body(
+                                    13,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                ),
                                 GestureDetector(
                                   onTap: () => Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                        builder: (_) =>
-                                        const RegisterScreen()),
+                                      builder: (_) => const RegisterScreen(),
+                                    ),
                                   ),
                                   child: Text(
                                     'Register',
-                                    style: AppTheme.heading(13, color: AppTheme.primaryStart),
+                                    style: AppTheme.heading(
+                                      13,
+                                      color: AppTheme.primaryStart,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -762,45 +885,52 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen>
     with SingleTickerProviderStateMixin {
-  final _nameCtrl    = TextEditingController();
-  final _emailCtrl   = TextEditingController();
-  final _phoneCtrl   = TextEditingController();
-  final _passCtrl    = TextEditingController();
+  final _nameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
   final _companyCtrl = TextEditingController();
-  final _cnicCtrl    = TextEditingController();
-  final _cityCtrl    = TextEditingController();
+  final _cnicCtrl = TextEditingController();
+  final _cityCtrl = TextEditingController();
 
-  String     _role         = 'user';
-  String     _supplierType = 'land';
+  String _role = 'user';
+  String _supplierType = 'land';
   Uint8List? _photo;
-  bool       _loading = false;
-  bool       _obscure = true;
-  final      _picker  = ImagePicker();
+  bool _loading = false;
+  bool _obscure = true;
+  final _picker = ImagePicker();
 
   late AnimationController _animCtrl;
-  late Animation<double>   _fadeAnim;
-  late Animation<Offset>   _slideAnim;
+  late Animation<double> _fadeAnim;
+  late Animation<Offset> _slideAnim;
 
   @override
   void initState() {
     super.initState();
     _animCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 600))
-      ..forward();
-    _fadeAnim  = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..forward();
+    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
     _slideAnim = Tween<Offset>(
-        begin: const Offset(0, 0.1), end: Offset.zero)
-        .animate(
-        CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut));
+      begin: const Offset(0, 0.1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut));
   }
 
   @override
   void dispose() {
     _animCtrl.dispose();
     for (final c in [
-      _nameCtrl, _emailCtrl, _phoneCtrl, _passCtrl,
-      _confirmCtrl, _companyCtrl, _cnicCtrl, _cityCtrl
+      _nameCtrl,
+      _emailCtrl,
+      _phoneCtrl,
+      _passCtrl,
+      _confirmCtrl,
+      _companyCtrl,
+      _cnicCtrl,
+      _cityCtrl,
     ]) {
       c.dispose();
     }
@@ -810,8 +940,10 @@ class _RegisterScreenState extends State<RegisterScreen>
   Future<void> _pickPhoto() async {
     final status = await Permission.photos.request();
     if (!status.isGranted) return;
-    final XFile? file =
-    await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    final XFile? file = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
+    );
     if (file != null) {
       _photo = await file.readAsBytes();
       setState(() {});
@@ -830,22 +962,24 @@ class _RegisterScreenState extends State<RegisterScreen>
     setState(() => _loading = true);
     try {
       final userCred = await auth.createUserWithEmailAndPassword(
-          email: _emailCtrl.text.trim(), password: _passCtrl.text.trim());
-      final uid        = userCred.user!.uid;
+        email: _emailCtrl.text.trim(),
+        password: _passCtrl.text.trim(),
+      );
+      final uid = userCred.user!.uid;
       final roleString = _role == 'user' ? 'user' : 'supplier_$_supplierType';
       final Map<String, dynamic> data = {
-        'uid'      : uid,
-        'name'     : _nameCtrl.text.trim(),
-        'email'    : _emailCtrl.text.trim(),
-        'phone'    : _phoneCtrl.text.trim(),
-        'role'     : roleString,
+        'uid': uid,
+        'name': _nameCtrl.text.trim(),
+        'email': _emailCtrl.text.trim(),
+        'phone': _phoneCtrl.text.trim(),
+        'role': roleString,
         'createdAt': FieldValue.serverTimestamp(),
       };
       if (_role == 'supplier') {
         data.addAll({
           'company': _companyCtrl.text.trim(),
-          'cnic'   : _cnicCtrl.text.trim(),
-          'city'   : _cityCtrl.text.trim(),
+          'cnic': _cnicCtrl.text.trim(),
+          'city': _cityCtrl.text.trim(),
         });
       }
       if (_photo != null) {
@@ -854,8 +988,11 @@ class _RegisterScreenState extends State<RegisterScreen>
       await db.collection('users').doc(uid).set(data);
       await userCred.user!.updateDisplayName(roleString);
       if (!mounted) return;
-      _showSnack(context, '✅ Account created! Please login.',
-          color: Colors.green);
+      _showSnack(
+        context,
+        '✅ Account created! Please login.',
+        color: Colors.green,
+      );
       Navigator.pop(context);
     } catch (e) {
       if (mounted) _showSnack(context, 'Error: $e', color: Colors.red);
@@ -869,20 +1006,19 @@ class _RegisterScreenState extends State<RegisterScreen>
     final user = await signInWithGoogle(context);
     if (user != null) {
       final docRef = db.collection('users').doc(user.uid);
-      final snap   = await docRef.get();
+      final snap = await docRef.get();
       if (!snap.exists) {
         await docRef.set({
-          'uid'        : user.uid,
-          'name'       : user.displayName ?? '',
-          'email'      : user.email ?? '',
-          'phone'      : user.phoneNumber ?? '',
+          'uid': user.uid,
+          'name': user.displayName ?? '',
+          'email': user.email ?? '',
+          'phone': user.phoneNumber ?? '',
           'photoBase64': '',
-          'role'       : 'user',
-          'createdAt'  : FieldValue.serverTimestamp(),
+          'role': 'user',
+          'createdAt': FieldValue.serverTimestamp(),
         });
       }
-      final role =
-      ((await docRef.get()).data()?['role'] as String? ?? 'user')
+      final role = ((await docRef.get()).data()?['role'] as String? ?? 'user')
           .toLowerCase()
           .trim();
       if (!mounted) return;
@@ -893,28 +1029,34 @@ class _RegisterScreenState extends State<RegisterScreen>
 
   void _navigateByRole(String role) {
     if (role.contains('admin')) {
-      Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (_) => const AdminHomeScreen()));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const AdminHomeScreen()),
+      );
     } else if (role.contains('supplier')) {
       final type = role.contains('land') ? 'land' : 'electronics';
-      Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => SupplierHomeScreen(type: type)),
+      );
     } else {
-      Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (_) => const UserHomeScreen()));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const UserHomeScreen()),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kScaffoldBg,
+      backgroundColor: context.appScaffold,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [kTealDark, kTeal],
-            begin : Alignment.topLeft,
-            end   : Alignment(0.4, 0.4),
+            begin: Alignment.topLeft,
+            end: Alignment(0.4, 0.4),
           ),
         ),
         child: SafeArea(
@@ -932,21 +1074,31 @@ class _RegisterScreenState extends State<RegisterScreen>
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color       : Colors.white.withOpacity(0.2),
+                            color: Colors.white.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Icon(Icons.arrow_back_ios_new_rounded,
-                              color: Colors.white, size: 18),
+                          child: const Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 14),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Create Account',
-                              style: AppTheme.heading(20, color: Colors.white)),
-                          Text('Join Digital Goods today',
-                              style: AppTheme.body(12, color: Colors.white.withOpacity(0.8))),
+                          Text(
+                            'Create Account',
+                            style: AppTheme.heading(20, color: Colors.white),
+                          ),
+                          Text(
+                            'Join Digital Goods today',
+                            style: AppTheme.body(
+                              12,
+                              color: Colors.white.withOpacity(0.8),
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -958,22 +1110,21 @@ class _RegisterScreenState extends State<RegisterScreen>
               Expanded(
                 child: SlideTransition(
                   position: _slideAnim,
-                  child   : FadeTransition(
+                  child: FadeTransition(
                     opacity: _fadeAnim,
-                    child  : Container(
-                      decoration: const BoxDecoration(
-                        color       : AppTheme.background,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: context.appSurface,
                         borderRadius: BorderRadius.only(
-                          topLeft : Radius.circular(32),
+                          topLeft: Radius.circular(32),
                           topRight: Radius.circular(32),
                         ),
                       ),
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
-                        child  : Column(
+                        child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-
                             // Avatar picker
                             Center(
                               child: GestureDetector(
@@ -981,29 +1132,34 @@ class _RegisterScreenState extends State<RegisterScreen>
                                 child: Stack(
                                   children: [
                                     CircleAvatar(
-                                      radius         : 50,
-                                      backgroundColor: AppTheme.primaryStart.withOpacity(0.12),
+                                      radius: 50,
+                                      backgroundColor: AppTheme.primaryStart
+                                          .withOpacity(0.12),
                                       backgroundImage: _photo != null
                                           ? MemoryImage(_photo!)
                                           : null,
                                       child: _photo == null
-                                          ? const Icon(Icons.person_rounded,
-                                          size : 44, color: AppTheme.primaryStart)
+                                          ? const Icon(
+                                              Icons.person_rounded,
+                                              size: 44,
+                                              color: AppTheme.primaryStart,
+                                            )
                                           : null,
                                     ),
                                     Positioned(
                                       bottom: 0,
-                                      right : 0,
-                                      child : Container(
+                                      right: 0,
+                                      child: Container(
                                         padding: const EdgeInsets.all(6),
                                         decoration: const BoxDecoration(
-                                          color : kTeal,
-                                          shape : BoxShape.circle,
+                                          color: kTeal,
+                                          shape: BoxShape.circle,
                                         ),
                                         child: const Icon(
-                                            Icons.camera_alt_rounded,
-                                            color: Colors.white,
-                                            size : 16),
+                                          Icons.camera_alt_rounded,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -1018,17 +1174,17 @@ class _RegisterScreenState extends State<RegisterScreen>
                             Row(
                               children: [
                                 _RoleChip(
-                                  label   : 'User',
-                                  icon    : Icons.person_rounded,
+                                  label: 'User',
+                                  icon: Icons.person_rounded,
                                   selected: _role == 'user',
-                                  onTap   : () => setState(() => _role = 'user'),
+                                  onTap: () => setState(() => _role = 'user'),
                                 ),
                                 const SizedBox(width: 10),
                                 _RoleChip(
-                                  label   : 'Supplier',
-                                  icon    : Icons.business_rounded,
+                                  label: 'Supplier',
+                                  icon: Icons.business_rounded,
                                   selected: _role == 'supplier',
-                                  onTap   : () =>
+                                  onTap: () =>
                                       setState(() => _role = 'supplier'),
                                 ),
                               ],
@@ -1039,19 +1195,20 @@ class _RegisterScreenState extends State<RegisterScreen>
                               Row(
                                 children: [
                                   _RoleChip(
-                                    label   : 'Land',
-                                    icon    : Icons.landscape_rounded,
+                                    label: 'Land',
+                                    icon: Icons.landscape_rounded,
                                     selected: _supplierType == 'land',
-                                    onTap   : () => setState(
-                                            () => _supplierType = 'land'),
+                                    onTap: () =>
+                                        setState(() => _supplierType = 'land'),
                                   ),
                                   const SizedBox(width: 10),
                                   _RoleChip(
-                                    label   : 'Electronics',
-                                    icon    : Icons.devices_rounded,
+                                    label: 'Electronics',
+                                    icon: Icons.devices_rounded,
                                     selected: _supplierType == 'electronics',
-                                    onTap   : () => setState(
-                                            () => _supplierType = 'electronics'),
+                                    onTap: () => setState(
+                                      () => _supplierType = 'electronics',
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1061,59 +1218,104 @@ class _RegisterScreenState extends State<RegisterScreen>
                             // Fields
                             _SectionLabel('Personal Info'),
                             const SizedBox(height: 10),
-                            _Field(ctrl: _nameCtrl,  label: 'Full Name',  icon: Icons.person_outline_rounded),
+                            _Field(
+                              ctrl: _nameCtrl,
+                              label: 'Full Name',
+                              icon: Icons.person_outline_rounded,
+                            ),
                             const SizedBox(height: 12),
-                            _Field(ctrl: _emailCtrl, label: 'Email',      icon: Icons.email_outlined,   type: TextInputType.emailAddress),
+                            _Field(
+                              ctrl: _emailCtrl,
+                              label: 'Email',
+                              icon: Icons.email_outlined,
+                              type: TextInputType.emailAddress,
+                            ),
                             const SizedBox(height: 12),
-                            _Field(ctrl: _phoneCtrl, label: 'Phone',      icon: Icons.phone_outlined,   type: TextInputType.phone),
-                            const SizedBox(height: 12),
-                            _PasswordField(
-                              ctrl   : _passCtrl,
-                              label  : 'Password',
-                              obscure: _obscure,
-                              onToggle: () => setState(() => _obscure = !_obscure),
+                            _Field(
+                              ctrl: _phoneCtrl,
+                              label: 'Phone',
+                              icon: Icons.phone_outlined,
+                              type: TextInputType.phone,
                             ),
                             const SizedBox(height: 12),
                             _PasswordField(
-                              ctrl    : _confirmCtrl,
-                              label   : 'Confirm Password',
-                              obscure : _obscure,
-                              onToggle: () => setState(() => _obscure = !_obscure),
+                              ctrl: _passCtrl,
+                              label: 'Password',
+                              obscure: _obscure,
+                              onToggle: () =>
+                                  setState(() => _obscure = !_obscure),
+                            ),
+                            const SizedBox(height: 12),
+                            _PasswordField(
+                              ctrl: _confirmCtrl,
+                              label: 'Confirm Password',
+                              obscure: _obscure,
+                              onToggle: () =>
+                                  setState(() => _obscure = !_obscure),
                             ),
 
                             if (_role == 'supplier') ...[
                               const SizedBox(height: 22),
                               _SectionLabel('Business Info'),
                               const SizedBox(height: 10),
-                              _Field(ctrl: _companyCtrl, label: 'Company / Brand', icon: Icons.business_outlined),
+                              _Field(
+                                ctrl: _companyCtrl,
+                                label: 'Company / Brand',
+                                icon: Icons.business_outlined,
+                              ),
                               const SizedBox(height: 12),
-                              _Field(ctrl: _cnicCtrl,    label: 'CNIC / NTN',      icon: Icons.badge_outlined),
+                              _Field(
+                                ctrl: _cnicCtrl,
+                                label: 'CNIC / NTN',
+                                icon: Icons.badge_outlined,
+                              ),
                               const SizedBox(height: 12),
-                              _Field(ctrl: _cityCtrl,    label: 'City',            icon: Icons.location_on_outlined),
+                              _Field(
+                                ctrl: _cityCtrl,
+                                label: 'City',
+                                icon: Icons.location_on_outlined,
+                              ),
                             ],
 
                             const SizedBox(height: 28),
 
                             _GradientButton(
-                              label    : 'Create Account',
-                              loading  : _loading,
+                              label: 'Create Account',
+                              loading: _loading,
                               onPressed: _register,
                             ),
 
                             if (_role == 'user') ...[
                               const SizedBox(height: 16),
-                              Row(children: [
-                                Expanded(child: Divider(color: kTeal.withOpacity(0.2))),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                                  child: Text('or',
-                                      style: AppTheme.body(13, color: AppTheme.textSecondary)),
-                                ),
-                                Expanded(child: Divider(color: kTeal.withOpacity(0.2))),
-                              ]),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Divider(
+                                      color: kTeal.withOpacity(0.2),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                    ),
+                                    child: Text(
+                                      'or',
+                                      style: AppTheme.body(
+                                        13,
+                                        color: AppTheme.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Divider(
+                                      color: kTeal.withOpacity(0.2),
+                                    ),
+                                  ),
+                                ],
+                              ),
                               const SizedBox(height: 14),
                               _GoogleButton(
-                                label    : 'Register with Google',
+                                label: 'Register with Google',
                                 onPressed: _loading ? null : _googleRegister,
                               ),
                             ],
@@ -1122,12 +1324,22 @@ class _RegisterScreenState extends State<RegisterScreen>
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text('Already have an account? ',
-                                    style: AppTheme.body(13, color: AppTheme.textSecondary)),
+                                Text(
+                                  'Already have an account? ',
+                                  style: AppTheme.body(
+                                    13,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                ),
                                 GestureDetector(
                                   onTap: () => Navigator.pop(context),
-                                  child: Text('Login',
-                                      style: AppTheme.heading(13, color: AppTheme.primaryStart)),
+                                  child: Text(
+                                    'Login',
+                                    style: AppTheme.heading(
+                                      13,
+                                      color: AppTheme.primaryStart,
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
@@ -1156,24 +1368,25 @@ class ForgotPasswordScreen extends StatefulWidget {
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     with SingleTickerProviderStateMixin {
   final _emailCtrl = TextEditingController();
-  bool _loading    = false;
-  bool _sent       = false;
+  bool _loading = false;
+  bool _sent = false;
 
   late AnimationController _animCtrl;
-  late Animation<double>   _fadeAnim;
-  late Animation<Offset>   _slideAnim;
+  late Animation<double> _fadeAnim;
+  late Animation<Offset> _slideAnim;
 
   @override
   void initState() {
     super.initState();
     _animCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 600))
-      ..forward();
-    _fadeAnim  = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..forward();
+    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
     _slideAnim = Tween<Offset>(
-        begin: const Offset(0, 0.12), end: Offset.zero)
-        .animate(
-        CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut));
+      begin: const Offset(0, 0.12),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut));
   }
 
   @override
@@ -1202,13 +1415,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kScaffoldBg,
+      backgroundColor: context.appScaffold,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [kTealDark, kTeal],
-            begin : Alignment.topLeft,
-            end   : Alignment(0.4, 0.5),
+            begin: Alignment.topLeft,
+            end: Alignment(0.4, 0.5),
           ),
         ),
         child: SafeArea(
@@ -1226,16 +1439,21 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color       : Colors.white.withOpacity(0.2),
+                            color: Colors.white.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Icon(Icons.arrow_back_ios_new_rounded,
-                              color: Colors.white, size: 18),
+                          child: const Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 14),
-                      Text('Forgot Password',
-                          style: AppTheme.heading(20, color: Colors.white)),
+                      Text(
+                        'Forgot Password',
+                        style: AppTheme.heading(20, color: Colors.white),
+                      ),
                     ],
                   ),
                 ),
@@ -1245,21 +1463,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
               Expanded(
                 child: SlideTransition(
                   position: _slideAnim,
-                  child   : FadeTransition(
+                  child: FadeTransition(
                     opacity: _fadeAnim,
-                    child  : Container(
-                      decoration: const BoxDecoration(
-                        color       : kScaffoldBg,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: context.appSurface,
                         borderRadius: BorderRadius.only(
-                          topLeft : Radius.circular(32),
+                          topLeft: Radius.circular(32),
                           topRight: Radius.circular(32),
                         ),
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(28),
-                        child  : _sent
-                            ? _buildSuccessState()
-                            : _buildFormState(),
+                        child: _sent ? _buildSuccessState() : _buildFormState(),
                       ),
                     ),
                   ),
@@ -1277,9 +1493,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
-          padding   : const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color       : kTealLight,
+            color: context.appSurfaceMuted,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Column(
@@ -1288,33 +1504,34 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
               const SizedBox(height: 12),
               Text(
                 'Reset your password',
-                style: AppTheme.heading(17, color: AppTheme.textPrimary),
+                style: AppTheme.heading(17, color: context.appTextPrimary),
               ),
               const SizedBox(height: 6),
               Text(
                 'Enter your email and we will send a reset link.',
                 textAlign: TextAlign.center,
-                style    : AppTheme.body(13, color: AppTheme.textSecondary),
+                style: AppTheme.body(13, color: context.appTextSecondary),
               ),
             ],
           ),
         ),
         const SizedBox(height: 28),
         TextField(
-          controller  : _emailCtrl,
+          controller: _emailCtrl,
           keyboardType: TextInputType.emailAddress,
-          style       : AppTheme.body(14, color: AppTheme.textPrimary),
-          decoration  : _inputDecoration(
+          style: AppTheme.body(14, color: context.appTextPrimary),
+          decoration: _inputDecoration(
+            context,
             'Email Address',
             prefix: const Icon(Icons.email_outlined, color: kTeal, size: 20),
           ),
         ),
         const SizedBox(height: 24),
         _GradientButton(
-          label    : 'Send Reset Link',
-          loading  : _loading,
+          label: 'Send Reset Link',
+          loading: _loading,
           onPressed: _reset,
-          icon     : Icons.send_rounded,
+          icon: Icons.send_rounded,
         ),
       ],
     );
@@ -1322,47 +1539,58 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
   Widget _buildSuccessState() {
     return TweenAnimationBuilder<double>(
-      tween   : Tween(begin: 0, end: 1),
+      tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 500),
-      builder : (_, v, __) => Opacity(
-        opacity : v,
-        child   : Transform.translate(
+      builder: (_, v, __) => Opacity(
+        opacity: v,
+        child: Transform.translate(
           offset: Offset(0, 20 * (1 - v)),
-          child : Column(
+          child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding   : const EdgeInsets.all(28),
+                padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
                   color: Colors.green.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.mark_email_read_rounded,
-                    size: 56, color: Colors.green),
+                child: const Icon(
+                  Icons.mark_email_read_rounded,
+                  size: 56,
+                  color: Colors.green,
+                ),
               ),
               const SizedBox(height: 24),
-              Text('Email Sent!',
-                  style: AppTheme.heading(22, color: AppTheme.textPrimary)),
+              Text(
+                'Email Sent!',
+                style: AppTheme.heading(22, color: context.appTextPrimary),
+              ),
               const SizedBox(height: 10),
               Text(
                 'Check your inbox for the password reset link.',
                 textAlign: TextAlign.center,
-                style    : AppTheme.body(14, color: AppTheme.textSecondary).copyWith(height: 1.5),
+                style: AppTheme.body(
+                  14,
+                  color: context.appTextSecondary,
+                ).copyWith(height: 1.5),
               ),
               const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
                   onPressed: () => Navigator.pop(context),
-                  style    : OutlinedButton.styleFrom(
+                  style: OutlinedButton.styleFrom(
                     foregroundColor: kTeal,
-                    side           : const BorderSide(color: kTeal),
-                    shape          : RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
-                    padding        : const EdgeInsets.symmetric(vertical: 14),
+                    side: const BorderSide(color: kTeal),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  child: Text('Back to Login',
-                      style: AppTheme.heading(14, color: AppTheme.primaryStart)),
+                  child: Text(
+                    'Back to Login',
+                    style: AppTheme.heading(14, color: AppTheme.primaryStart),
+                  ),
                 ),
               ),
             ],
@@ -1375,8 +1603,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
 // ─── Reusable small widgets ───────────────────────────────────────────────────
 class _GradientButton extends StatelessWidget {
-  final String    label;
-  final bool      loading;
+  final String label;
+  final bool loading;
   final VoidCallback onPressed;
   final IconData? icon;
 
@@ -1390,45 +1618,55 @@ class _GradientButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
-      duration   : const Duration(milliseconds: 200),
-      height     : 52,
-      decoration : BoxDecoration(
-        gradient    : loading ? null : AppTheme.primaryGradient,
-        color       : loading ? Colors.grey.shade300 : null,
+      duration: const Duration(milliseconds: 200),
+      height: 52,
+      decoration: BoxDecoration(
+        gradient: loading ? null : AppTheme.primaryGradient,
+        color: loading ? Colors.grey.shade300 : null,
         borderRadius: BorderRadius.circular(14),
-        boxShadow   : loading
+        boxShadow: loading
             ? []
             : [
-          BoxShadow(
-            color     : kTeal.withOpacity(0.35),
-            blurRadius: 14,
-            offset    : const Offset(0, 5),
-          )
-        ],
+                BoxShadow(
+                  color: kTeal.withOpacity(0.35),
+                  blurRadius: 14,
+                  offset: const Offset(0, 5),
+                ),
+              ],
       ),
       child: Material(
-        color       : Colors.transparent,
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(14),
-        child       : InkWell(
+        child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          onTap       : loading ? null : onPressed,
-          child       : Center(
+          onTap: loading ? null : onPressed,
+          child: Center(
             child: loading
                 ? const SizedBox(
-                width: 22, height: 22,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2.5, color: Colors.white))
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Colors.white,
+                    ),
+                  )
                 : Row(
-              mainAxisSize: MainAxisSize.min,
-              children    : [
-                if (icon != null) ...[
-                  Icon(icon, color: Colors.white, size: 18),
-                  const SizedBox(width: 8),
-                ],
-                Text(label,
-                    style: AppTheme.body(15, weight: FontWeight.w700, color: Colors.white)),
-              ],
-            ),
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (icon != null) ...[
+                        Icon(icon, color: Colors.white, size: 18),
+                        const SizedBox(width: 8),
+                      ],
+                      Text(
+                        label,
+                        style: AppTheme.body(
+                          15,
+                          weight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         ),
       ),
@@ -1438,7 +1676,7 @@ class _GradientButton extends StatelessWidget {
 
 class _GoogleButton extends StatelessWidget {
   final VoidCallback? onPressed;
-  final String        label;
+  final String label;
 
   const _GoogleButton({this.onPressed, this.label = 'Continue with Google'});
 
@@ -1446,27 +1684,30 @@ class _GoogleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       height: 50,
-      child : OutlinedButton(
+      child: OutlinedButton(
         onPressed: onPressed,
-        style    : OutlinedButton.styleFrom(
-          backgroundColor: Colors.white,
-          side           : BorderSide(color: kTeal.withOpacity(0.3)),
-          shape          : RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14)),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: context.appSurface,
+          side: BorderSide(color: context.appBorder),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children         : [
+          children: [
             Image.network(
               'https://developers.google.com/identity/images/g-logo.png',
-              height      : 20,
-              width       : 20,
+              height: 20,
+              width: 20,
               errorBuilder: (_, __, ___) =>
-              const Icon(Icons.g_mobiledata, color: Colors.red),
+                  const Icon(Icons.g_mobiledata, color: Colors.red),
             ),
             const SizedBox(width: 12),
-            Text(label,
-                style: AppTheme.heading(14, color: AppTheme.textPrimary)),
+            Text(
+              label,
+              style: AppTheme.heading(14, color: context.appTextPrimary),
+            ),
           ],
         ),
       ),
@@ -1475,9 +1716,9 @@ class _GoogleButton extends StatelessWidget {
 }
 
 class _RoleChip extends StatelessWidget {
-  final String       label;
-  final IconData     icon;
-  final bool         selected;
+  final String label;
+  final IconData icon;
+  final bool selected;
   final VoidCallback onTap;
 
   const _RoleChip({
@@ -1492,31 +1733,37 @@ class _RoleChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration   : const Duration(milliseconds: 200),
-        padding    : const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-        decoration : BoxDecoration(
-          color       : selected ? kTeal : Colors.white,
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? kTeal : context.appSurface,
           borderRadius: BorderRadius.circular(12),
-          border      : Border.all(
-              color: selected ? kTeal : kTeal.withOpacity(0.2)),
-          boxShadow   : selected
+          border: Border.all(color: selected ? kTeal : context.appBorder),
+          boxShadow: selected
               ? [
-            BoxShadow(
-              color     : kTeal.withOpacity(0.3),
-              blurRadius: 8,
-              offset    : const Offset(0, 3),
-            )
-          ]
+                  BoxShadow(
+                    color: kTeal.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
               : [],
         ),
         child: Row(
           children: [
-            Icon(icon,
-                size : 16,
-                color: selected ? Colors.white : kTextSecondary),
+            Icon(
+              icon,
+              size: 16,
+              color: selected ? Colors.white : context.appTextSecondary,
+            ),
             const SizedBox(width: 6),
-            Text(label,
-                style: AppTheme.heading(13, color: selected ? Colors.white : AppTheme.textSecondary)),
+            Text(
+              label,
+              style: AppTheme.heading(
+                13,
+                color: selected ? Colors.white : context.appTextSecondary,
+              ),
+            ),
           ],
         ),
       ),
@@ -1529,17 +1776,15 @@ class _SectionLabel extends StatelessWidget {
   const _SectionLabel(this.text);
 
   @override
-  Widget build(BuildContext context) => Text(
-    text,
-    style: AppTheme.heading(13, color: AppTheme.textPrimary),
-  );
+  Widget build(BuildContext context) =>
+      Text(text, style: AppTheme.heading(13, color: context.appTextPrimary));
 }
 
 class _Field extends StatelessWidget {
   final TextEditingController ctrl;
-  final String                label;
-  final IconData              icon;
-  final TextInputType?        type;
+  final String label;
+  final IconData icon;
+  final TextInputType? type;
 
   const _Field({
     required this.ctrl,
@@ -1550,19 +1795,22 @@ class _Field extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => TextField(
-    controller  : ctrl,
+    controller: ctrl,
     keyboardType: type,
-    style       : GoogleFonts.poppins(fontSize: 14, color: kTextPrimary),
-    decoration  : _inputDecoration(label,
-        prefix: Icon(icon, color: kTeal, size: 20)),
+    style: GoogleFonts.poppins(fontSize: 14, color: context.appTextPrimary),
+    decoration: _inputDecoration(
+      context,
+      label,
+      prefix: Icon(icon, color: kTeal, size: 20),
+    ),
   );
 }
 
 class _PasswordField extends StatelessWidget {
   final TextEditingController ctrl;
-  final String                label;
-  final bool                  obscure;
-  final VoidCallback          onToggle;
+  final String label;
+  final bool obscure;
+  final VoidCallback onToggle;
 
   const _PasswordField({
     required this.ctrl,
@@ -1573,17 +1821,18 @@ class _PasswordField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => TextField(
-    controller : ctrl,
+    controller: ctrl,
     obscureText: obscure,
-    style      : AppTheme.body(14, color: AppTheme.textPrimary),
-    decoration : _inputDecoration(
+    style: AppTheme.body(14, color: context.appTextPrimary),
+    decoration: _inputDecoration(
+      context,
       label,
       prefix: const Icon(Icons.lock_outline_rounded, color: kTeal, size: 20),
       suffix: IconButton(
         icon: Icon(
           obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-          color: kTextSecondary,
-          size : 20,
+          color: context.appTextSecondary,
+          size: 20,
         ),
         onPressed: onToggle,
       ),
