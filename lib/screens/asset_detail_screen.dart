@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:uuid/uuid.dart';
 import 'shared_screens.dart';
-import 'review_screen.dart';
 import 'reviews_list.dart';
 import 'qr_generator_screen.dart';
 import 'land_fractions_screen.dart';
@@ -14,7 +13,6 @@ import 'transfer_history_screen.dart';
 import '../blockchain/blockchain_service.dart';
 import '../blockchain/ipfs_service.dart';
 import '../services/resale_service.dart';
-import 'resale_listing_sheet.dart';
 import '../theme.dart';
 import '../widgets/rent_actions.dart';
 import 'rent_distribution_screen.dart';
@@ -634,8 +632,16 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                           ] else ...[
                             _buildDetailRow('Listing Type', 'For Sale / Investment'),
                           ],
-                          _buildDetailRow('City', data['city'] ?? '—'),
-                          _buildDetailRow('Location', data['location'] ?? '—'),
+                          _buildDetailRow('City', data['city'] ?? _blockchainData?['city'] ?? '—'),
+                          _buildDetailRow(
+                            'Location',
+                            data['location'] ??
+                                data['address'] ??
+                                data['area'] ??
+                                _blockchainData?['location'] ??
+                                _blockchainData?['address'] ??
+                                '—',
+                          ),
                         ] else ...[
                           _buildDetailRow('Brand', data['brand'] ?? '—'),
                           _buildDetailRow('Model', data['model'] ?? '—'),
@@ -697,40 +703,18 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                 const SizedBox(height: 24),
 
                 // ── Reviews ───────────────────────────────────────────────
+                // Note: reviews are written from transfer_screen.dart /
+                // BuyerOwnershipAcceptScreen after a completed transfer,
+                // where a transactionId is available. There is no
+                // standalone "Write a Review" entry point here.
                 Text(
                   'Reviews',
                   style: AppTheme.heading(20),
                 ),
                 const SizedBox(height: 12),
-                TextButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ReviewScreen(
-                          assetId: widget.assetId,
-                          blockchainTokenId: data['blockchainTokenId'] as int?,
-                          assetType: data['category'] ?? 'electronics',
-                        ),
-                      ),
-                    );
-                  },
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.black,
-                    backgroundColor: Colors.transparent,
-                    padding: EdgeInsets.zero,
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    alignment: Alignment.centerLeft,
-                  ),
-                  icon: Icon(Icons.rate_review_outlined, size: 18, color: AppTheme.textPrimary),
-                  label: Text(
-                    'Write a Review',
-                    style: AppTheme.heading(14, color: AppTheme.textPrimary),
-                  ),
+                ReviewsList(
+                  revieweeUid: data['ownerId'] ?? data['ownerUid'] ?? '',
                 ),
-                const SizedBox(height: 12),
-                ReviewsList(assetId: widget.assetId),
               ],
             ),
           ),
@@ -972,28 +956,121 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
 
   Future<void> _listForResale(Map<String, dynamic> data) async {
     if (_listingInProgress) return;
-    if (mounted) setState(() => _listingInProgress = true);
+
+    final assetTitle = data['title'] ?? 'this asset';
+
+    // Show the "Publish Now" confirmation dialog (mirrors Image 2 design).
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+        contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+        title: Row(
+          children: [
+            Icon(Icons.storefront_outlined, color: AppTheme.primaryStart, size: 28),
+            const SizedBox(width: 10),
+            Text('List for Sale', style: AppTheme.heading(18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '"$assetTitle" will be published immediately.',
+              style: AppTheme.body(15, color: AppTheme.textPrimary),
+            ),
+            const SizedBox(height: 16),
+            _publishBullet(Icons.home_outlined, 'Visible on the User Home tab'),
+            const SizedBox(height: 10),
+            _publishBullet(Icons.store_outlined, 'Visible on the Supplier Home tab'),
+            const SizedBox(height: 10),
+            _publishBullet(Icons.people_outline, 'Buyers can view and request purchase'),
+            const SizedBox(height: 8),
+          ],
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actionsAlignment: MainAxisAlignment.spaceBetween,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancel',
+              style: AppTheme.body(15, color: AppTheme.textMid),
+            ),
+          ),
+          SizedBox(
+            width: 200,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryStart,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Publish Now', style: AppTheme.button(15)),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _listingInProgress = true);
     try {
-      final listed = await ResaleListingSheet.show(
-        context,
-        assetId: widget.assetId,
-        assetData: data,
-      );
-      if (listed && mounted) {
+      // Directly publish: mark the asset as listed for resale in Firestore.
+      // Uses the asset's existing price so no separate price-entry form is needed.
+      await db.collection('assets').doc(widget.assetId).update({
+        'isForSale': true,
+        'isListedForResale': true,
+        'resalePrice': data['resalePrice'] ?? data['price'],
+        'resaleDescription': data['description'] ?? '',
+        'listedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Asset listed for resale on marketplace!'),
             backgroundColor: Color(0xFF2A7F8F),
           ),
         );
-        // Refresh so the button label reflects the new listing state
         setState(() {
           _loadFuture = _load();
         });
       }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to list asset: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _listingInProgress = false);
     }
+  }
+
+  /// Bullet row used inside the "Publish Now" confirmation dialog.
+  Widget _publishBullet(IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: AppTheme.primaryStart),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(text, style: AppTheme.body(14, color: AppTheme.textPrimary)),
+        ),
+      ],
+    );
   }
 
   Future<void> _removeListing() async {
@@ -1020,6 +1097,12 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
     if (confirmed != true) return;
     try {
       await _resaleSvc.removeListing(widget.assetId);
+      // Also clear isForSale so the supplier home screen hides it too.
+      await db.collection('assets').doc(widget.assetId).update({
+        'isForSale': false,
+        'isListedForResale': false,
+        'listedAt': FieldValue.delete(),
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -2222,57 +2305,59 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
           ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.error_outline,
-                      size: 64,
-                      color: AppTheme.error,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Failed to load certificate: $_error',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: context.appTextPrimary),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          _loading = true;
-                          _error = null;
-                        });
-                        _loadCertificateData();
-                      },
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                size: 64,
+                color: AppTheme.error,
               ),
-            )
+              const SizedBox(height: 16),
+              Text(
+                'Failed to load certificate: $_error',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: context.appTextPrimary),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _loading = true;
+                    _error = null;
+                  });
+                  _loadCertificateData();
+                },
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      )
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  _buildCertificateHeader(),
-                  const SizedBox(height: 16),
-                  _buildModelDetailsCard(isElectronics),
-                  const SizedBox(height: 12),
-                  _buildVerificationChecksCard(),
-                  const SizedBox(height: 12),
-                  _buildBuyerConfirmationBanner(),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            _buildCertificateHeader(),
+            const SizedBox(height: 16),
+            _buildModelDetailsCard(isElectronics),
+            const SizedBox(height: 12),
+            _buildVerificationChecksCard(),
+            const SizedBox(height: 12),
+            _buildBuyerConfirmationBanner(),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildCertificateHeader() {
-    final isVerified = _chainData?['isVerified'] == true;
+    final isVerified = _chainData != null ||
+        _chainData?['isVerified'] == true ||
+        widget.assetData['blockchainVerified'] == true;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
@@ -2382,7 +2467,9 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
   Widget _buildVerificationChecksCard() {
     final notResold = _priorTransferCount == 0;
     final notStolen = !_isReportedStolen;
-    final isVerified = _chainData?['isVerified'] == true;
+    final isVerified = _chainData != null ||
+        _chainData?['isVerified'] == true ||
+        widget.assetData['blockchainVerified'] == true;
 
     return Card(
       color: context.appSurface,
@@ -2432,11 +2519,11 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
       decoration: BoxDecoration(
         color: allClear
             ? (context.isDarkMode
-                ? AppTheme.primaryStart.withOpacity(0.12)
-                : AppTheme.primaryStart.withOpacity(0.05))
+            ? AppTheme.primaryStart.withOpacity(0.12)
+            : AppTheme.primaryStart.withOpacity(0.05))
             : (context.isDarkMode
-                ? AppTheme.error.withOpacity(0.14)
-                : AppTheme.error.withOpacity(0.05)),
+            ? AppTheme.error.withOpacity(0.14)
+            : AppTheme.error.withOpacity(0.05)),
         border: Border.all(
           color: allClear ? AppTheme.accent : AppTheme.error,
         ),
@@ -2463,8 +2550,8 @@ class _NFTCertificateScreenState extends State<NFTCertificateScreen> {
                     15,
                     color: allClear
                         ? (context.isDarkMode
-                            ? AppTheme.primaryEnd
-                            : AppTheme.primaryStart)
+                        ? AppTheme.primaryEnd
+                        : AppTheme.primaryStart)
                         : AppTheme.error,
                   ),
                 ),

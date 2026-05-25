@@ -1961,6 +1961,47 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
     return normalizedIdentifier;
   }
 
+  Future<void> _ensureWalletBelongsToCreator({
+    required String creatorUid,
+    required String walletAddress,
+  }) async {
+    final normalizedAddress = walletAddress.trim();
+    final normalizedAddressLower = normalizedAddress.toLowerCase();
+    if (normalizedAddress.isEmpty) {
+      throw Exception('Wallet address is missing. Please reconnect MetaMask.');
+    }
+
+    final linkedUsers = await Future.wait([
+      db
+          .collection('users')
+          .where('walletAddress', isEqualTo: normalizedAddress)
+          .limit(2)
+          .get(),
+      db
+          .collection('users')
+          .where('walletAddressLower', isEqualTo: normalizedAddressLower)
+          .limit(2)
+          .get(),
+    ]);
+
+    for (final snap in linkedUsers) {
+      for (final doc in snap.docs) {
+        if (doc.id != creatorUid) {
+          throw Exception(
+            'This MetaMask wallet is already linked to another account. '
+            'Connect the wallet linked to this supplier account before adding an asset.',
+          );
+        }
+      }
+    }
+
+    await db.collection('users').doc(creatorUid).set({
+      'walletAddress': normalizedAddress,
+      'walletAddressLower': normalizedAddressLower,
+      'walletLinkedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   Future<void> _handleCreate(Map<String, dynamic> data) async {
     setState(() {
       _isLoading = true;
@@ -1973,6 +2014,11 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
     String? blockchainTxHash;
 
     try {
+      final creatorUid = auth.currentUser?.uid;
+      if (creatorUid == null) {
+        throw Exception('You must be logged in to add an asset.');
+      }
+
       reservedIdentifier = await _reserveElectronicsIdentifier(data);
 
       final blockchain = BlockchainServiceEnhanced();
@@ -1998,6 +2044,12 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
           'Wallet connection failed or timed out. Please make sure you are on the Amoy Testnet.',
         );
       }
+
+      final creatorWalletAddress = blockchain.connectedAddress!;
+      await _ensureWalletBelongsToCreator(
+        creatorUid: creatorUid,
+        walletAddress: creatorWalletAddress,
+      );
 
       // ---------------------------------------------------------
       // STEP 2: UPLOAD IMAGE TO IPFS (Optimized)
@@ -2115,7 +2167,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
 
       if (widget.type == 'electronics') {
         txHash = await blockchain.mintElectronics(
-          toAddress: blockchain.connectedAddress!,
+          toAddress: creatorWalletAddress,
           serialNumber: data['serial'] ?? '000',
           brand: data['brand'] ?? 'Unknown',
           model: data['model'] ?? 'Unknown',
@@ -2146,18 +2198,40 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
       setState(() => _statusMessage = 'Waiting for blockchain confirmation...');
 
       // Wait for the transaction to be mined (up to ~60 seconds)
-      await blockchain.waitForConfirmation(txHash, retries: 30);
+      final confirmed = await blockchain.waitForConfirmation(txHash, retries: 30);
+      if (!confirmed) {
+        throw Exception(
+          'Mint transaction was not confirmed on-chain. Please check MetaMask activity before trying again.',
+        );
+      }
       identifierConfirmedOnChain = true;
 
       // Query the contract to get the newly minted token ID
       setState(() => _statusMessage = 'Retrieving Token ID...');
       int? newTokenId;
-      if (widget.type == 'electronics') {
-        newTokenId = await blockchain.getLastElectronicsTokenId();
-      } else {
-        newTokenId = await blockchain.getLastLandPropertyId();
-      }
+      newTokenId = await blockchain.getMintedAssetIdFromReceipt(
+        type: widget.type,
+        txHash: txHash,
+      );
+      newTokenId ??= widget.type == 'electronics'
+          ? await blockchain.getLastElectronicsTokenId()
+          : await blockchain.getLastLandPropertyId();
       debugPrint('✅ New blockchain Token ID: $newTokenId');
+
+      if (newTokenId == null) {
+        throw Exception(
+          'Could not read the minted token ID from the blockchain receipt.',
+        );
+      }
+
+      final chainOwner = await blockchain.getOwnerOf(widget.type, newTokenId);
+      if (chainOwner == null ||
+          chainOwner.toLowerCase() != creatorWalletAddress.toLowerCase()) {
+        throw Exception(
+          'The minted blockchain asset owner did not match your connected MetaMask wallet. '
+          'Please try again before saving this asset.',
+        );
+      }
 
       setState(() => _statusMessage = 'Saving to Database...');
 
@@ -2168,10 +2242,12 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
       await assetRef.set({
         ...data,
         'category': widget.type,
-        'ownerId': auth.currentUser!.uid,
-        'ownerUid': auth.currentUser!.uid,
-        'supplierId': auth.currentUser!.uid,
-        'createdBy': auth.currentUser!.uid,
+        'ownerId': creatorUid,
+        'ownerUid': creatorUid,
+        'supplierId': creatorUid,
+        'createdBy': creatorUid,
+        'currentOwnerAddress': creatorWalletAddress,
+        'originalOwnerAddress': creatorWalletAddress,
         'blockchainTx': txHash,
         'blockchainTokenId': newTokenId, // ← now correctly saved
         'ipfsMetadataHash': metadataHash,
@@ -2202,7 +2278,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         ),
       );
       await addTransaction(
-        userId: auth.currentUser!.uid,
+        userId: creatorUid,
         type: "nft",
         title: data['title'] ?? "Asset",
         toAddress: "self",

@@ -228,6 +228,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
 
   Color _statusColor(String status) {
     switch (status) {
+      case 'accepted':
       case 'approved':  return AppTheme.accent;
       case 'rejected':  return AppTheme.error;
       case 'completed': return AppTheme.accent;
@@ -237,6 +238,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
 
   IconData _statusIcon(String status) {
     switch (status) {
+      case 'accepted':
       case 'approved':  return Icons.check_circle;
       case 'rejected':  return Icons.cancel;
       case 'completed': return Icons.done_all;
@@ -253,7 +255,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final isSupplier = _isSupplier;
+    final isSellingMode = !_isBuyingMode;
 
     return Scaffold(
       appBar: AppBar(
@@ -317,10 +319,10 @@ class _TransactionsScreenState extends State<TransactionsScreen>
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildTransactionList(_uid!, isSupplier && !_isBuyingMode, 'pending',  context),
-          _buildTransactionList(_uid!, isSupplier && !_isBuyingMode, 'approved', context),
-          _buildFractionRequestsTab(_uid!, isSupplier && !_isBuyingMode, context),
-          _buildTransactionList(_uid!, isSupplier && !_isBuyingMode, 'rejected', context),
+          _buildTransactionList(_uid!, isSellingMode, 'pending', context),
+          _buildTransactionList(_uid!, isSellingMode, 'approved', context),
+          _buildFractionRequestsTab(_uid!, isSellingMode, context),
+          _buildTransactionList(_uid!, isSellingMode, 'rejected', context),
         ],
       ),
     );
@@ -356,6 +358,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
         .orderBy('createdAt', descending: true);
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      key: ValueKey('fractions_${uid}_$isSupplier'),
       stream: query.snapshots(),
       builder: (context, snap) {
         if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
@@ -566,13 +569,18 @@ class _TransactionsScreenState extends State<TransactionsScreen>
   // ── Regular transaction list ───────────────────────────────────────────────
   Widget _buildTransactionList(
       String uid, bool isSupplier, String status, BuildContext context) {
-    final query = db
+    Query<Map<String, dynamic>> query = db
         .collection('transactions')
-        .where(isSupplier ? 'sellerUid' : 'buyerUid', isEqualTo: uid)
-        .where('status', isEqualTo: status)
-        .orderBy('createdAt', descending: true);
+        .where(isSupplier ? 'sellerUid' : 'buyerUid', isEqualTo: uid);
+
+    query = status == 'approved'
+        ? query.where('status', whereIn: ['approved', 'accepted'])
+        : query.where('status', isEqualTo: status);
+
+    query = query.orderBy('createdAt', descending: true);
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      key: ValueKey('transactions_${uid}_${isSupplier}_$status'),
       stream: query.snapshots(),
       builder: (context, snap2) {
         if (snap2.hasError) return Center(child: Text('Error: ${snap2.error}'));

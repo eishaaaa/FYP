@@ -316,7 +316,10 @@ class _ChatScreenState extends State<ChatScreen>
         final chatData    = chatSnap.data!.data() as Map<String, dynamic>;
         final assetId     = chatData['assetId']    as String?;
         final sellerUid   = chatData['sellerUid']  as String?;
-        final assetTypeStr= chatData['assetType']  as String? ?? 'electronics';
+        final assetTypeStr =
+            (chatData['assetType'] ?? chatData['category'] ?? 'electronics')
+                .toString();
+        final chatTxId = (chatData['transactionId'] ?? widget.chatId).toString().trim();
 
         if (assetId == null || sellerUid == null) return const SizedBox();
         if (myUid != sellerUid) return const SizedBox();
@@ -339,7 +342,7 @@ class _ChatScreenState extends State<ChatScreen>
                 : <String, dynamic>{};
 
             return _buildTransferButton(
-                assetId, assetTypeStr, sellerUid, txId, txData);
+                assetId, assetTypeStr, sellerUid, chatTxId, txId, txData);
           },
         );
       },
@@ -350,6 +353,7 @@ class _ChatScreenState extends State<ChatScreen>
       String assetId,
       String assetTypeStr,
       String sellerUid,
+      String chatTransactionId,
       String? transactionId,
       Map<String, dynamic> txData,
       ) {
@@ -380,21 +384,59 @@ class _ChatScreenState extends State<ChatScreen>
               String resolvedTxId;
               Map<String, dynamic> resolvedTxData;
 
-              if (transactionId != null) {
-                resolvedTxId   = transactionId;
-                resolvedTxData = txData;
+              final candidateIds = <String>[
+                if (transactionId != null && transactionId.trim().isNotEmpty)
+                  transactionId.trim(),
+                if (chatTransactionId.isNotEmpty) chatTransactionId,
+              ];
+
+              DocumentSnapshot<Map<String, dynamic>>? txSnap;
+              for (final candidateId in candidateIds.toSet()) {
+                final snap = await _db
+                    .collection('transactions')
+                    .doc(candidateId)
+                    .get();
+                if (snap.exists) {
+                  txSnap = snap;
+                  break;
+                }
+              }
+
+              if (txSnap == null) {
+                final existing = await _db
+                    .collection('transactions')
+                    .where('assetId', isEqualTo: assetId)
+                    .where('sellerUid', isEqualTo: sellerUid)
+                    .where('status', whereIn: ['pending', 'accepted', 'approved'])
+                    .limit(10)
+                    .get();
+                for (final doc in existing.docs) {
+                  final data = doc.data();
+                  if (data['buyerUid'] == widget.otherUserId) {
+                    txSnap = doc;
+                    break;
+                  }
+                }
+              }
+
+              if (txSnap != null) {
+                resolvedTxId = txSnap.id;
+                resolvedTxData = txSnap.data() ?? <String, dynamic>{};
               } else {
                 final assetSnap  = await _db.collection('assets').doc(assetId).get();
                 final assetTitle = assetSnap.data()?['title'] ?? 'Asset';
                 final docRef     = await _db.collection('transactions').add({
+                  'transactionId': '',
                   'assetId'  : assetId,
                   'assetType': assetTypeStr,
                   'sellerUid': sellerUid,
                   'buyerUid' : widget.otherUserId,
-                  'status'   : 'accepted',
+                  'status'   : 'approved',
                   'assetTitle': assetTitle,
+                  'category': assetTypeStr,
                   'createdAt': FieldValue.serverTimestamp(),
                 });
+                await docRef.update({'transactionId': docRef.id});
                 resolvedTxId   = docRef.id;
                 resolvedTxData = {};
               }

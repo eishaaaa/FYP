@@ -329,6 +329,7 @@ class _WalletScreenState extends State<WalletScreen>
       await _walletService.disconnect();
       await _firestore.collection("users").doc(user.uid).update({
         "walletAddress": FieldValue.delete(),
+        "walletAddressLower": FieldValue.delete(),
       });
 
       await _notif.notify(
@@ -552,7 +553,10 @@ class _WalletScreenState extends State<WalletScreen>
     final userRef = _firestore.collection("users").doc(uid);
     final doc = await userRef.get();
     final oldAddress = doc.data()?["walletAddress"];
-    await userRef.set({"walletAddress": newAddress}, SetOptions(merge: true));
+    await userRef.set({
+      "walletAddress": newAddress,
+      "walletAddressLower": newAddress.toLowerCase(),
+    }, SetOptions(merge: true));
     if (oldAddress != null && oldAddress != newAddress) {
       await userRef.collection("walletHistory").add({
         "oldWallet": oldAddress,

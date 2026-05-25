@@ -16,7 +16,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:web3dart/web3dart.dart';
 import 'package:reown_appkit/reown_appkit.dart';
-// import 'package:crypto/crypto.dart';
+import 'package:web3dart/crypto.dart' show keccak256; // FIX Bug 1: was commented out, keccak256 used on line ~301
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 
 import 'wallet_service.dart';
@@ -51,6 +51,206 @@ class BlockchainServiceEnhanced {
     final raw = rawValue.toString().trim();
     final match = RegExp(r'0x[a-fA-F0-9]{64}').firstMatch(raw);
     return match?.group(0);
+  }
+
+  String _eventTopic(String signature) {
+    final hash = keccak256(Uint8List.fromList(utf8.encode(signature)));
+    final hex = hash.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '0x$hex';
+  }
+
+  Future<Map<String, dynamic>?> _getTransactionReceiptJson(String txHash) async {
+    try {
+      final resp = await http
+          .post(
+            Uri.parse(ContractConfig.rpcUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'jsonrpc': '2.0',
+              'method': 'eth_getTransactionReceipt',
+              'params': [txHash],
+              'id': 1,
+            }),
+          )
+          .timeout(const Duration(seconds: 12));
+
+      final body = jsonDecode(resp.body) as Map<String, dynamic>;
+      final result = body['result'];
+      if (result is Map<String, dynamic>) return result;
+      if (result is Map) return Map<String, dynamic>.from(result);
+    } catch (e) {
+      debugPrint('getTransactionReceiptJson error: $e');
+    }
+    return null;
+  }
+
+  int? _uintFromTopic(dynamic value) {
+    final topic = value?.toString();
+    if (topic == null || !topic.startsWith('0x')) return null;
+    return BigInt.parse(topic.substring(2), radix: 16).toInt();
+  }
+
+  String _hexQuantity(int value) {
+    final safeValue = value < 0 ? 0 : value;
+    return '0x${safeValue.toRadixString(16)}';
+  }
+
+  String _addressTopic(String address) {
+    final clean = _sanitizeAddress(address).toLowerCase().replaceFirst('0x', '');
+    return '0x${clean.padLeft(64, '0')}';
+  }
+
+  String _uintTopic(int value) {
+    return '0x${BigInt.from(value).toRadixString(16).padLeft(64, '0')}';
+  }
+
+  BigInt? _uintFromDataSlot(String data, int slot) {
+    final clean = data.startsWith('0x') ? data.substring(2) : data;
+    final start = slot * 64;
+    if (clean.length < start + 64) return null;
+    return BigInt.parse(clean.substring(start, start + 64), radix: 16);
+  }
+
+  Future<dynamic> _rpcCall(String method, List<dynamic> params) async {
+    final resp = await http
+        .post(
+          Uri.parse(ContractConfig.rpcUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'jsonrpc': '2.0',
+            'method': method,
+            'params': params,
+            'id': 1,
+          }),
+        )
+        .timeout(const Duration(seconds: 12));
+
+    final body = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (body['error'] != null) {
+      throw Exception('RPC $method error: ${body['error']}');
+    }
+    return body['result'];
+  }
+
+  Future<int?> getCurrentBlockNumber() async {
+    try {
+      final result = await _rpcCall('eth_blockNumber', []);
+      if (result is String && result.startsWith('0x')) {
+        return int.parse(result.substring(2), radix: 16);
+      }
+    } catch (e) {
+      debugPrint('getCurrentBlockNumber error: $e');
+    }
+    return null;
+  }
+
+  Future<String?> findMatchingTransferTxHash({
+    required String type,
+    required String fromAddress,
+    required String toAddress,
+    required int tokenOrPropertyId,
+    int amount = 1,
+    int? fromBlock,
+  }) async {
+    try {
+      await init();
+
+      final isElectronics = type == 'electronics';
+      final contractAddress = (isElectronics
+              ? ContractConfig.electronicsNFTAddress
+              : ContractConfig.landNFTAddress)
+          .toLowerCase();
+      final from = _addressTopic(fromAddress).toLowerCase();
+      final to = _addressTopic(toAddress).toLowerCase();
+      final idTopic = _uintTopic(tokenOrPropertyId).toLowerCase();
+      final eventTopic = _eventTopic(
+        isElectronics
+            ? 'Transfer(address,address,uint256)'
+            : 'TransferSingle(address,address,address,uint256,uint256)',
+      ).toLowerCase();
+
+      final latest = await getCurrentBlockNumber();
+      final searchFrom = fromBlock ?? ((latest ?? 0) - 80);
+      final params = [
+        {
+          'address': contractAddress,
+          'fromBlock': _hexQuantity(searchFrom - 4),
+          'toBlock': 'latest',
+          'topics': isElectronics
+              ? [eventTopic, from, to, idTopic]
+              : [eventTopic, null, from, to],
+        }
+      ];
+
+      final logs = await _rpcCall('eth_getLogs', params);
+      if (logs is! List || logs.isEmpty) return null;
+
+      for (final log in logs.reversed) {
+        if (log is! Map) continue;
+        final txHash = log['transactionHash']?.toString();
+        final normalizedTxHash =
+            txHash == null ? null : _extractTransactionHash(txHash);
+        if (normalizedTxHash == null) {
+          continue;
+        }
+
+        if (isElectronics) return normalizedTxHash;
+
+        final data = log['data']?.toString() ?? '';
+        final transferredId = _uintFromDataSlot(data, 0);
+        final transferredAmount = _uintFromDataSlot(data, 1);
+        if (transferredId == BigInt.from(tokenOrPropertyId) &&
+            transferredAmount != null &&
+            transferredAmount >= BigInt.from(amount)) {
+          return normalizedTxHash;
+        }
+      }
+    } catch (e) {
+      debugPrint('findMatchingTransferTxHash error: $e');
+    }
+    return null;
+  }
+
+  /// Reads the exact token/property id emitted by this mint transaction.
+  /// This avoids the race caused by reading totalMinted/getTotalProperties after
+  /// another supplier has minted a different asset.
+  Future<int?> getMintedAssetIdFromReceipt({
+    required String type,
+    required String txHash,
+  }) async {
+    await init();
+
+    final receipt = await _getTransactionReceiptJson(txHash);
+    if (receipt == null) return null;
+
+    final contractAddress = (type == 'electronics'
+            ? ContractConfig.electronicsNFTAddress
+            : ContractConfig.landNFTAddress)
+        .toLowerCase();
+    final eventTopic = _eventTopic(
+      type == 'electronics'
+          ? 'DeviceMinted(uint256,address,string,string)'
+          : 'PropertyCreated(uint256,address,uint256,string)',
+    );
+
+    final logs = receipt['logs'];
+    if (logs is! List) return null;
+
+    for (final log in logs) {
+      if (log is! Map) continue;
+      final address = log['address']?.toString().toLowerCase();
+      if (address != contractAddress) continue;
+
+      final topics = log['topics'];
+      if (topics is! List || topics.length < 2) continue;
+      if (topics.first.toString().toLowerCase() != eventTopic.toLowerCase()) {
+        continue;
+      }
+
+      return _uintFromTopic(topics[1]);
+    }
+
+    return null;
   }
 
   /// Initialize Contracts & ABIs
@@ -116,8 +316,12 @@ class BlockchainServiceEnhanced {
     final requiredChainId = 'eip155:${ContractConfig.chainId}';
     final approvedChains = session.namespaces?['eip155']?.chains ?? [];
 
-    if (!approvedChains.contains(requiredChainId)) {
-      debugPrint('⚠️ Network Warning: App expects $requiredChainId. Wallet chains: $approvedChains');
+    // FIX Bug 5: was only printing a warning — now throws so wrong-network
+    // transactions are rejected before MetaMask opens (prevents on-chain revert)
+    if (approvedChains.isNotEmpty && !approvedChains.contains(requiredChainId)) {
+      throw Exception(
+        'Wrong network. Please switch MetaMask to Polygon Amoy (chainId ${ContractConfig.chainId}) and try again.',
+      );
     }
 
     try {
@@ -178,7 +382,17 @@ class BlockchainServiceEnhanced {
       final normalizedHash = _extractTransactionHash(result);
       if (normalizedHash == null) {
         debugPrint('⚠️ Unexpected wallet response: $result');
-        return result.toString().trim();
+        final raw = result.toString().trim();
+        final lower = raw.toLowerCase();
+        if (lower.contains('5000') ||
+            lower.contains('user rejected') ||
+            lower.contains('user denied') ||
+            lower.contains('4001')) {
+          throw Exception(
+            'Wallet response was unclear after MetaMask request: $raw',
+          );
+        }
+        return raw;
       }
 
       debugPrint('✅ Transaction Hash: $normalizedHash');
@@ -187,10 +401,21 @@ class BlockchainServiceEnhanced {
     } catch (e) {
       debugPrint('❌ Transaction Failed: $e');
 
-      if (e.toString().contains('User rejected')) {
-        throw Exception('User rejected the transaction');
+      final message = e.toString();
+      final lower = message.toLowerCase();
+
+      if (lower.contains('wallet response was unclear')) {
+        rethrow;
       }
-      if (e.toString().contains('5000') || e.toString().contains('needed')) {
+      if (lower.contains('user rejected') ||
+          lower.contains('user denied') ||
+          lower.contains('4001') ||
+          lower.contains('5000')) {
+        throw Exception(
+          'Wallet response was unclear after MetaMask request: $message',
+        );
+      }
+      if (message.contains('needed')) {
         throw Exception('Network requires ~25 Gwei gas. Please ensure you have enough Test MATIC.');
       }
       rethrow;
@@ -503,17 +728,39 @@ class BlockchainServiceEnhanced {
   }) async {
     await init();
     final overloads = _landContract.findFunctionsByName('safeTransferFrom');
-    final function = overloads.firstWhere(
-          (f) => f.parameters.length == 5,
-      orElse: () => overloads.first,
-    );
-    return _sendContractTransaction(_landContract, 'safeTransferFrom', [
+
+    // FIX Bug 2: Your friend added a 5-param overload search for ERC-1155
+    // (from, to, id, amount, data). If the ABI only has the 3-param version,
+    // fall back gracefully instead of crashing.
+    ContractFunction function;
+    if (overloads.any((f) => f.parameters.length == 5)) {
+      function = overloads.firstWhere((f) => f.parameters.length == 5);
+      debugPrint('✅ Using 5-param safeTransferFrom (ERC-1155)');
+    } else {
+      function = overloads.first;
+      debugPrint('⚠️ Falling back to ${function.parameters.length}-param safeTransferFrom');
+    }
+
+    final params = function.parameters.length == 5
+        ? [
       EthereumAddress.fromHex(connectedAddress!),
       EthereumAddress.fromHex(toAddress),
       BigInt.from(propertyId),
       BigInt.from(amount),
-      Uint8List(0),
-    ], function: function);
+      Uint8List(0), // ERC-1155 data field (empty bytes)
+    ]
+        : [
+      EthereumAddress.fromHex(connectedAddress!),
+      EthereumAddress.fromHex(toAddress),
+      BigInt.from(propertyId),
+    ];
+
+    return _sendContractTransaction(
+      _landContract,
+      'safeTransferFrom',
+      params,
+      function: function,
+    );
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -623,7 +870,7 @@ class BlockchainServiceEnhanced {
         chainData = {
           'title': l['location'],
           'city': l['city'],
-          'plotArea': l['plotArea'],
+          'totalArea': l['totalArea'], // FIX Bug 3: was 'plotArea' — getLandProperty returns 'totalArea'
           'category': 'land',
           'verified': l['isVerified'],
           'totalFractions': l['totalFractions'],
@@ -730,9 +977,15 @@ class BlockchainServiceEnhanced {
         // Check Stolen Status (from blockchain status field)
         // status 0 = Normal, 1 = Stolen
         final chainStolen = device['status'] == 1;
-        final dbStolen = data['isStolen'] == true || data['reportedStolen'] == true;
+        // FIX Bug 4: transfer_screen.dart reads 'isStolenReported', but healing
+        // was writing 'isStolen' / 'reportedStolen' — field mismatch meant the
+        // stolen guard in TransferScreen never fired after a heal.
+        final dbStolen = data['isStolenReported'] == true ||
+            data['isStolen'] == true ||
+            data['reportedStolen'] == true;
         if (chainStolen != dbStolen) {
           isTampered = true;
+          updates['isStolenReported'] = chainStolen; // canonical field used by TransferScreen
           updates['isStolen'] = chainStolen;
           updates['reportedStolen'] = chainStolen;
         }

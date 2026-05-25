@@ -9,6 +9,7 @@ import '../theme.dart';
 
 import '../blockchain/blockchain_service.dart';
 import '../services/push_notification_service.dart';
+import 'review_screen.dart';
 
 enum AssetType { electronics, land }
 
@@ -23,6 +24,7 @@ class TransferScreen extends StatefulWidget {
   final int? fractionAmount;
   final String assetPrice;
   final String buyerName;
+  final String sellerName; // FIX Bug 2: was missing, referenced in _buildHeaderCard
 
   const TransferScreen({
     super.key,
@@ -36,6 +38,7 @@ class TransferScreen extends StatefulWidget {
     this.fractionAmount,
     required this.assetPrice,
     required this.buyerName,
+    this.sellerName = '', // defaults to empty so existing callers don't break
   });
 
   @override
@@ -142,6 +145,197 @@ class _TransferScreenState extends State<TransferScreen> {
     }
   }
 
+  // ── Sibling-asset guard ──────────────────────────────────────
+  //
+  // blockchain_service.dart's internal Firestore write may query ALL assets
+  // where ownerId == sellerUid instead of scoping to a single assetId.
+  // We snapshot every OTHER asset owned by the seller BEFORE the blockchain
+  // call, then restore any that were incorrectly flipped afterwards.
+
+  Future<Map<String, String>> _snapshotSiblingOwners() async {
+    try {
+      final snap = await _db
+          .collection('assets')
+          .where('ownerId', isEqualTo: widget.sellerUid)
+          .get();
+      final Map<String, String> result = {};
+      for (final doc in snap.docs) {
+        if (doc.id == widget.assetId) continue;
+        final owner = (doc.data()['ownerId'] as String?) ?? '';
+        if (owner.isNotEmpty) result[doc.id] = owner;
+      }
+      debugPrint('Sibling snapshot: \${result.length} asset(s) recorded.');
+      return result;
+    } catch (e) {
+      debugPrint('_snapshotSiblingOwners failed (non-fatal): \$e');
+      return {};
+    }
+  }
+
+  Future<void> _restoreSiblingOwners(Map<String, String> snapshot) async {
+    if (snapshot.isEmpty) return;
+    try {
+      final futures = snapshot.keys
+          .map((id) => _db.collection('assets').doc(id).get())
+          .toList();
+      final docs = await Future.wait(futures);
+
+      final batch = _db.batch();
+      int fixCount = 0;
+      for (final doc in docs) {
+        if (!doc.exists) continue;
+        final currentOwner = (doc.data()?['ownerId'] as String?) ?? '';
+        final expectedOwner = snapshot[doc.id]!;
+        if (currentOwner != expectedOwner) {
+          debugPrint('Restoring sibling \${doc.id}: \$currentOwner => \$expectedOwner');
+          batch.update(doc.reference, {
+            'ownerId': expectedOwner,
+            'ownerUid': expectedOwner,
+          });
+          fixCount++;
+        }
+      }
+      if (fixCount > 0) {
+        await batch.commit();
+        debugPrint('Restored \$fixCount sibling asset(s) to correct owner.');
+      }
+    } catch (e) {
+      debugPrint('_restoreSiblingOwners failed (non-fatal): \$e');
+    }
+  }
+
+  bool _couldBeFalseWalletRejection(Object error) {
+    final lower = error.toString().toLowerCase();
+    return lower.contains('user rejected') ||
+        lower.contains('user denied') ||
+        lower.contains('4001') ||
+        lower.contains('5000') ||
+        lower.contains('walletconnect') ||
+        lower.contains('session') ||
+        lower.contains('unclear') ||
+        lower.contains('timeout') ||
+        lower.contains('did not return the transaction hash');
+  }
+
+  String _shortAddress(String address) {
+    if (address.length <= 12) return address;
+    return '${address.substring(0, 8)}...${address.substring(address.length - 6)}';
+  }
+
+  bool _isValidWalletAddress(String address) {
+    return RegExp(r'^0x[a-fA-F0-9]{40}$').hasMatch(address.trim());
+  }
+
+  Future<String?> _validateTransferBeforeMetaMask({
+    required bool isLand,
+    required String sellerWalletAddress,
+  }) async {
+    final buyerWallet = _buyerWalletAddress?.trim() ?? '';
+    final sellerWallet = sellerWalletAddress.trim();
+
+    if (!_isValidWalletAddress(buyerWallet)) {
+      return 'Buyer wallet address is invalid. Ask the buyer to reconnect MetaMask.';
+    }
+    if (!_isValidWalletAddress(sellerWallet)) {
+      return 'Seller wallet address is invalid. Disconnect and reconnect MetaMask.';
+    }
+    if (sellerWallet.toLowerCase() == buyerWallet.toLowerCase()) {
+      return 'Seller and buyer wallets are the same. Connect the seller wallet that owns this asset.';
+    }
+
+    await _bs.init();
+    if (!isLand) {
+      final tokenId = widget.tokenId;
+      if (tokenId == null) return 'Missing token ID for electronics transfer.';
+
+      final onChainOwner = await _bs.getOwnerOf('electronics', tokenId);
+      if (onChainOwner == null) {
+        return 'Could not verify token owner on Polygon Amoy. Check network and try again.';
+      }
+      if (onChainOwner.toLowerCase() != sellerWallet.toLowerCase()) {
+        return 'Connected MetaMask wallet is not the current on-chain owner of Token #$tokenId.\n\n'
+            'On-chain owner: ${_shortAddress(onChainOwner)}\n'
+            'Connected wallet: ${_shortAddress(sellerWallet)}\n\n'
+            'This is why MetaMask/Reown rejects the transfer. Switch MetaMask to the owner wallet and try again.';
+      }
+    } else {
+      final propertyId = widget.propertyId;
+      final amount = widget.fractionAmount ?? 1;
+      if (propertyId == null) return 'Missing property ID for land transfer.';
+      if (amount <= 0) return 'Invalid fraction amount for land transfer.';
+
+      final balance = await _bs.getUserFractions(sellerWallet, propertyId);
+      if (balance < amount) {
+        return 'Connected MetaMask wallet does not hold enough fractions for Property #$propertyId.\n\n'
+            'Wallet balance: $balance\n'
+            'Required: $amount\n\n'
+            'Switch MetaMask to the wallet that owns these fractions and try again.';
+      }
+    }
+
+    return null;
+  }
+
+  Future<String?> _recoverTransferAfterUnclearWalletResponse({
+    required bool isLand,
+    required int? buyerFractionsBefore,
+    required int? transferStartBlock,
+    required String? sellerWalletAddress,
+  }) async {
+    for (int attempt = 0; attempt < 40; attempt++) {
+      if (mounted) {
+        setState(() {
+          _statusMessage =
+              'MetaMask response was unclear. Checking blockchain... (${attempt + 1}/40)';
+        });
+      }
+
+      await Future.delayed(const Duration(seconds: 3));
+
+      try {
+        await _bs.init();
+
+        final chainId = isLand ? widget.propertyId : widget.tokenId;
+        if (sellerWalletAddress != null &&
+            sellerWalletAddress.isNotEmpty &&
+            chainId != null) {
+          final recoveredHash = await _bs.findMatchingTransferTxHash(
+            type: isLand ? 'land' : 'electronics',
+            fromAddress: sellerWalletAddress,
+            toAddress: _buyerWalletAddress!,
+            tokenOrPropertyId: chainId,
+            amount: isLand ? (widget.fractionAmount ?? 1) : 1,
+            fromBlock: transferStartBlock,
+          );
+          if (recoveredHash != null && recoveredHash.isNotEmpty) {
+            return recoveredHash;
+          }
+        }
+
+        if (!isLand && widget.tokenId != null) {
+          final onChainOwner = await _bs.getOwnerOf('electronics', widget.tokenId!);
+          if (onChainOwner != null &&
+              onChainOwner.toLowerCase() == _buyerWalletAddress!.toLowerCase()) {
+            return '';
+          }
+        } else if (isLand && widget.propertyId != null) {
+          final buyerFractions = await _bs.getUserFractions(
+            _buyerWalletAddress!,
+            widget.propertyId!,
+          );
+          final before = buyerFractionsBefore ?? 0;
+          if (buyerFractions >= before + (widget.fractionAmount ?? 1)) {
+            return '';
+          }
+        }
+      } catch (verifyError) {
+        debugPrint('Transfer recovery attempt failed: $verifyError');
+      }
+    }
+
+    return null;
+  }
+
   Future<void> _executeTransfer() async {
     if (_isStolen) {
       setState(() => _errorMessage =
@@ -163,8 +357,40 @@ class _TransferScreenState extends State<TransferScreen> {
 
     final isLand    = widget.assetType == AssetType.land;
     final assetLabel = _assetTitle ?? 'Asset';
+    int? buyerFractionsBefore;
+    int? transferStartBlock;
+    String? sellerWalletAddress;
+    bool blockchainRequestSent = false;
+
+    // ── Bug 1 guard: snapshot other assets BEFORE the blockchain call ─────
+    // blockchain_service may update ALL seller assets by ownerId query.
+    // We capture the correct ownerIds here so we can revert any collateral
+    // damage in both the error and success paths below.
+    final siblingSnapshot = await _snapshotSiblingOwners();
 
     try {
+      await _bs.init();
+      sellerWalletAddress = _bs.connectedAddress;
+      if (sellerWalletAddress == null || sellerWalletAddress!.isEmpty) {
+        throw Exception('Seller wallet is not connected. Please reconnect MetaMask.');
+      }
+
+      final preflightError = await _validateTransferBeforeMetaMask(
+        isLand: isLand,
+        sellerWalletAddress: sellerWalletAddress!,
+      );
+      if (preflightError != null) {
+        throw Exception(preflightError);
+      }
+
+      transferStartBlock = await _bs.getCurrentBlockNumber();
+      if (isLand && widget.propertyId != null) {
+        buyerFractionsBefore = await _bs.getUserFractions(
+          _buyerWalletAddress!,
+          widget.propertyId!,
+        );
+      }
+
       // Flag asset as syncing to prevent race conditions in the UI
       await _db.collection('assets').doc(widget.assetId).update({
         'isSyncingWithBlockchain': true,
@@ -197,6 +423,7 @@ class _TransferScreenState extends State<TransferScreen> {
         if (id == null) throw Exception('Missing tokenId for electronics transfer');
         setState(() => _statusMessage =
         'Sending NFT transfer to blockchain…\nPlease approve in your wallet.');
+        blockchainRequestSent = true;
         txHash = await _bs.transferElectronics(toAddress: _buyerWalletAddress!, tokenId: id);
       } else {
         final pid = widget.propertyId;
@@ -204,6 +431,7 @@ class _TransferScreenState extends State<TransferScreen> {
         if (pid == null) throw Exception('Missing propertyId for land transfer');
         setState(() => _statusMessage =
         'Sending land fraction transfer…\nPlease approve in your wallet.');
+        blockchainRequestSent = true;
         txHash = await _bs.transferLandFraction(
             toAddress: _buyerWalletAddress!, propertyId: pid, amount: amount);
       }
@@ -219,19 +447,14 @@ class _TransferScreenState extends State<TransferScreen> {
 
       if (!isValidHash) {
         final lower = txHash.toLowerCase();
-        final isExplicitUserRejection =
-            (lower.contains('user rejected') || lower.contains('user denied')) &&
-                !lower.contains('gas') &&
-                !lower.contains('revert') &&
-                !lower.contains('execution');
 
-        if (isExplicitUserRejection || lower.contains('4001')) {
+        if (lower.contains('5000') ||
+            lower.contains('user rejected') ||
+            lower.contains('user denied') ||
+            lower.contains('4001') ||
+            lower.contains('wallet response was unclear')) {
           throw Exception(
-              'You cancelled the transaction in MetaMask.\nTap "Execute Blockchain Transfer" again and tap Confirm.');
-        }
-        if (lower.contains('5000')) {
-          throw Exception(
-              'MetaMask session error (5000). Disconnect your wallet, reconnect, and make sure MetaMask is on the Polygon Amoy network.');
+              'Wallet response was unclear after MetaMask request: $txHash');
         }
         if (lower.contains('insufficient') || lower.contains('gas')) {
           throw Exception(
@@ -257,7 +480,34 @@ class _TransferScreenState extends State<TransferScreen> {
 
       setState(() => _statusMessage = 'Confirmed on-chain ✅\nUpdating ownership records…');
 
+      // ── Bug 2 guard: verify on-chain owner BEFORE writing Firestore ───────
+      // WalletConnect sometimes returns a valid-format tx hash for a session that
+      // MetaMask showed as rejected. This final check reads ownerOf() from the
+      // chain. If the buyer's wallet is NOT the new on-chain owner, the tx did
+      // not actually succeed and we must NOT update Firestore ownership.
+      if (widget.assetType == AssetType.electronics && widget.tokenId != null) {
+        try {
+          await _bs.init();
+          final onChainOwner = await _bs.getOwnerOf('electronics', widget.tokenId!);
+          if (onChainOwner != null &&
+              onChainOwner.toLowerCase() != _buyerWalletAddress!.toLowerCase()) {
+            throw Exception(
+              'On-chain verification failed: the NFT owner is still '
+                  '\${onChainOwner.substring(0, 10)}… — the blockchain transfer did '
+                  'not complete. Please try again.',
+            );
+          }
+        } catch (e) {
+          if (e.toString().contains('On-chain verification failed')) rethrow;
+          // getOwnerOf is best-effort; if RPC call fails, continue with Firestore update
+          debugPrint('getOwnerOf check failed (non-fatal, continuing): \$e');
+        }
+      }
+
       await _finalizeOwnership();
+
+      // ── Bug 1 guard: restore any sibling assets incorrectly modified ──────
+      await _restoreSiblingOwners(siblingSnapshot);
 
       // ── Notify both parties: transfer fully complete ──────────────
       final typeLabel = isLand ? 'Land fraction(s)' : 'Device';
@@ -282,42 +532,100 @@ class _TransferScreenState extends State<TransferScreen> {
         _statusMessage = 'Ownership transferred successfully!';
       });
 
-      if (mounted) {
-        await Future.delayed(const Duration(seconds: 2));
-        Navigator.pop(context, true);
-      }
+      // Stay on success view so the seller can leave a review.
     } catch (e) {
-      // Revert syncing flag on error
+      // ── Bug 1 guard: restore any sibling assets incorrectly modified ──────
+      await _restoreSiblingOwners(siblingSnapshot);
+
+      final errorMsg = e.toString().replaceFirst('Exception: ', '');
+      _errorMessage = errorMsg;
+
+      if (blockchainRequestSent && _couldBeFalseWalletRejection(e)) {
+        if (mounted) {
+          setState(() {
+            _errorMessage = null;
+            _statusMessage =
+                'MetaMask response was unclear. Checking blockchain...';
+          });
+        }
+
+        final recoveredTxHash = await _recoverTransferAfterUnclearWalletResponse(
+          isLand: isLand,
+          buyerFractionsBefore: buyerFractionsBefore,
+          transferStartBlock: transferStartBlock,
+          sellerWalletAddress: sellerWalletAddress,
+        );
+
+        if (recoveredTxHash != null) {
+          _txHash = recoveredTxHash.isNotEmpty ? recoveredTxHash : null;
+
+          await _finalizeOwnership();
+          await _restoreSiblingOwners(siblingSnapshot);
+
+          await Future.wait([
+            _notif.notifyProductSold(
+              sellerUid  : widget.sellerUid,
+              productName: assetLabel,
+              amount     : widget.assetPrice,
+              orderId    : widget.transactionId,
+            ),
+            _notif.notifyProductPurchased(
+              buyerUid   : widget.buyerUid,
+              productName: assetLabel,
+              amount     : widget.assetPrice,
+              orderId    : widget.transactionId,
+            ),
+          ]);
+
+          if (mounted) {
+            setState(() {
+              _success = true;
+              _transferring = false;
+              _errorMessage = null;
+              _statusMessage =
+                  'Ownership transferred successfully. MetaMask did not return the transaction hash, but the blockchain owner changed.';
+            });
+          }
+          return;
+        }
+
+        _errorMessage =
+            'MetaMask did not return a transaction hash, and no matching blockchain transfer was found. '
+            'Please check MetaMask Activity or Polygonscan before trying again.';
+      }
+
+      // Revert syncing flag only after recovery fails.
       try {
         await _db.collection('assets').doc(widget.assetId).update({
           'isSyncingWithBlockchain': false,
         });
       } catch (_) {}
 
-      final errorMsg = e.toString().replaceFirst('Exception: ', '');
-      final assetLabel = _assetTitle ?? 'Asset';
-
-      // Notify both parties about the failure
-      await Future.wait([
-        _notif.notifyTransactionFailed(
-          userUid  : widget.sellerUid,
-          amount   : widget.assetPrice,
-          currency : 'PKR',
-          reason   : 'Transfer of "$assetLabel" could not be completed.',
-          transactionId: widget.transactionId,
-        ),
-        _notif.notifyTransactionFailed(
-          userUid  : widget.buyerUid,
-          amount   : widget.assetPrice,
-          currency : 'PKR',
-          reason   : 'Transfer of "$assetLabel" by seller failed. Please contact support.',
-          transactionId: widget.transactionId,
-        ),
-      ]);
+      if (blockchainRequestSent) {
+        // Notify both parties about the failure only after a wallet request was sent.
+        await Future.wait([
+          _notif.notifyTransactionFailed(
+            userUid  : widget.sellerUid,
+            amount   : widget.assetPrice,
+            currency : 'PKR',
+            reason   : 'Transfer of "$assetLabel" could not be completed.',
+            transactionId: widget.transactionId,
+          ),
+          _notif.notifyTransactionFailed(
+            userUid  : widget.buyerUid,
+            amount   : widget.assetPrice,
+            currency : 'PKR',
+            reason   : 'Transfer of "$assetLabel" by seller failed. Please contact support.',
+            transactionId: widget.transactionId,
+          ),
+        ]);
+      }
 
       setState(() {
         _transferring = false;
-        _errorMessage = errorMsg;
+        _errorMessage = blockchainRequestSent && _couldBeFalseWalletRejection(e)
+            ? _errorMessage
+            : errorMsg;
       });
     }
   }
@@ -360,7 +668,7 @@ class _TransferScreenState extends State<TransferScreen> {
     final isLand = widget.assetType == AssetType.land;
 
     final assetRef = _db.collection('assets').doc(widget.assetId);
-    
+
     // Global updates for both types
     batch.update(assetRef, {
       'isListedForResale': false,
@@ -377,11 +685,30 @@ class _TransferScreenState extends State<TransferScreen> {
         'txHash': _txHash,
       });
     } else {
-      // Land: Master record remains with original supplier or owner, 
+      // Land: Master record remains with original supplier or owner,
       // but fractional holdings tracked separately.
       batch.update(assetRef, {
         'lastFractionTransferAt': FieldValue.serverTimestamp(),
       });
+
+      // FIX Bug 3: Check if seller's remaining fractions will be zero → full ownership transfer
+      final sellerHoldingDoc = await _db
+          .collection('fractional_holdings')
+          .doc('${widget.sellerUid}_${widget.assetId}')
+          .get();
+      final sellerCurrentFractions =
+          (sellerHoldingDoc.data()?['fractionsOwned'] as num?)?.toInt() ?? 0;
+      final fractionsSold = widget.fractionAmount ?? 0;
+      if (sellerCurrentFractions - fractionsSold <= 0) {
+        // All fractions transferred — update master ownership
+        batch.update(assetRef, {
+          'ownerId': widget.buyerUid,
+          'ownerUid': widget.buyerUid,
+          'previousOwnerId': widget.sellerUid,
+          'transferredAt': FieldValue.serverTimestamp(),
+          'txHash': _txHash,
+        });
+      }
 
       // Update/Create Fractional Holdings for Buyer
       final buyerHoldingRef = _db
@@ -633,6 +960,43 @@ class _TransferScreenState extends State<TransferScreen> {
                 ),
               ),
             ],
+            // ── Review + Done buttons ──────────────────────────
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ReviewScreen(
+                    reviewerUid  : widget.sellerUid,
+                    revieweeUid  : widget.buyerUid,
+                    revieweeName : widget.buyerName,
+                    transactionId: widget.transactionId,
+                    assetId      : widget.assetId,
+                    reviewerRole : 'seller',
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.rate_review_rounded),
+              label: const Text('Review the Buyer'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00695C),
+                foregroundColor: Colors.white,
+                minimumSize: const Size(240, 52),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 0,
+              ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(240, 48),
+                side: BorderSide(color: Colors.grey[300]!),
+                foregroundColor: Colors.black54,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Done'),
+            ),
           ],
         ),
       ),
@@ -668,6 +1032,18 @@ class _TransferScreenState extends State<TransferScreen> {
   void _onStepContinue() {
     final isLand = widget.assetType == AssetType.land;
     final totalSteps = isLand ? 5 : 4;
+
+    // FIX Bug 5: Prevent advancing past step 1 if buyer has no wallet
+    if (_currentStep == 1 && (_buyerWalletAddress == null || _buyerWalletAddress!.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('The buyer must connect their wallet before you can proceed.'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+      return;
+    }
 
     if (_currentStep == 2 && !_walletConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1321,8 +1697,89 @@ class _BuyerOwnershipAcceptScreenState extends State<BuyerOwnershipAcceptScreen>
               const SizedBox(height: 16),
             ],
             _buildWalletSection(),
+            // ── Review section (shown once transfer is complete) ──
+            if (txCompleted) ...[
+              const SizedBox(height: 16),
+              _buildReviewSection(),
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// Card shown to the buyer after the transfer is confirmed, letting them
+  /// review the seller about the process and communication.
+  Widget _buildReviewSection() {
+    final sellerUid = _txData?['sellerUid'] as String? ?? '';
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFD7E8E4)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE7F3F1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.rate_review_rounded, color: Color(0xFF00695C), size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'How was your experience?',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Color(0xFF151726)),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          const Text(
+            'The transfer is complete. Let others know how well '
+                'the seller communicated and cooperated throughout the process.',
+            style: TextStyle(fontSize: 13, color: Color(0xFF6D7A86), height: 1.5),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: sellerUid.isEmpty
+                ? null
+                : () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ReviewScreen(
+                  reviewerUid  : _auth.currentUser?.uid ?? '',
+                  revieweeUid  : sellerUid,
+                  revieweeName : widget.sellerName,
+                  transactionId: widget.transactionId,
+                  assetId      : widget.assetId,
+                  reviewerRole : 'buyer',
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.rate_review_rounded),
+            label: Text('Review ${widget.sellerName}'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00695C),
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(52),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              elevation: 0,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1548,6 +2005,7 @@ class _BuyerOwnershipAcceptScreenState extends State<BuyerOwnershipAcceptScreen>
               value,
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
               overflow: TextOverflow.ellipsis,
+
             ),
           ),
         ],

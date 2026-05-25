@@ -102,19 +102,14 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           ? null
           : _index == 2
           ? AppBar(
-              backgroundColor: AppTheme.primaryStart,
-              flexibleSpace: Container(
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.primaryGradient,
-                ),
-              ),
+              backgroundColor: context.appSurface,
               leading: IconButton(
-                icon: const Icon(Icons.chevron_left, color: Colors.white),
+                icon: const Icon(Icons.chevron_left, color: Colors.black),
                 onPressed: () => setState(() => _index = 0),
               ),
               title: Text(
                 "My Assets",
-                style: AppTheme.heading(20, color: Colors.white),
+                style: TextStyle(color: context.appTextPrimary),
               ),
             )
           : AppBar(
@@ -987,17 +982,6 @@ class _MyAssetsScreenState extends State<MyAssetsScreen> {
 
     return Scaffold(
       backgroundColor: context.appScaffold,
-      appBar: AppBar(
-        title: const Text('My Digital Goods'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.sync_rounded),
-            tooltip: 'Sync with Blockchain',
-            onPressed: _restoreAssets,
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
       body: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         itemCount: _ownedAssets.length,

@@ -18,8 +18,8 @@ final FirebaseFirestore _db = FirebaseFirestore.instance;
 final IPFSService _ipfs = IPFSService();
 
 Future<List<DocumentSnapshot<Map<String, dynamic>>>> _loadFavoriteAssets(
-  List<String> assetIds,
-) async {
+    List<String> assetIds,
+    ) async {
   if (assetIds.isEmpty) return const [];
 
   final chunks = <List<String>>[];
@@ -30,7 +30,7 @@ Future<List<DocumentSnapshot<Map<String, dynamic>>>> _loadFavoriteAssets(
 
   final snapshots = await Future.wait(
     chunks.map(
-      (chunk) => FirebaseFirestore.instance
+          (chunk) => FirebaseFirestore.instance
           .collection('assets')
           .where(FieldPath.documentId, whereIn: chunk)
           .get(),
@@ -65,6 +65,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   Stream<DocumentSnapshot<Map<String, dynamic>>>? _userDocStream;
   bool _uploadingPhoto = false;
+  int _index = 0;
 
   static const Color _teal = Color(0xFF2D8C8C);
 
@@ -283,7 +284,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (_) => false,
+          (_) => false,
     );
   }
 
@@ -379,13 +380,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (!snap.hasData || snap.data!.data() == null) {
           return Scaffold(
             backgroundColor: context.appScaffold,
-            appBar: AppBar(
+
+            appBar: _index == 4
+                ? null
+                : _index == 3
+                ? AppBar(
               backgroundColor: context.appSurface,
               title: Text(
                 'Profile',
                 style: TextStyle(color: context.appTextPrimary),
               ),
-            ),
+            )
+                : null,
+
             body: Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -395,7 +402,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     size: 64,
                     color: AppTheme.primaryStart,
                   ),
+
                   const SizedBox(height: 16),
+
                   Text(
                     'No profile found. Please register.',
                     style: TextStyle(
@@ -403,11 +412,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       color: context.appTextSecondary,
                     ),
                   ),
+
                   const SizedBox(height: 24),
+
                   ElevatedButton(
                     onPressed: () => Navigator.pushReplacement(
                       context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => const LoginScreen(),
+                      ),
                     ),
                     child: const Text('Go to Registration'),
                   ),
@@ -457,7 +470,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               onPressed: () {
-                // Switches bottom-nav back to Home (index 0) — no crash
                 if (widget.onBack != null) {
                   widget.onBack!();
                 } else if (Navigator.canPop(context)) {
@@ -497,39 +509,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             child: ClipOval(
                               child: _uploadingPhoto
                                   ? const Center(
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: _teal,
-                                      ),
-                                    )
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: _teal,
+                                ),
+                              )
                                   : photoUrl.isNotEmpty
                                   ? Image.network(
-                                      photoUrl,
-                                      fit: BoxFit.cover,
-                                      cacheWidth: 256,
-                                      filterQuality: FilterQuality.low,
-                                      gaplessPlayback: true,
-                                      // Show spinner while loading
-                                      loadingBuilder: (_, child, progress) =>
-                                          progress == null
-                                          ? child
-                                          : const Center(
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                color: _teal,
-                                              ),
-                                            ),
-                                      errorBuilder: (_, __, ___) => const Icon(
-                                        Icons.person_rounded,
-                                        size: 38,
-                                        color: _teal,
-                                      ),
-                                    )
+                                photoUrl,
+                                fit: BoxFit.cover,
+                                cacheWidth: 256,
+                                filterQuality: FilterQuality.low,
+                                gaplessPlayback: true,
+                                // Show spinner while loading
+                                loadingBuilder: (_, child, progress) =>
+                                progress == null
+                                    ? child
+                                    : const Center(
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: _teal,
+                                  ),
+                                ),
+                                errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.person_rounded,
+                                  size: 38,
+                                  color: _teal,
+                                ),
+                              )
                                   : const Icon(
-                                      Icons.person_rounded,
-                                      size: 38,
-                                      color: _teal,
-                                    ),
+                                Icons.person_rounded,
+                                size: 38,
+                                color: _teal,
+                              ),
                             ),
                           ),
                           // Edit badge
@@ -891,7 +903,7 @@ class FavoritesScreen extends StatelessWidget {
           final assetIds = favDocs
               .map(
                 (d) => (d.data() as Map<String, dynamic>)['assetId'] as String,
-              )
+          )
               .toList();
 
           return FutureBuilder<List<DocumentSnapshot<Map<String, dynamic>>>>(
@@ -1093,12 +1105,12 @@ class _UnfavouriteButtonState extends State<_UnfavouriteButton> {
         ),
         child: _removing
             ? const Padding(
-                padding: EdgeInsets.all(5),
-                child: CircularProgressIndicator(
-                  strokeWidth: 1.5,
-                  color: Colors.red,
-                ),
-              )
+          padding: EdgeInsets.all(5),
+          child: CircularProgressIndicator(
+            strokeWidth: 1.5,
+            color: Colors.red,
+          ),
+        )
             : const Icon(Icons.favorite_rounded, size: 16, color: Colors.red),
       ),
     );
@@ -1172,7 +1184,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: const Text('Delete account'),
         content: const Text(
           'This will delete your Firebase account and user document. '
-          'This requires recent login. Are you sure?',
+              'This requires recent login. Are you sure?',
         ),
         actions: [
           TextButton(
@@ -1196,7 +1208,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (_) => false,
+            (_) => false,
       );
     } catch (e) {
       if (mounted) {
@@ -1313,27 +1325,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _loading
                 ? const Center(child: CircularProgressIndicator())
                 : SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: context.isDarkMode
-                            ? Colors.red.shade900.withOpacity(0.22)
-                            : Colors.red.shade50,
-                        foregroundColor: Colors.red,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      onPressed: _deleteAccount,
-                      icon: const Icon(Icons.delete_outline_rounded, size: 20),
-                      label: const Text(
-                        'Delete Account',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: context.isDarkMode
+                      ? Colors.red.shade900.withOpacity(0.22)
+                      : Colors.red.shade50,
+                  foregroundColor: Colors.red,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
                   ),
+                ),
+                onPressed: _deleteAccount,
+                icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                label: const Text(
+                  'Delete Account',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -1460,7 +1472,7 @@ class TermsScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16.0),
         child: Text(
           'Your terms and privacy policy content goes here. '
-          'Replace this placeholder with your real legal text.',
+              'Replace this placeholder with your real legal text.',
           style: TextStyle(color: context.appTextSecondary),
         ),
       ),
@@ -1640,20 +1652,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                       ),
                       child: _loading
                           ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
                           : const Text(
-                              'Grant Role',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                        'Grant Role',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
                 ],
