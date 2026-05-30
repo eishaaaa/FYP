@@ -12,6 +12,7 @@ import 'asset_detail_screen.dart';
 import 'stolen_report_screen.dart';
 import 'auth_screens.dart';
 import '../theme.dart';
+import 'EmailSupportScreen.dart';
 
 final FirebaseAuth _auth = FirebaseAuth.instance;
 final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -705,10 +706,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             onTap: () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => const HelpScreen(),
-                              ),
+                                builder: (_) => const HelpScreen(),                          
+                              ),                             
                             ),
+                            
                           ),
+                         _menuTile(
+  icon: Icons.email_outlined,
+  label: 'Email Support',
+  iconColor: const Color(0xFF4DB6AC),
+  onTap: () => Navigator.push(context,
+    MaterialPageRoute(builder: (_) => const EmailSupportScreen())),
+),
                           _menuTile(
                             icon: Icons.privacy_tip_outlined,
                             label: 'Terms & Privacy',
