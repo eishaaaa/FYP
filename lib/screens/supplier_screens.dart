@@ -1,4 +1,4 @@
-// lib/screens/supplier_screens.dart
+
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
@@ -10,7 +10,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:uuid/uuid.dart';
 import 'package:image/image.dart' as img;
 
-// Internal Imports
 import 'chat_list_screen.dart';
 import 'profile_screen.dart';
 import 'asset_screen.dart';
@@ -34,10 +33,7 @@ extension _Cap on String {
       isEmpty ? this : '${this[0].toUpperCase()}${substring(1)}';
 }
 
-// -----------------------------------------------------------------------------
 // UTILITIES (Compression & Storage)
-// -----------------------------------------------------------------------------
-
 Future<String> compressImageToBase64(
   Uint8List bytes, {
   int quality = 70,
@@ -74,9 +70,6 @@ String _compactNumericIdentifier(String value) {
   return value.replaceAll(RegExp(r'[\s-]'), '');
 }
 
-bool _shouldValidateAsImei(String value) {
-  return RegExp(r'^\d{15}$').hasMatch(_compactNumericIdentifier(value));
-}
 
 bool _validateImeiIdentifier(String value) {
   final imei = _compactNumericIdentifier(value);
@@ -241,11 +234,6 @@ class DocumentStorage {
     };
   }
 }
-
-// -----------------------------------------------------------------------------
-// MAIN SCREENS
-// -----------------------------------------------------------------------------
-
 class SupplierHomeScreen extends StatefulWidget {
   final String type;
   const SupplierHomeScreen({super.key, required this.type});
@@ -687,7 +675,7 @@ class AssetManagementScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Thumbnail image ───────────────────────────────
+
                   ClipRRect(
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(16),
@@ -702,8 +690,6 @@ class AssetManagementScreen extends StatelessWidget {
                           )
                         : _imageFallback(type),
                   ),
-
-                  // ── Title + badge row ─────────────────────────────
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
                     child: Row(
@@ -766,7 +752,6 @@ class AssetManagementScreen extends StatelessWidget {
                     ),
                   ),
 
-                  // ── Price + token row ─────────────────────────────
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
                     child: Row(
@@ -802,7 +787,6 @@ class AssetManagementScreen extends StatelessWidget {
 
                   Divider(height: 1, color: Colors.grey[100]),
 
-                  // ── Action buttons — two rows for land, one row for electronics ──
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                     child: type == 'land' && isMinted
@@ -974,9 +958,7 @@ class AssetManagementScreen extends StatelessWidget {
   }
 }
 
-// -----------------------------------------------------------------------------
-// ASSET FORM (The Core UI for Data Entry)
-// -----------------------------------------------------------------------------
+// ASSET FORM
 
 class AssetForm extends StatefulWidget {
   final String type;
@@ -1009,7 +991,6 @@ class _AssetFormState extends State<AssetForm> {
   String _polDisplay = ''; // e.g. "≈ 0.23 POL"
   bool _isFetchingRate = true; // false once fetch succeeds or fails
 
-  // ✅ SAFE INITIALIZATION: Using .toString() to handle numeric or null values from Firestore
   late final TextEditingController _titleCtrl = TextEditingController(
     text: widget.initialData?['title']?.toString() ?? '',
   );
@@ -1058,7 +1039,6 @@ class _AssetFormState extends State<AssetForm> {
 
   Future<void> _fetchPolRate() async {
     try {
-      // Step 1: get POL price in USDT from Binance (no key needed)
       final polRes = await http
           .get(
             Uri.parse(
@@ -1067,7 +1047,6 @@ class _AssetFormState extends State<AssetForm> {
           )
           .timeout(const Duration(seconds: 8));
 
-      // Step 2: get USD → PKR rate from ExchangeRate-API (free, no key)
       final fxRes = await http
           .get(Uri.parse('https://open.er-api.com/v6/latest/USD'))
           .timeout(const Duration(seconds: 8));
@@ -1076,7 +1055,7 @@ class _AssetFormState extends State<AssetForm> {
         final polUsd = double.parse(jsonDecode(polRes.body)['price'] as String);
         final pkrPerUsd = (jsonDecode(fxRes.body)['rates']['PKR'] as num)
             .toDouble();
-        final rate = polUsd * pkrPerUsd; // 1 POL in PKR
+        final rate = polUsd * pkrPerUsd;
         if (mounted) {
           setState(() {
             _polRateInPkr = rate;
@@ -1087,10 +1066,8 @@ class _AssetFormState extends State<AssetForm> {
         return;
       }
     } catch (_) {
-      // fall through to CoinGecko fallback
     }
 
-    // Fallback: CoinGecko free endpoint
     try {
       final res = await http
           .get(
@@ -1112,10 +1089,10 @@ class _AssetFormState extends State<AssetForm> {
         }
       }
     } catch (_) {
-      // both sources failed
+
     }
 
-    // Both failed — stop spinner, hide badge
+
     if (mounted) setState(() => _isFetchingRate = false);
   }
 
@@ -1573,14 +1550,16 @@ class _AssetFormState extends State<AssetForm> {
                     _field(_modelCtrl, 'Model', Icons.smartphone_rounded),
                     _field(
                       _serialCtrl,
-                      'Serial / IMEI',
+                      'IMEI Number',
                       Icons.fingerprint_rounded,
+                      keyboardType: TextInputType.number, // Enforces numeric keyboard
                       validator: (v) {
                         final value = v?.trim() ?? '';
-                        if (value.isEmpty) return 'Serial / IMEI is required';
-                        if (_shouldValidateAsImei(value) &&
-                            !_validateImeiIdentifier(value)) {
-                          return 'Enter a valid 15-digit IMEI or a serial number';
+                        if (value.isEmpty) {
+                          return '15-digit IMEI Number is required';
+                        }
+                        if (!_validateImeiIdentifier(value)) {
+                          return 'Enter a valid 15-digit IMEI passing Luhn verification';
                         }
                         return null;
                       },
@@ -1713,7 +1692,9 @@ class _AssetFormState extends State<AssetForm> {
 
             // ── Documents ───────────────────────────────────────────
             _sectionCard(
-              title: 'Documents (IPFS & Secure Storage)',
+              title: widget.type == 'land'
+                  ? 'Documents (Required for Land) *'
+                  : 'Documents (IPFS & Secure Storage)',
               icon: Icons.folder_outlined,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1833,6 +1814,17 @@ class _AssetFormState extends State<AssetForm> {
                   borderRadius: BorderRadius.circular(14),
                   onTap: () async {
                     if (_formKey.currentState!.validate()) {
+                      // CRITICAL FIX: Block land creation if no documents are attached
+                      if (widget.type == 'land' && _documents.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Please upload at least one document for the land asset.'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                        return;
+                      }
+
                       final payload = await _collect();
                       if (payload != null) await widget.onSubmit(payload);
                     }
@@ -2026,19 +2018,13 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
       await blockchain.init();
       final ipfs = IPFSService();
 
-      // ---------------------------------------------------------
-      // STEP 1: WALLET CONNECTION
-      // ---------------------------------------------------------
+      // WALLET CONNECTION
       if (!blockchain.isConnected) {
         setState(() => _statusMessage = 'Waiting for Wallet Connection...');
-
         // This opens MetaMask. When you return, it waits up to 30s for the address.
         await blockchain.connectWallet(context);
       }
-
       if (!mounted) return;
-
-      // Critical Check: Did the connection actually succeed?
       if (!blockchain.isConnected) {
         throw Exception(
           'Wallet connection failed or timed out. Please make sure you are on the Amoy Testnet.',
@@ -2051,14 +2037,12 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         walletAddress: creatorWalletAddress,
       );
 
-      // ---------------------------------------------------------
-      // STEP 2: UPLOAD IMAGE TO IPFS (Optimized)
-      // ---------------------------------------------------------
+      //  UPLOAD IMAGE TO IPFS (Optimized)
       String? imageHash;
       if (data['rawImages'] != null && (data['rawImages'] as List).isNotEmpty) {
         setState(() => _statusMessage = 'Compressing & Uploading Image...');
 
-        // FIX: Compress image before upload to prevent infinite loading on large files
+        // Compress image before upload to prevent infinite loading on large files
         final rawBytes = (data['rawImages'] as List)[0] as Uint8List;
         final compressedBase64 = await compressImageToBase64(
           rawBytes,
@@ -2077,9 +2061,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
 
       if (!mounted) return;
 
-      // ---------------------------------------------------------
-      // STEP 3: UPLOAD DOCUMENTS
-      // ---------------------------------------------------------
+      //  UPLOAD DOCUMENTS
       String? primaryDocHash;
       if (data['rawDocuments'] != null) {
         setState(() => _statusMessage = 'Uploading Documents to IPFS...');
@@ -2108,9 +2090,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
 
       if (!mounted) return;
 
-      // ---------------------------------------------------------
-      // STEP 4: PREPARE METADATA
-      // ---------------------------------------------------------
+      //  PREPARE METADATA
       setState(() => _statusMessage = 'Generating Metadata...');
       Map<String, dynamic> metadata;
 
@@ -2144,9 +2124,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
         );
       }
 
-      // ---------------------------------------------------------
-      // STEP 5: UPLOAD METADATA
-      // ---------------------------------------------------------
+      //  UPLOAD METADATA
       setState(() => _statusMessage = 'Uploading Metadata to IPFS...');
       final metaRes = await ipfs.uploadJSON(
         jsonData: metadata,
@@ -2157,9 +2135,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
 
       if (!mounted) return;
 
-      // ---------------------------------------------------------
-      // STEP 6: MINT ON BLOCKCHAIN
-      // ---------------------------------------------------------
+      // MINT ON BLOCKCHAIN
       setState(
         () => _statusMessage = 'Please Confirm Transaction in Wallet...',
       );
@@ -2189,9 +2165,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
           ipfsMetadata: 'ipfs://$metadataHash',
         );
       }
-      // ---------------------------------------------------------
-      // STEP 7: SAVE TO DATABASE
-      // ---------------------------------------------------------
+      // SAVE TO DATABASE
 
       if (txHash == null) throw Exception('Transaction failed or rejected');
       blockchainTxHash = txHash;
@@ -2414,10 +2388,7 @@ class _AddAssetScreenState extends State<AddAssetScreen> {
     );
   }
 }
-
-// -----------------------------------------------------------------------------
 // EDIT SCREEN
-// -----------------------------------------------------------------------------
 
 class EditAssetScreen extends StatefulWidget {
   final String assetId;
@@ -2514,6 +2485,8 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
       return;
     }
 
+    final category = (_data?['category'] ?? widget.type).toString();
+
     setState(() => _saving = true);
     try {
       // Process any new images
@@ -2536,6 +2509,18 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
         } else {
           processedDocs.add(doc);
         }
+      }
+
+      // Block land editing updates if documents are completely cleared
+      if (category.toLowerCase() == 'land' && processedDocs.isEmpty) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please upload at least one document for the land asset.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
       }
 
       // Only update off-chain fields — never touch blockchain-origin fields
@@ -2693,7 +2678,6 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
       backgroundColor: AppTheme.background,
       body: CustomScrollView(
         slivers: [
-          // ── App Bar ───────────────────────────────────────────────────
           SliverAppBar(
             pinned: true,
             backgroundColor: AppTheme.background,
@@ -2803,12 +2787,11 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
             iconTheme: const IconThemeData(color: Colors.black87),
           ),
 
-          // ── Body ─────────────────────────────────────────────────────
           SliverPadding(
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                // ── Blockchain locked section ─────────────────────────
+                // Blockchain locked section
                 if (isMinted) ...[
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -2898,7 +2881,7 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                   const SizedBox(height: 16),
                 ],
 
-                // ── Editable fields ───────────────────────────────────
+                // Editable fields
                 _sectionCard(
                   title: 'Editable Details',
                   icon: Icons.edit_outlined,
@@ -2953,7 +2936,6 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // ── Images ────────────────────────────────────────────
                 _sectionCard(
                   title: 'Images',
                   icon: Icons.image_outlined,
@@ -3052,7 +3034,6 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // ── Documents ─────────────────────────────────────────
                 _sectionCard(
                   title: 'Documents',
                   icon: Icons.folder_outlined,
@@ -3124,7 +3105,6 @@ class _EditAssetScreenState extends State<EditAssetScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // ── Save Button ───────────────────────────────────────
                 Container(
                   height: 54,
                   decoration: BoxDecoration(

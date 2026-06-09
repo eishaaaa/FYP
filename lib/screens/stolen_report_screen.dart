@@ -8,7 +8,6 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../blockchain/ipfs_service.dart';
 import '../theme.dart';
 
-// ── THEME CONSTANTS ─────────────────────────────────────────────
 const _kPrimary     = AppTheme.primaryStart;
 const _kPrimaryDark = AppTheme.primaryEnd;
 const _kAccent      = AppTheme.accent;
@@ -27,9 +26,7 @@ bool _shouldTreatAsImei(String value) {
   return RegExp(r'^\d{15}$').hasMatch(_compactReportIdentifier(value));
 }
 
-// ─────────────────────────────────────────────────────────────
-//  DATA MODEL  (land removed – electronics only)
-// ─────────────────────────────────────────────────────────────
+
 class StolenReport {
   final String  id;
   final String  userId;
@@ -39,13 +36,13 @@ class StolenReport {
   final String  description;
   final String? docIpfsHash;
   final String? docFileName;
-  final String  status;      // 'pending' | 'investigating' | 'resolved'
+  final String  status;
   final DateTime createdAt;
   final String  walletAddress;
   final String? imei;
   final String? serialNumber;
-  final String? deviceCategory; // 'phone'|'laptop'|'tablet'|'watch'|'other'
-  final String? assetImageUrl;  // optional photo of the device
+  final String? deviceCategory;
+  final String? assetImageUrl;
 
   StolenReport({
     required this.id,
@@ -87,9 +84,7 @@ class StolenReport {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  MAIN SCREEN
-// ─────────────────────────────────────────────────────────────
+
 class StolenReportScreen extends StatefulWidget {
   const StolenReportScreen({Key? key}) : super(key: key);
 
@@ -166,9 +161,9 @@ class _StolenReportScreenState extends State<StolenReportScreen>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  TAB 1 – MY REPORTS
-// ─────────────────────────────────────────────────────────────
+
+//  MY REPORTS
+
 class _MyReportsTab extends StatefulWidget {
   const _MyReportsTab({Key? key}) : super(key: key);
 
@@ -309,9 +304,9 @@ class _MyReportsTabState extends State<_MyReportsTab>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+
 //  REUSABLE ELECTRONICS REPORT CARD
-// ─────────────────────────────────────────────────────────────
+
 class _ElectronicsReportCard extends StatelessWidget {
   final StolenReport report;
   final Color        statusColor;
@@ -336,7 +331,6 @@ class _ElectronicsReportCard extends StatelessWidget {
     }
   }
 
-  // Gradient colours for placeholder image panel
   List<Color> get _placeholderGradient {
     switch (report.deviceCategory) {
       case 'laptop': return [const Color(0xFF1565C0), const Color(0xFF1976D2)];
@@ -364,7 +358,6 @@ class _ElectronicsReportCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
 
-              // ── Left image panel (like sample) ────────────────
               SizedBox(
                 width: 100,
                 child: hasImage
@@ -378,7 +371,6 @@ class _ElectronicsReportCard extends StatelessWidget {
                     : _buildPlaceholder(),
               ),
 
-              // ── Right content ──────────────────────────────────
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
@@ -387,7 +379,7 @@ class _ElectronicsReportCard extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
 
-                      // Badge row  ──  "Your report"  +  Status
+                      //  "Your report"  +  Status
                       Row(
                         children: [
                           if (isOwn) ...[
@@ -410,14 +402,12 @@ class _ElectronicsReportCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 7),
 
-                      // Asset name
                       Text(
                         report.assetName,
                         style: AppTheme.heading(15, color: _kPrimaryDark),
                       ),
                       const SizedBox(height: 3),
 
-                      // Description
                       Text(
                         report.description,
                         maxLines: 2,
@@ -444,7 +434,6 @@ class _ElectronicsReportCard extends StatelessWidget {
                       ],
                       const SizedBox(height: 8),
 
-                      // Footer – date + doc
                       Row(
                         children: [
                           Icon(Icons.calendar_today,
@@ -471,8 +460,8 @@ class _ElectronicsReportCard extends StatelessWidget {
                 ),
               ),
             ],
-          ),  // Row
-        ),    // IntrinsicHeight
+          ),
+        ),
       ),
     );
   }
@@ -493,9 +482,7 @@ class _ElectronicsReportCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  MINI CHIP
-// ─────────────────────────────────────────────────────────────
+
 class _MiniChip extends StatelessWidget {
   final String  label;
   final Color   color;
@@ -526,9 +513,9 @@ class _MiniChip extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+
 //  VERIFY CHIP  (IMEI / Serial)
-// ─────────────────────────────────────────────────────────────
+
 class _VerifyChip extends StatelessWidget {
   final String  label;
   final IconData icon;
@@ -557,9 +544,9 @@ class _VerifyChip extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  TAB 2 – ALL REPORTS  (search + electronics filter)
-// ─────────────────────────────────────────────────────────────
+
+//   ALL REPORTS  (search + electronics filter)
+
 class _AllReportsTab extends StatefulWidget {
   const _AllReportsTab({Key? key}) : super(key: key);
 
@@ -697,7 +684,6 @@ class _AllReportsTabState extends State<_AllReportsTab>
               controller: ctrl,
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
               children: [
-                // Handle
                 Center(
                   child: Container(
                     width: 40, height: 4,
@@ -708,7 +694,6 @@ class _AllReportsTabState extends State<_AllReportsTab>
                 ),
                 const SizedBox(height: 20),
 
-                // Title row
                 Row(
                   children: [
                     const Icon(Icons.tune, color: _kPrimary, size: 22),
@@ -731,7 +716,6 @@ class _AllReportsTabState extends State<_AllReportsTab>
                 const Divider(),
                 const SizedBox(height: 16),
 
-                // ── Device Category ────────────────────────────
                 const _FilterSectionHeader(
                     icon: Icons.devices_outlined, label: 'Device Category'),
                 const SizedBox(height: 10),
@@ -772,8 +756,6 @@ class _AllReportsTabState extends State<_AllReportsTab>
                   ],
                 ),
                 const SizedBox(height: 20),
-
-                // ── Status ─────────────────────────────────────
                 const _FilterSectionHeader(
                     icon: Icons.info_outline, label: 'Status'),
                 const SizedBox(height: 10),
@@ -795,7 +777,7 @@ class _AllReportsTabState extends State<_AllReportsTab>
                 ),
                 const SizedBox(height: 20),
 
-                // ── IMEI Verification ──────────────────────────
+                // IMEI Verification
                 const _FilterSectionHeader(
                     icon: Icons.verified_user_outlined,
                     label: 'IMEI Verification'),
@@ -827,7 +809,7 @@ class _AllReportsTabState extends State<_AllReportsTab>
                 ),
                 const SizedBox(height: 20),
 
-                // ── Serial Number Verification ─────────────────
+                // Serial Number Verification
                 const _FilterSectionHeader(
                     icon: Icons.qr_code_scanner,
                     label: 'Serial No. Verification'),
@@ -858,8 +840,6 @@ class _AllReportsTabState extends State<_AllReportsTab>
                   ],
                 ),
                 const SizedBox(height: 28),
-
-                // ── Buttons ────────────────────────────────────
                 Row(
                   children: [
                     Expanded(
@@ -914,7 +894,7 @@ class _AllReportsTabState extends State<_AllReportsTab>
 
     return Column(
       children: [
-        // ── Search bar + filter ──────────────────────────────
+        //Search bar + filter
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
           child: Row(
@@ -980,7 +960,7 @@ class _AllReportsTabState extends State<_AllReportsTab>
           ),
         ),
 
-        // ── Active filter chips ──────────────────────────────
+        // Active filter chips
         if (_hasActiveFilters)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
@@ -1021,7 +1001,7 @@ class _AllReportsTabState extends State<_AllReportsTab>
             ),
           ),
 
-        // ── Result count ─────────────────────────────────────
+        //  Result count
         if (!_loading)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
@@ -1099,9 +1079,9 @@ class _AllReportsTabState extends State<_AllReportsTab>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+
 //  FILTER SECTION HEADER
-// ─────────────────────────────────────────────────────────────
+
 class _FilterSectionHeader extends StatelessWidget {
   final IconData icon;
   final String   label;
@@ -1121,9 +1101,9 @@ class _FilterSectionHeader extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+
 //  FILTER CHIP OPTION
-// ─────────────────────────────────────────────────────────────
+
 class _FilterChipOption extends StatelessWidget {
   final String   label;
   final IconData? icon;
@@ -1174,9 +1154,9 @@ class _FilterChipOption extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+
 //  ACTIVE FILTER CHIP
-// ─────────────────────────────────────────────────────────────
+
 class _ActiveChip extends StatelessWidget {
   final String label;
   final VoidCallback onRemove;
@@ -1208,9 +1188,9 @@ class _ActiveChip extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+
 //  REPORT DETAIL BOTTOM SHEET
-// ─────────────────────────────────────────────────────────────
+
 class _ReportDetailSheet extends StatelessWidget {
   final StolenReport report;
   const _ReportDetailSheet({required this.report});
@@ -1352,9 +1332,9 @@ class _ReportDetailSheet extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  TAB 3 – SUBMIT NEW REPORT  (electronics only + IMEI/Serial)
-// ─────────────────────────────────────────────────────────────
+
+//   SUBMIT NEW REPORT  (electronics only + IMEI/Serial)
+
 class _SubmitReportTab extends StatefulWidget {
   const _SubmitReportTab({Key? key}) : super(key: key);
 
@@ -1453,7 +1433,7 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
     }
   }
 
-  // ── Validate IMEI (15-digit Luhn) ───────────────────────────
+  // Validate IMEI (15-digit )
   bool _validateImei(String imei) {
     if (imei.length != 15 || !RegExp(r'^\d{15}$').hasMatch(imei)) return false;
     int total = 0;
@@ -1625,7 +1605,6 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
-            // ── Info banner ──────────────────────────────────
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -1652,7 +1631,6 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
             ),
             const SizedBox(height: 24),
 
-            // ── Device Category ──────────────────────────────
             const _SectionLabel(icon: Icons.devices_outlined, text: 'Device Category'),
             const SizedBox(height: 10),
             SingleChildScrollView(
@@ -1693,7 +1671,6 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
             ),
             const SizedBox(height: 24),
 
-            // ── Select Asset ─────────────────────────────────
             const _SectionLabel(
               icon: Icons.inventory_2_outlined,
               text: 'Select Stolen Device',
@@ -1747,41 +1724,36 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
                   ),
             const SizedBox(height: 24),
 
-            // ── Serial / IMEI ───────────────────────────────
             const _SectionLabel(
-                icon: Icons.fingerprint_rounded, text: 'Serial / IMEI'),
+                icon: Icons.fingerprint_rounded, text: 'IMEI Number'),
             const SizedBox(height: 4),
             Text(
-              'Use the same identifier that was registered by the supplier for this device.',
+              'The 15-digit IMEI number registered to this device is strictly required.',
               style: TextStyle(fontSize: 12, color: Colors.grey[500]),
             ),
             const SizedBox(height: 10),
             TextFormField(
               controller  : _identifierController,
+              keyboardType: TextInputType.number,
               decoration  : _inputDecoration(
-                'Enter Serial / IMEI (optional)',
+                'Enter 15-digit IMEI Number',
                 prefix: const Icon(Icons.fingerprint_rounded,
                     color: _kPrimary, size: 20),
               ),
               validator: (val) {
                 final value = val?.trim() ?? '';
-                if (value.isEmpty) return null;
-                final registeredIdentifier =
-                    _selectedAsset?['serial']?.toString().trim() ?? '';
-                if (registeredIdentifier.isNotEmpty &&
-                    value == registeredIdentifier) {
-                  return null;
+                if (value.isEmpty) {
+                  return 'IMEI Number is required to process report';
                 }
-                if (_shouldTreatAsImei(value) &&
-                    !_validateImei(_compactReportIdentifier(value))) {
-                  return 'Enter a valid 15-digit IMEI or the registered serial number';
+                final compact = _compactReportIdentifier(value);
+                if (!_validateImei(compact)) {
+                  return 'Enter a valid 15-digit IMEI number';
                 }
                 return null;
               },
             ),
             const SizedBox(height: 24),
 
-            // ── Description ──────────────────────────────────
             const _SectionLabel(
                 icon: Icons.description_outlined, text: 'Incident Description'),
             const SizedBox(height: 10),
@@ -1798,7 +1770,6 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
             ),
             const SizedBox(height: 24),
 
-            // ── Police Document ──────────────────────────────
             const _SectionLabel(
                 icon: Icons.gavel_outlined, text: 'Police Complaint Document'),
             const SizedBox(height: 6),
@@ -1859,7 +1830,6 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
             ),
             const SizedBox(height: 36),
 
-            // ── Submit button ────────────────────────────────
             SizedBox(
               width : double.infinity,
               height: 54,
@@ -1896,9 +1866,9 @@ class _SubmitReportTabState extends State<_SubmitReportTab>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+
 //  CATEGORY BUTTON
-// ─────────────────────────────────────────────────────────────
+
 class _CategoryButton extends StatelessWidget {
   final IconData icon;
   final String   label;
@@ -1943,9 +1913,9 @@ class _CategoryButton extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+
 //  HELPER WIDGET – SECTION LABEL
-// ─────────────────────────────────────────────────────────────
+
 class _SectionLabel extends StatelessWidget {
   final IconData icon;
   final String   text;
@@ -1965,9 +1935,9 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+
 //  VIEWABLE DOCUMENT TILE
-// ─────────────────────────────────────────────────────────────
+
 class _ViewableDocTile extends StatelessWidget {
   final String fileName;
   final String ipfsHash;
@@ -2072,9 +2042,8 @@ class _ViewableDocTile extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
 //  IN-APP DOCUMENT VIEWER SCREEN
-// ─────────────────────────────────────────────────────────────
+
 class _DocViewerScreen extends StatefulWidget {
   final String fileName;
   final String ipfsUrl;
