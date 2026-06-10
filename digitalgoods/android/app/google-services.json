@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "931953170401",
+    "firebase_url": "https://digitalgoods-f5667-default-rtdb.firebaseio.com",
+    "project_id": "digitalgoods-f5667",
+    "storage_bucket": "digitalgoods-f5667.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:931953170401:android:5311f29ad7e87322bde4a0",
+        "android_client_info": {
+          "package_name": "com.example.digitalgoods"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "931953170401-rgfis1no532o99r0clkg752iblnilp06.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.digitalgoods",
+            "certificate_hash": "2ac64b9e14a01391cab66ba69eae80b01053071f"
+          }
+        },
+        {
+          "client_id": "931953170401-oeeu7fr1j2h701md3l5fne8s088kkks7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAME37-Ezn-uURwpgRXroL3Pc9xGiW19B8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "931953170401-oeeu7fr1j2h701md3l5fne8s088kkks7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

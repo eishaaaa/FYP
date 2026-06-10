@@ -1,0 +1,9 @@
+{
+  "name": "DHA Phase 5 Property",
+  "description": "Fractionalized land ownership",
+  "attributes": [
+    { "trait_type": "City", "value": "Lahore" },
+    { "trait_type": "Area", "value": "10 Marla" },
+    { "trait_type": "Fractions", "value": 100 }
+  ]
+}

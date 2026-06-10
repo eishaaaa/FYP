@@ -1,0 +1,100 @@
+﻿======================================================================
+  SQA PROJECT - SMART CONTRACT TEST EXECUTION LOG
+  Digital Goods: Bridging Physical to Digital Space using NFTs
+======================================================================
+  Institution   : Kinnaird College for Women, Lahore
+  Course        : Software Quality Assurance and Testing (SQA)
+  Supervisor    : Dr. Sidra Zafar
+  Executed By   : Eisha tur Raazia  |  Roll No: F22BSCS014
+  Testing Role  : Logic & Unit Testing Specialist (Hardhat)
+----------------------------------------------------------------------
+  Run Timestamp : 2026-06-10 22:08:35 +05:00
+  Machine User  : user
+  OS            : Microsoft Windows 10 Pro
+  Node.js       : v22.21.1
+  npm           : 10.9.4
+  Hardhat       : npm warn exec The following package was not found and will be installed: hardhat@3.9.0
+----------------------------------------------------------------------
+  Git Commit    : 1ee7b9d6d6d41430f9405316c5b19658e0f45775
+  Git Branch    : main
+  Commit Msg    : Initial commit
+----------------------------------------------------------------------
+  Test Script   : digital-goods-blockchain\test\test-contracts.js
+  Contracts     : contracts\ElectronicsNFT.sol
+                  contracts\LandFractionalNFT.sol
+  Network       : Hardhat Local Node (Chain ID: 31337)
+  Framework     : Mocha + Chai (via Hardhat)
+======================================================================
+
+FULL TEST EXECUTION OUTPUT:
+----------------------------------------------------------------------
+[dotenv@17.2.3] injecting env (5) from .env -- tip: ≡ƒöÉ prevent committing .env to code: https://dotenvx.com/precommit
+
+
+  Synopsis Requirement Validation
+    ΓêÜ Γ£à ERC-721 for Electronics (Section 3.5)
+    ΓêÜ Γ£à ERC-1155 for Fractional Land (Section 3.5)
+    ΓêÜ Γ£à Polygon Low-Cost Transactions (Section 1.4)
+    ΓêÜ Γ£à IPFS Document Storage (Section 3.1)
+    ΓêÜ Γ£à QR Verification Flow (Section 3.2)
+
+  Digital Goods - Electronics NFT
+    Minting Electronics
+      ΓêÜ Should mint electronics NFT with IPFS metadata (106ms)
+      ΓêÜ Should prevent duplicate serial numbers (102ms)
+      ΓêÜ Should retrieve device by serial number (104ms)
+    Verification
+      ΓêÜ Should verify device authenticity (64ms)
+      ΓêÜ Should prevent non-owner from verifying (116ms)
+    Reviews (On-Chain Hashing)
+      ΓêÜ Should submit hashed review (69ms)
+      ΓêÜ Should prevent duplicate reviews (94ms)
+
+  Digital Goods - Land Fractional NFT
+    Property Creation
+      ΓêÜ Should create fractionalized land property (48ms)
+      ΓêÜ Should support marla and kanal units
+    Fractional Ownership
+      ΓêÜ Should purchase fractions (83ms)
+      ΓêÜ Should refund excess payment (75ms)
+    Rent Distribution (Simulated)
+      ΓêÜ Should distribute and claim proportional rent (98ms)
+      ΓêÜ Should prevent claiming when no rent available (106ms)
+      ΓêÜ Should prevent claiming without ownership (65ms)
+    Property Verification
+      ΓêÜ Should verify property (68ms)
+
+  Synopsis Requirements Alignment
+    Γ£ô Smart contracts ensure immutable asset records
+    Γ£ô IPFS hashes prevent metadata tampering
+    ΓêÜ Γ£à Tamper-proof record immutability
+    Γ£ô ERC-1155 supports fractional ownership
+    Γ£ô Rent distribution based on fraction count
+    ΓêÜ Γ£à Fractionalized land ownership
+    Γ£ô QR codes contain asset://type/identifier format
+    Γ£ô Mobile app queries blockchain for verification
+    ΓêÜ Γ£à QR code verification
+    Γ£ô Reviews hashed with keccak256
+    Γ£ô One review per address per asset
+    ΓêÜ Γ£à On-chain review authenticity
+    Γ£ô Polygon Amoy: ~$0.001 per transaction
+    Γ£ô Suitable for Pakistan's economic context
+    ΓêÜ Γ£à Low-cost transactions
+
+
+  25 passing (6s)
+
+
+======================================================================
+  EXECUTION SUMMARY
+======================================================================
+  Total Tests Executed   : 25
+  Tests Passed           : 25
+  Tests Failed           : 0
+  Tests Pending/Skipped  : 0
+  Pass Rate              : 100%
+  Total Execution Time   : 11.25 seconds
+  Exit Status            : SUCCESS - All tests passed
+======================================================================
+  Log saved to: D:\fyp\test-results\hardhat_test_results.log
+======================================================================

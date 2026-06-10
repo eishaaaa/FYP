@@ -1,0 +1,72 @@
+# SQA Project Submission Gitignore
+
+# Exclude entire docs and testing directories (Teacher requirements / Privacy)
+docs/
+testing/
+
+# Sensitive configuration files (CRITICAL: DO NOT COMMIT)
+.env
+.env.*
+*.env
+digital-goods-blockchain/.env
+
+# Temporary Word files
+~$*.docx
+~$*
+~$*.*
+
+# OS/IDE junk
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+
+# Python virtual environment
+.venv/
+__pycache__/
+*.pyc
+
+# Local backup / unrelated documents
+*.zip
+*.pptx
+*.pdf
+*college roadmap*
+*Roadmap Session*
+*research*
+documentation/
+
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Flutter build and cache directories
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+digitalgoods/build/
+digitalgoods/.dart_tool/
+digitalgoods/.flutter-plugins
+digitalgoods/.flutter-plugins-dependencies
+digitalgoods/.packages
+digitalgoods/android/.gradle/
+digitalgoods/android/app/build/
+digitalgoods/ios/.symlinks/
+digitalgoods/windows/flutter/ephemeral/
+digitalgoods/windows/build/
+digitalgoods/linux/build/
+digitalgoods/macos/build/
+
+# Ignore local system-generated files in Gemini agent sandbox
+.system_generated/
+task.md
+implementation_plan.md
+walkthrough.md

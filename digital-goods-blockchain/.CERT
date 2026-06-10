@@ -1,0 +1,24 @@
+Issue 1: Missing Success Confirmation (Create)
+Actual Result: The modal closes immediately upon clicking Save, but no success confirmation message or toast notification is displayed to the user.
+
+Expected Result: The modal should close, and the system must display a clear success confirmation (e.g., "Authenticator Created") to verify the action completed successfully.
+
+Issue 2: Roles Tab Missing in Edit Mode
+Actual Result: When opening an existing authenticator in Edit mode, the Roles tab is completely invisible, preventing verification of assigned roles.
+
+Expected Result: The Roles tab should be visible and accessible in Edit mode, displaying the "Available Roles" and "Assigned Roles" sections with current data.
+
+Issue 3: Roles Tab Inaccessible During Creation
+Actual Result: The Roles tab is hidden/disabled and cannot be clicked until the "Authenticator" type is selected.
+
+Expected Result: The Roles tab should be accessible for navigation even before required fields are filled, allowing the user to switch tabs without auto-saving or being blocked.
+
+Issue 4: Edit Save Functionality Broken
+Actual Result: Clicking Save in Edit mode triggers an infinite loading spinner; the modal does not close, and changes (such as the Active status) are not saved.
+
+Expected Result: Clicking Save should successfully persist changes, close the modal, and display a success confirmation message.
+
+Issue 5: Modal Dismissal & Back Button (UI Behavior)
+Actual Result: Clicking the grey background overlay closes the modal immediately. Additionally, clicking the browser's Back button navigates away instantly without warning.
+
+Expected Result: The background overlay should be static (ignoring clicks) to prevent accidental closure. The browser Back button should trigger an "Unsaved Changes" warning before navigating away.

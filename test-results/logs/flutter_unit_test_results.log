@@ -1,0 +1,81 @@
+﻿======================================================================
+  SQA PROJECT - FLUTTER UNIT TEST EXECUTION LOG
+  Digital Goods: Bridging Physical to Digital Space using NFTs
+======================================================================
+  Institution   : Kinnaird College for Women, Lahore
+  Course        : Software Quality Assurance and Testing (SQA)
+  Supervisor    : Dr. Sidra Zafar
+  Executed By   : Eisha tur Raazia  |  Roll No: F22BSCS014
+  Testing Role  : Logic and Unit Testing Specialist (Flutter Test)
+----------------------------------------------------------------------
+  Run Timestamp : 2026-06-10 22:08:54 +05:00
+  Machine User  : user
+  OS            : Microsoft Windows 10 Pro
+  Flutter       : Flutter 3.35.3 ΓÇó channel stable ΓÇó https://github.com/flutter/flutter.git
+  Dart          : Dart SDK version: 3.9.2 (stable) (Wed Aug 27 03:49:40 2025 -0700) on "windows_x64"
+----------------------------------------------------------------------
+  Git Commit    : d52657dd1dc202f5d94271d5da02f28abdc8bfe2
+  Git Branch    : master
+  Commit Msg    : Imei & doc checks
+----------------------------------------------------------------------
+  Test Script   : digitalgoods\test\digitalgoods_unit_test.dart
+  Target Files  : wallet_service.dart
+                  ipfs_service.dart
+                  explorer_service.dart
+  Framework     : flutter_test (Dart Test Runner)
+======================================================================
+
+FULL TEST EXECUTION OUTPUT:
+----------------------------------------------------------------------
+Got dependencies!
+00:00 +0: loading D:/fyp/digitalgoods/test/digitalgoods_unit_test.dart
+00:00 +0: SimpleWalletService Balance & Escrow Tests 1. Initial Balance Check
+00:00 +1: SimpleWalletService Balance & Escrow Tests 2. Lock Funds Success
+≡ƒöÆ Funds Locked: 4.0. New Locked: 4.0
+≡ƒöô Funds Unlocked: 4.0. New Available: 10.0
+00:00 +2: SimpleWalletService Balance & Escrow Tests 3. Lock Funds Insufficient Balance throws Exception
+00:00 +3: SimpleWalletService Balance & Escrow Tests 4. Unlock Funds Success
+≡ƒöÆ Funds Locked: 3.0. New Locked: 3.0
+≡ƒöô Funds Unlocked: 2.0. New Available: 9.0
+≡ƒöô Funds Unlocked: 1.0. New Available: 10.0
+00:00 +4: SimpleWalletService Balance & Escrow Tests 5. Unlock Funds Insufficient Locked balance throws Exception
+00:00 +5: SimpleWalletService Balance & Escrow Tests 6. Consume Locked Funds Success
+≡ƒöÆ Funds Locked: 5.0. New Locked: 5.0
+≡ƒÆ╕ Funds Consumed: 3.0. Remaining Locked: 2.0
+≡ƒöô Funds Unlocked: 2.0. New Available: 7.0
+00:00 +6: SimpleWalletService Balance & Escrow Tests 7. Consume Locked Funds Insufficient Locked balance throws Exception
+00:00 +7: IPFSService Metadata & Utilities Tests 8. IPFS URL Formatting
+00:00 +8: IPFSService Metadata & Utilities Tests 9. Extract Hash from ipfs:// url
+00:00 +9: IPFSService Metadata & Utilities Tests 10. Extract Hash from gateway http url
+00:00 +10: IPFSService Metadata & Utilities Tests 11. Extract Hash from invalid url returns null
+00:00 +11: IPFSService Metadata & Utilities Tests 12. Create Electronics Metadata structure
+00:00 +12: IPFSService Metadata & Utilities Tests 13. Create Land Metadata structure
+00:00 +13: IPFSService Metadata & Utilities Tests 14. IPFSUploadResult Formatting Size Helper
+00:00 +14: ExplorerService Logic & Helper Tests 15. Wei to MATIC Conversion calculation
+00:00 +15: ExplorerService Logic & Helper Tests 16. Fractional Wei to MATIC conversion calculation
+00:00 +16: ExplorerService Logic & Helper Tests 17. Gas Fee conversion calculation
+00:00 +17: All tests passed!
+
+======================================================================
+  EXECUTION SUMMARY
+======================================================================
+  Total Tests Executed   : 17
+  Tests Passed           : 17
+  Tests Failed           : 0
+  Pass Rate              : 100%
+  Total Execution Time   : 18.99 seconds
+----------------------------------------------------------------------
+  Test Groups Covered    : 3
+    Group 1 - SimpleWalletService Balance and Escrow Tests  (7 tests)
+    Group 2 - IPFSService Metadata and Utilities Tests      (7 tests)
+    Group 3 - ExplorerService Logic and Helper Tests        (3 tests)
+----------------------------------------------------------------------
+  Modules Tested:
+    wallet_service.dart   - Escrow lockFunds, unlockFunds, consumeLockedFunds
+    ipfs_service.dart     - URL formatting, hash extraction, metadata builders
+    explorer_service.dart - Wei-to-MATIC BigInt precision conversions
+----------------------------------------------------------------------
+  Exit Status            : SUCCESS - All tests passed
+======================================================================
+  Log saved to: D:\fyp\test-results\flutter_unit_test_results.log
+======================================================================

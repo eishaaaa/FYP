@@ -1,0 +1,11 @@
+{
+  "name": "Samsung Galaxy S24",
+  "description": "Blockchain-authenticated electronic device",
+  "image": "ipfs://QmImageHash",
+  "attributes": [
+    { "trait_type": "Brand", "value": "Samsung" },
+    { "trait_type": "Model", "value": "Galaxy S24" },
+    { "trait_type": "Serial", "value": "IMEI123456789" },
+    { "trait_type": "Warranty", "value": "2026-12-31" }
+  ]
+}

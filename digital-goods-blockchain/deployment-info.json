@@ -1,0 +1,16 @@
+{
+  "network": "amoy",
+  "chainId": "80002",
+  "deployer": "0xDFf5561BecA46B6Dd4A94cd081BF598aC35E9f18",
+  "timestamp": "2026-04-28T07:12:09.709Z",
+  "contracts": {
+    "ElectronicsNFT": {
+      "address": "0x1BE55F781F824d710FdF5A14cbb1C10799Ff39A1",
+      "abi": "ElectronicsNFT.json"
+    },
+    "LandFractionalNFT": {
+      "address": "0xdD683DaC3Fc6eC75F228c244eAC5e6FC1c80c241",
+      "abi": "LandFractionalNFT.json"
+    }
+  }
+}
