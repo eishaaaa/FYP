@@ -331,38 +331,136 @@ describe("Digital Goods - Land Fractional NFT", function () {
 });
 
 describe("Synopsis Requirements Alignment", function () {
+  let electronicsNFT;
+  let landNFT;
+  let owner, user1, user2, user3;
+
+  beforeEach(async function () {
+    [owner, user1, user2, user3] = await ethers.getSigners();
+    
+    const ElectronicsNFT = await ethers.getContractFactory("ElectronicsNFT");
+    electronicsNFT = await ElectronicsNFT.deploy();
+    await electronicsNFT.deployed();
+
+    const LandFractionalNFT = await ethers.getContractFactory("LandFractionalNFT");
+    landNFT = await LandFractionalNFT.deploy();
+    await landNFT.deployed();
+  });
+
   it("✅ Tamper-proof record immutability", async function () {
-    // Once minted, NFT data cannot be altered
-    console.log("    ✓ Smart contracts ensure immutable asset records");
-    console.log("    ✓ IPFS hashes prevent metadata tampering");
-    expect(true).to.be.true;
+    await electronicsNFT.mintElectronic(
+      user1.address,
+      "IMMUTABLE123",
+      "Apple",
+      "iPhone 15",
+      "2026-12-31",
+      "ipfs://QmImmutableHash"
+    );
+
+    let device = await electronicsNFT.getDevice(1);
+    expect(device.brand).to.equal("Apple");
+    expect(device.model).to.equal("iPhone 15");
+    expect(device.serialNumber).to.equal("IMMUTABLE123");
+    expect(await electronicsNFT.tokenURI(1)).to.equal("ipfs://QmImmutableHash");
+
+    await electronicsNFT.connect(user1).transferFrom(user1.address, user2.address, 1);
+    
+    device = await electronicsNFT.getDevice(1);
+    expect(device.brand).to.equal("Apple");
+    expect(device.model).to.equal("iPhone 15");
+    expect(device.serialNumber).to.equal("IMMUTABLE123");
+    expect(await electronicsNFT.tokenURI(1)).to.equal("ipfs://QmImmutableHash");
+    expect(await electronicsNFT.ownerOf(1)).to.equal(user2.address);
   });
 
   it("✅ Fractionalized land ownership", async function () {
-    // ERC-1155 enables multiple owners per property
-    console.log("    ✓ ERC-1155 supports fractional ownership");
-    console.log("    ✓ Rent distribution based on fraction count");
-    expect(true).to.be.true;
+    await landNFT.connect(user1).createProperty(
+      "DHA Phase 6",
+      "Lahore",
+      10,
+      "marla",
+      100,
+      ethers.utils.parseEther("0.1"),
+      "ipfs://QmDeedHash"
+    );
+
+    await landNFT.connect(user2).purchaseFractions(1, 30, {
+      value: ethers.utils.parseEther("3.0")
+    });
+
+    await landNFT.connect(user3).purchaseFractions(1, 20, {
+      value: ethers.utils.parseEther("2.0")
+    });
+
+    expect(await landNFT.balanceOf(user2.address, 1)).to.equal(30);
+    expect(await landNFT.balanceOf(user3.address, 1)).to.equal(20);
+
+    await landNFT.distributeRent(1, { value: ethers.utils.parseEther("10.0") });
+
+    expect(await landNFT.getUnclaimedRent(1, user2.address)).to.equal(ethers.utils.parseEther("3.0"));
+    expect(await landNFT.getUnclaimedRent(1, user3.address)).to.equal(ethers.utils.parseEther("2.0"));
   });
 
   it("✅ QR code verification", async function () {
-    // QR codes link to blockchain records
-    console.log("    ✓ QR codes contain asset://type/identifier format");
-    console.log("    ✓ Mobile app queries blockchain for verification");
-    expect(true).to.be.true;
+    await electronicsNFT.mintElectronic(
+      user1.address,
+      "QR_CODE_SERIAL_999",
+      "Dell",
+      "Latitude",
+      "2027-01-01",
+      "ipfs://QmDellHash"
+    );
+
+    const deviceById = await electronicsNFT.getDevice(1);
+    expect(deviceById.brand).to.equal("Dell");
+    expect(deviceById.serialNumber).to.equal("QR_CODE_SERIAL_999");
+
+    const deviceBySerial = await electronicsNFT.getDeviceBySerial("QR_CODE_SERIAL_999");
+    expect(deviceBySerial.brand).to.equal("Dell");
   });
 
   it("✅ On-chain review authenticity", async function () {
-    // Reviews stored as hashes prevent manipulation
-    console.log("    ✓ Reviews hashed with keccak256");
-    console.log("    ✓ One review per address per asset");
-    expect(true).to.be.true;
+    await electronicsNFT.mintElectronic(
+      user1.address,
+      "REVIEW123",
+      "Sony",
+      "WH-1000XM5",
+      "2026-06-01",
+      "ipfs://QmSonyHash"
+    );
+
+    const reviewContent = "Amazing noise cancelling!";
+    const reviewHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(reviewContent));
+
+    const tx = await electronicsNFT.connect(user2).submitReview(1, reviewHash);
+    const receipt = await tx.wait();
+
+    const event = receipt.events.find(e => e.event === "ReviewSubmitted");
+    expect(event).to.not.be.undefined;
+    expect(event.args.reviewer).to.equal(user2.address);
+    expect(event.args.reviewHash).to.equal(reviewHash);
+
+    await expect(
+      electronicsNFT.connect(user2).submitReview(1, reviewHash)
+    ).to.be.revertedWith("Already reviewed");
   });
 
   it("✅ Low-cost transactions", async function () {
-    // Polygon Amoy provides affordable gas fees
-    console.log("    ✓ Polygon Amoy: ~$0.001 per transaction");
-    console.log("    ✓ Suitable for Pakistan's economic context");
-    expect(true).to.be.true;
+    const tx = await electronicsNFT.mintElectronic(
+      user1.address,
+      "LOWCOST123",
+      "HP",
+      "Spectre",
+      "2026-10-01",
+      "ipfs://QmHpHash"
+    );
+    const receipt = await tx.wait();
+
+    expect(receipt.gasUsed).to.be.below(300000);
+
+    const gasPrice = ethers.utils.parseUnits("30", "gwei");
+    const totalCost = receipt.gasUsed.mul(gasPrice);
+
+    expect(totalCost).to.be.below(ethers.utils.parseEther("0.01"));
   });
 });

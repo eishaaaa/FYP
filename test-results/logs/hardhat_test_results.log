@@ -8,16 +8,16 @@
   Executed By   : Eisha tur Raazia  |  Roll No: F22BSCS014
   Testing Role  : Logic & Unit Testing Specialist (Hardhat)
 ----------------------------------------------------------------------
-  Run Timestamp : 2026-06-10 22:08:35 +05:00
+  Run Timestamp : 2026-06-12 17:34:14 +05:00
   Machine User  : user
   OS            : Microsoft Windows 10 Pro
   Node.js       : v22.21.1
   npm           : 10.9.4
   Hardhat       : npm warn exec The following package was not found and will be installed: hardhat@3.9.0
 ----------------------------------------------------------------------
-  Git Commit    : 1ee7b9d6d6d41430f9405316c5b19658e0f45775
+  Git Commit    : 4aee1c8233c4d28c52b88cc7f8c9f144b0c774fb
   Git Branch    : main
-  Commit Msg    : Initial commit
+  Commit Msg    : integration tests
 ----------------------------------------------------------------------
   Test Script   : digital-goods-blockchain\test\test-contracts.js
   Contracts     : contracts\ElectronicsNFT.sol
@@ -28,7 +28,7 @@
 
 FULL TEST EXECUTION OUTPUT:
 ----------------------------------------------------------------------
-[dotenv@17.2.3] injecting env (5) from .env -- tip: ≡ƒöÉ prevent committing .env to code: https://dotenvx.com/precommit
+[dotenv@17.2.3] injecting env (5) from .env -- tip: ≡ƒöÉ encrypt with Dotenvx: https://dotenvx.com
 
 
   Synopsis Requirement Validation
@@ -40,49 +40,39 @@ FULL TEST EXECUTION OUTPUT:
 
   Digital Goods - Electronics NFT
     Minting Electronics
-      ΓêÜ Should mint electronics NFT with IPFS metadata (106ms)
-      ΓêÜ Should prevent duplicate serial numbers (102ms)
-      ΓêÜ Should retrieve device by serial number (104ms)
+      ΓêÜ Should mint electronics NFT with IPFS metadata (130ms)
+      ΓêÜ Should prevent duplicate serial numbers (45ms)
+      ΓêÜ Should retrieve device by serial number
     Verification
-      ΓêÜ Should verify device authenticity (64ms)
-      ΓêÜ Should prevent non-owner from verifying (116ms)
+      ΓêÜ Should verify device authenticity (44ms)
+      ΓêÜ Should prevent non-owner from verifying (41ms)
     Reviews (On-Chain Hashing)
-      ΓêÜ Should submit hashed review (69ms)
-      ΓêÜ Should prevent duplicate reviews (94ms)
+      ΓêÜ Should submit hashed review (68ms)
+      ΓêÜ Should prevent duplicate reviews (81ms)
 
   Digital Goods - Land Fractional NFT
     Property Creation
-      ΓêÜ Should create fractionalized land property (48ms)
+      ΓêÜ Should create fractionalized land property (64ms)
       ΓêÜ Should support marla and kanal units
     Fractional Ownership
-      ΓêÜ Should purchase fractions (83ms)
-      ΓêÜ Should refund excess payment (75ms)
+      ΓêÜ Should purchase fractions (70ms)
+      ΓêÜ Should refund excess payment
     Rent Distribution (Simulated)
-      ΓêÜ Should distribute and claim proportional rent (98ms)
-      ΓêÜ Should prevent claiming when no rent available (106ms)
-      ΓêÜ Should prevent claiming without ownership (65ms)
+      ΓêÜ Should distribute and claim proportional rent (96ms)
+      ΓêÜ Should prevent claiming when no rent available
+      ΓêÜ Should prevent claiming without ownership (45ms)
     Property Verification
-      ΓêÜ Should verify property (68ms)
+      ΓêÜ Should verify property (61ms)
 
   Synopsis Requirements Alignment
-    Γ£ô Smart contracts ensure immutable asset records
-    Γ£ô IPFS hashes prevent metadata tampering
-    ΓêÜ Γ£à Tamper-proof record immutability
-    Γ£ô ERC-1155 supports fractional ownership
-    Γ£ô Rent distribution based on fraction count
-    ΓêÜ Γ£à Fractionalized land ownership
-    Γ£ô QR codes contain asset://type/identifier format
-    Γ£ô Mobile app queries blockchain for verification
-    ΓêÜ Γ£à QR code verification
-    Γ£ô Reviews hashed with keccak256
-    Γ£ô One review per address per asset
-    ΓêÜ Γ£à On-chain review authenticity
-    Γ£ô Polygon Amoy: ~$0.001 per transaction
-    Γ£ô Suitable for Pakistan's economic context
-    ΓêÜ Γ£à Low-cost transactions
+    ΓêÜ Γ£à Tamper-proof record immutability (167ms)
+    ΓêÜ Γ£à Fractionalized land ownership (217ms)
+    ΓêÜ Γ£à QR code verification (85ms)
+    ΓêÜ Γ£à On-chain review authenticity (72ms)
+    ΓêÜ Γ£à Low-cost transactions (60ms)
 
 
-  25 passing (6s)
+  25 passing (5s)
 
 
 ======================================================================
@@ -93,7 +83,7 @@ FULL TEST EXECUTION OUTPUT:
   Tests Failed           : 0
   Tests Pending/Skipped  : 0
   Pass Rate              : 100%
-  Total Execution Time   : 11.25 seconds
+  Total Execution Time   : 8.43 seconds
   Exit Status            : SUCCESS - All tests passed
 ======================================================================
   Log saved to: D:\fyp\test-results\hardhat_test_results.log
