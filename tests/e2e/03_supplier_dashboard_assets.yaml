@@ -1,13 +1,15 @@
 ﻿appId: com.example.digitalgoods
-name: 01_smoke_onboarding_login
+name: 03_supplier_dashboard_assets
 ---
-# Flow 1: Complete onboarding, log in with Areeba's supplier account, and verify dashboard.
+# Flow 3: Verify supplier dashboard and existing asset actions.
 - launchApp:
     clearState: true
     permissions:
       notifications: allow
       camera: allow
 
+# Android emulator can occasionally show a System UI / Pixel Launcher ANR dialog.
+# Dismiss it before assertions so Maestro can see the Flutter app.
 - runFlow:
     when:
       visible: ".*isn't responding"
@@ -30,10 +32,6 @@ name: 01_smoke_onboarding_login
 - extendedWaitUntil:
     visible: "Welcome Back!"
     timeout: 20000
-- assertVisible: "Sign in to continue"
-- assertVisible: "Email Address"
-- assertVisible: "Password"
-- takeScreenshot: "screenshots/01_01_login_screen"
 - tapOn: "Email Address"
 - inputText: ${SUPPLIER_EMAIL}
 - tapOn: "Password"
@@ -44,5 +42,9 @@ name: 01_smoke_onboarding_login
     visible: ".*Land Supplier.*"
     timeout: 45000
 - assertVisible: ".*My Assets.*"
+- assertVisible: ".*NFT Minted.*"
+- assertVisible: ".*Distribute Rent.*"
+- assertVisible: "QR Code"
+- assertVisible: "Edit"
 - assertVisible: ".*Add Asset.*"
-- takeScreenshot: "screenshots/01_02_supplier_dashboard"
+- takeScreenshot: "screenshots/03_01_supplier_assets"

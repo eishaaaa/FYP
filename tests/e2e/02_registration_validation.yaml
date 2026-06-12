@@ -1,0 +1,78 @@
+﻿appId: com.example.digitalgoods
+name: 02_registration_validation
+---
+# Flow 2: Verify registration form, user/supplier role UI, and password mismatch validation.
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: allow
+      camera: allow
+
+# Android emulator can occasionally show a System UI / Pixel Launcher ANR dialog.
+# Dismiss it before assertions so Maestro can see the Flutter app.
+- runFlow:
+    when:
+      visible: ".*isn't responding"
+    commands:
+      - tapOn: "Wait"
+- extendedWaitUntil:
+    visible: "Secure Ownership"
+    timeout: 60000
+- swipe:
+    direction: LEFT
+- extendedWaitUntil:
+    visible: "QR Verification"
+    timeout: 15000
+- swipe:
+    direction: LEFT
+- extendedWaitUntil:
+    visible: "Future Tokenization"
+    timeout: 15000
+- tapOn: "Get Started"
+- extendedWaitUntil:
+    visible: "Welcome Back!"
+    timeout: 20000
+- tapOn: "Register"
+- extendedWaitUntil:
+    visible: "Create Account"
+    timeout: 15000
+- assertVisible: "Account Type"
+- assertVisible: "User"
+- assertVisible: "Supplier"
+- assertVisible: "Full Name"
+- assertVisible: "Email"
+- assertVisible: "Phone"
+- assertVisible: "Password"
+- assertVisible: "Confirm Password"
+- takeScreenshot: "screenshots/02_01_register_user_fields"
+- tapOn: "Supplier"
+- assertVisible: "Land"
+- assertVisible: "Electronics"
+- assertVisible: "Business Info"
+- assertVisible: "Company / Brand"
+- assertVisible: "CNIC / NTN"
+- swipe:
+    direction: UP
+- extendedWaitUntil:
+    visible: "City"
+    timeout: 10000
+- takeScreenshot: "screenshots/02_02_register_supplier_fields"
+- swipe:
+    direction: DOWN
+- tapOn: "User"
+- tapOn: "Full Name"
+- inputText: "Areeba Maestro Test"
+- tapOn: "Email"
+- inputText: "areeba.maestro.invalid@example.com"
+- tapOn: "Phone"
+- inputText: "03001234567"
+- tapOn: "Password"
+- inputText: "Password123!"
+- tapOn: "Confirm Password"
+- inputText: "Different123!"
+- hideKeyboard
+- tapOn: "Create Account"
+- extendedWaitUntil:
+    visible: "Passwords do not match"
+    timeout: 10000
+- takeScreenshot: "screenshots/02_03_password_mismatch"

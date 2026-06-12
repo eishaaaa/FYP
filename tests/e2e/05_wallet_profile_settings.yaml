@@ -1,0 +1,69 @@
+﻿appId: com.example.digitalgoods
+name: 05_wallet_profile_settings
+---
+# Flow 5: Verify wallet entry point and profile/settings navigation for supplier account.
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: allow
+      camera: allow
+
+# Android emulator can occasionally show a System UI / Pixel Launcher ANR dialog.
+# Dismiss it before assertions so Maestro can see the Flutter app.
+- runFlow:
+    when:
+      visible: ".*isn't responding"
+    commands:
+      - tapOn: "Wait"
+- extendedWaitUntil:
+    visible: "Secure Ownership"
+    timeout: 60000
+- swipe:
+    direction: LEFT
+- extendedWaitUntil:
+    visible: "QR Verification"
+    timeout: 15000
+- swipe:
+    direction: LEFT
+- extendedWaitUntil:
+    visible: "Future Tokenization"
+    timeout: 15000
+- tapOn: "Get Started"
+- extendedWaitUntil:
+    visible: "Welcome Back!"
+    timeout: 20000
+- tapOn: "Email Address"
+- inputText: ${SUPPLIER_EMAIL}
+- tapOn: "Password"
+- inputText: ${SUPPLIER_PASSWORD}
+- hideKeyboard
+- tapOn: "Sign In"
+- extendedWaitUntil:
+    visible: ".*Land Supplier.*"
+    timeout: 45000
+# Wallet icon has no text label; use top-right wallet position.
+- tapOn:
+    point: "82%,7%"
+- extendedWaitUntil:
+    visible: "Wallet"
+    timeout: 15000
+- assertVisible: "Connect Wallet"
+- takeScreenshot: "screenshots/05_01_wallet_screen"
+- back
+# Bottom profile tab is sometimes exposed as an accessibility label; point tap is steadier.
+- tapOn:
+    point: "87%,94%"
+- extendedWaitUntil:
+    visible: "Stolen Reports"
+    timeout: 15000
+- assertVisible: "Transactions"
+- assertVisible: "Settings"
+- assertVisible: "Logout"
+- takeScreenshot: "screenshots/05_02_profile_screen"
+- tapOn: "Settings"
+- extendedWaitUntil:
+    visible: "Settings"
+    timeout: 10000
+# Inner settings labels render visually but are not always exposed in Maestro hierarchy.
+# Screenshot evidence covers Dark Mode, Last Seen, and Delete Account.
+- takeScreenshot: "screenshots/05_03_settings_screen"

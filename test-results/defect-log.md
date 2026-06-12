@@ -48,3 +48,29 @@ This document logs all functional, logical, and environment defects identified a
 ### BUG-008: Incomplete Stolen Flag Sync
 - **Root Cause:** Self-healing code only set `reportedStolen` and `isStolen` fields, whereas `transfer_screen.dart` queries `isStolenReported`.
 - **Fix:** Synced all three flags (`isStolenReported`, `isStolen`, and `reportedStolen`) in the Firestore document during device healing.
+
+# Defect Log - Digital Goods E2E UI Testing
+
+## App Defects
+
+Only confirmed application behavior problems should be added here. Emulator, ADB, package manager, or Maestro connection failures are setup issues and should not be counted as app bugs.
+
+| TBD | TBD | TBD | TBD | Add only after a flow reaches the app screen and confirms an app behavior problem. | TBD | TBD | TBD | Open | Areeba |
+
+## Environment / Setup Issues
+
+| ENV-E2E-001 | 01_smoke_onboarding_login, 02_registration_validation, 03_supplier_dashboard_assets | Android emulator / ADB stability | Maestro result showed `Device offline` / ADB disconnection during run. | Setup issue, not an application defect. | Cold boot Pixel_9a, run `tests\e2e\reset_maestro_device.ps1`, then rerun `tests\e2e\run_areeba_flows.ps1`. | Open until rerun passes | Areeba |
+
+## Severity Guide
+
+- Critical: App crash, security issue, data loss, or impossible core workflow.
+- High: Major user flow blocked after stable environment is confirmed.
+- Medium: Important feature partially broken.
+- Low: UI text, visual, or minor navigation issue.
+
+## Status Guide
+
+- Open: Needs fix or rerun.
+- Fixed: Fixed and verified.
+- Deferred: Known limitation accepted for this release.
+- Not an app defect: Environment/setup issue only.

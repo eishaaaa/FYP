@@ -1,0 +1,71 @@
+﻿appId: com.example.digitalgoods
+name: 08_supplier_add_asset_form
+---
+# Flow 8: Verify supplier Add Asset form and fill safe non-transaction fields.
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: allow
+      camera: allow
+
+- runFlow:
+    when:
+      visible: ".*isn't responding"
+    commands:
+      - tapOn: "Wait"
+- extendedWaitUntil:
+    visible: "Secure Ownership"
+    timeout: 60000
+- swipe:
+    direction: LEFT
+- extendedWaitUntil:
+    visible: "QR Verification"
+    timeout: 15000
+- swipe:
+    direction: LEFT
+- extendedWaitUntil:
+    visible: "Future Tokenization"
+    timeout: 15000
+- tapOn: "Get Started"
+- extendedWaitUntil:
+    visible: "Welcome Back!"
+    timeout: 20000
+- tapOn: "Email Address"
+- inputText: ${SUPPLIER_EMAIL}
+- tapOn: "Password"
+- inputText: ${SUPPLIER_PASSWORD}
+- hideKeyboard
+- tapOn: "Sign In"
+- extendedWaitUntil:
+    visible: ".*My Assets.*"
+    timeout: 45000
+- tapOn: ".*Add Asset.*"
+- extendedWaitUntil:
+    visible: "Add Land"
+    timeout: 15000
+- assertVisible: "Basic Information"
+- assertVisible: "Title"
+- tapOn: "Title"
+- inputText: "Maestro Test Land"
+- assertVisible: "Land Details"
+- hideKeyboard
+# Description is verified visually in the screenshot; this build does not always expose it as a tappable field.
+- tapOn: "Price (PKR)"
+- inputText: "1000"
+- hideKeyboard
+
+- assertVisible: "Plot Unit"
+- tapOn: "Plot Area (Integer)"
+- inputText: "5"
+- hideKeyboard
+- tapOn: "City / Address"
+- inputText: "Lahore"
+- hideKeyboard
+- swipe:
+    direction: UP
+- extendedWaitUntil:
+    visible: "Documents (Required for Land) *"
+    timeout: 10000
+- assertVisible: "Attach Documents"
+- assertVisible: "Mint NFT & Upload to IPFS"
+- takeScreenshot: "screenshots/08_01_supplier_add_asset_form"

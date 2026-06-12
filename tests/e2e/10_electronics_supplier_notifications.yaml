@@ -1,7 +1,7 @@
 ﻿appId: com.example.digitalgoods
-name: 01_smoke_onboarding_login
+name: 10_electronics_supplier_notifications
 ---
-# Flow 1: Complete onboarding, log in with Areeba's supplier account, and verify dashboard.
+# Flow 10: Log in with Humaira's Electronics Supplier account and verify dashboard + notifications.
 - launchApp:
     clearState: true
     permissions:
@@ -30,19 +30,23 @@ name: 01_smoke_onboarding_login
 - extendedWaitUntil:
     visible: "Welcome Back!"
     timeout: 20000
-- assertVisible: "Sign in to continue"
-- assertVisible: "Email Address"
-- assertVisible: "Password"
-- takeScreenshot: "screenshots/01_01_login_screen"
 - tapOn: "Email Address"
-- inputText: ${SUPPLIER_EMAIL}
+- inputText: ${ELECTRONICS_EMAIL}
 - tapOn: "Password"
-- inputText: ${SUPPLIER_PASSWORD}
+- inputText: ${ELECTRONICS_PASSWORD}
 - hideKeyboard
 - tapOn: "Sign In"
+# Role title can wrap; My Assets confirms the supplier dashboard loaded.
 - extendedWaitUntil:
-    visible: ".*Land Supplier.*"
+    visible: ".*My Assets.*"
     timeout: 45000
-- assertVisible: ".*My Assets.*"
 - assertVisible: ".*Add Asset.*"
-- takeScreenshot: "screenshots/01_02_supplier_dashboard"
+- takeScreenshot: "screenshots/10_01_electronics_supplier_dashboard"
+# Bell icon is the far-right app bar action after the wallet icon.
+- tapOn:
+    point: "94%,7%"
+- extendedWaitUntil:
+    visible: "Notifications"
+    timeout: 15000
+- assertVisible: "Notifications"
+- takeScreenshot: "screenshots/10_02_electronics_supplier_notifications"

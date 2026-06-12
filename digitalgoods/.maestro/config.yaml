@@ -1,0 +1,18 @@
+﻿# Maestro config for Areeba Mujtaba's E2E test suite
+# App package from android/app/build.gradle.kts
+appId: com.example.digitalgoods
+flows:
+  - "../tests/e2e/*.yaml"
+executionOrder:
+  continueOnFailure: true
+  flowsOrder:
+    - 01_smoke_onboarding_login
+    - 02_registration_validation
+    - 03_supplier_dashboard_assets
+    - 04_supplier_asset_qr_code
+    - 05_wallet_profile_settings
+    - 06_qr_scanner_and_stolen_report
+    - 07_supplier_notifications
+    - 08_supplier_add_asset_form
+    - 09_user_login_marketplace_notifications
+    - 10_electronics_supplier_notifications

@@ -1,7 +1,7 @@
 ﻿appId: com.example.digitalgoods
-name: 01_smoke_onboarding_login
+name: 09_user_login_marketplace_notifications
 ---
-# Flow 1: Complete onboarding, log in with Areeba's supplier account, and verify dashboard.
+# Flow 9: Log in with the Consumer/User account, verify marketplace, and open notifications.
 - launchApp:
     clearState: true
     permissions:
@@ -30,19 +30,23 @@ name: 01_smoke_onboarding_login
 - extendedWaitUntil:
     visible: "Welcome Back!"
     timeout: 20000
-- assertVisible: "Sign in to continue"
-- assertVisible: "Email Address"
-- assertVisible: "Password"
-- takeScreenshot: "screenshots/01_01_login_screen"
 - tapOn: "Email Address"
-- inputText: ${SUPPLIER_EMAIL}
+- inputText: ${USER_EMAIL}
 - tapOn: "Password"
-- inputText: ${SUPPLIER_PASSWORD}
+- inputText: ${USER_PASSWORD}
 - hideKeyboard
 - tapOn: "Sign In"
+# Search hint may not be exposed; category labels are stable on the marketplace home.
 - extendedWaitUntil:
-    visible: ".*Land Supplier.*"
+    visible: "Property"
     timeout: 45000
-- assertVisible: ".*My Assets.*"
-- assertVisible: ".*Add Asset.*"
-- takeScreenshot: "screenshots/01_02_supplier_dashboard"
+- assertVisible: "Electronics"
+- takeScreenshot: "screenshots/09_01_user_marketplace"
+# Bell icon is the far-right app bar action after the wallet icon.
+- tapOn:
+    point: "94%,7%"
+- extendedWaitUntil:
+    visible: "Notifications"
+    timeout: 15000
+- assertVisible: "Notifications"
+- takeScreenshot: "screenshots/09_02_user_notifications"

@@ -1,7 +1,7 @@
 ﻿appId: com.example.digitalgoods
-name: 01_smoke_onboarding_login
+name: 04_supplier_asset_qr_code
 ---
-# Flow 1: Complete onboarding, log in with Areeba's supplier account, and verify dashboard.
+# Flow 4: Open QR code for a supplier asset and verify QR export actions.
 - launchApp:
     clearState: true
     permissions:
@@ -30,10 +30,6 @@ name: 01_smoke_onboarding_login
 - extendedWaitUntil:
     visible: "Welcome Back!"
     timeout: 20000
-- assertVisible: "Sign in to continue"
-- assertVisible: "Email Address"
-- assertVisible: "Password"
-- takeScreenshot: "screenshots/01_01_login_screen"
 - tapOn: "Email Address"
 - inputText: ${SUPPLIER_EMAIL}
 - tapOn: "Password"
@@ -41,8 +37,15 @@ name: 01_smoke_onboarding_login
 - hideKeyboard
 - tapOn: "Sign In"
 - extendedWaitUntil:
-    visible: ".*Land Supplier.*"
+    visible: ".*My Assets.*"
     timeout: 45000
-- assertVisible: ".*My Assets.*"
-- assertVisible: ".*Add Asset.*"
-- takeScreenshot: "screenshots/01_02_supplier_dashboard"
+- takeScreenshot: "screenshots/04_00_supplier_dashboard_before_qr"
+# The QR button can be visually visible but not always exposed as text. Tap first-card QR button area.
+- tapOn: "QR Code"
+- extendedWaitUntil:
+    visible: "Asset QR Code"
+    timeout: 15000
+- assertVisible: "QR Code Data:"
+- assertVisible: "Share QR Code"
+- assertVisible: "Download QR Code"
+- takeScreenshot: "screenshots/04_01_asset_qr_code"
