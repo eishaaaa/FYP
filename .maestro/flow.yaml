@@ -1,22 +1,48 @@
-appId: com.example.digitalgoods
+﻿appId: com.example.digitalgoods
+name: 01_smoke_onboarding_login
 ---
-- launchApp
-# This is a sample Flow. Maestro reads the screen just like a human!
-# Below are some examples of what you can do:
+# Flow 1: Complete onboarding, log in with Areeba's supplier account, and verify dashboard.
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: allow
+      camera: allow
 
-# 1. Tap on a text anywhere on the screen
-# - tapOn: "Login"
-
-# 2. Wait for a specific widget to appear before continuing
-# - assertVisible: "Welcome"
-
-# 3. Swipe down
-# - swipe:
-#     direction: DOWN
-
-# 4. Input text into a focused text field
-# - inputText: "maestro_is_cool@example.com"
-
-# 5. Tap by Semantics Identifier or Key in your Flutter app
-# - tapOn:
-#     id: "login_button"
+- runFlow:
+    when:
+      visible: ".*isn't responding"
+    commands:
+      - tapOn: "Wait"
+- extendedWaitUntil:
+    visible: "Secure Ownership"
+    timeout: 60000
+- swipe:
+    direction: LEFT
+- extendedWaitUntil:
+    visible: "QR Verification"
+    timeout: 15000
+- swipe:
+    direction: LEFT
+- extendedWaitUntil:
+    visible: "Future Tokenization"
+    timeout: 15000
+- tapOn: "Get Started"
+- extendedWaitUntil:
+    visible: "Welcome Back!"
+    timeout: 20000
+- assertVisible: "Sign in to continue"
+- assertVisible: "Email Address"
+- assertVisible: "Password"
+- takeScreenshot: "screenshots/01_01_login_screen"
+- tapOn: "Email Address"
+- inputText: ${SUPPLIER_EMAIL}
+- tapOn: "Password"
+- inputText: ${SUPPLIER_PASSWORD}
+- hideKeyboard
+- tapOn: "Sign In"
+- extendedWaitUntil:
+    visible: ".*Land Supplier.*"
+    timeout: 45000
+- assertVisible: ".*My Assets.*"
+- assertVisible: ".*Add Asset.*"
+- takeScreenshot: "screenshots/01_02_supplier_dashboard"
