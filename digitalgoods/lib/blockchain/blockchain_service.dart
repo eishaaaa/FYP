@@ -24,9 +24,9 @@ import 'contract_config.dart';
 
 class BlockchainServiceEnhanced {
   // Singleton Pattern
-  static final BlockchainServiceEnhanced _instance = BlockchainServiceEnhanced._internal();
+  static final BlockchainServiceEnhanced _instance = BlockchainServiceEnhanced.internal();
   factory BlockchainServiceEnhanced() => _instance;
-  BlockchainServiceEnhanced._internal() {
+  BlockchainServiceEnhanced.internal() {
     _client = Web3Client(ContractConfig.rpcUrl, http.Client());
   }
 
@@ -1056,8 +1056,8 @@ class BlockchainServiceEnhanced {
       }
 
       return true; // Healthy
-    } catch (e) {
-      debugPrint('Healing error: $e');
+    } catch (e, stack) {
+      debugPrint('Healing error: $e\n$stack');
       return true; // Fail safe
     }
   }
